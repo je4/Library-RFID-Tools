@@ -82,6 +82,13 @@
 		<!-- location of image files. %s will be substituted by primary item id -->
 		<imagefile><![CDATA[c:/Temp/books/%s.jpg]]></imagefile>
 
+		<countryofownerlib>DE</countryofownerlib>
+		<isil><![CDATA[HIL3/9]]></isil>
+		<usage>1</usage>
+		
+		<!-- time between inventories in millis -->
+		<sleep>200</sleep>
+
 		<!-- configuration of main window -->
 		<window>
 			<!-- logo iamge -->
@@ -169,8 +176,5 @@
 			</isil>
 		</autocorrect>
 
-		<countryofownerlib>DE</countryofownerlib>
-		<isil><![CDATA[HIL3/9]]></isil>
-		<usage>1</usage>
 	</taghandle>
 </configuration>
