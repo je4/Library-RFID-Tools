@@ -11,6 +11,7 @@ The following additional libraries are needed to use these tools under the Windo
   * fetcp.dll
   * feusb.dll
   * OBIDISC4J.dll
+  * OBIDISC4J.jar
 * javacv (https://github.com/bytedeco/javacv)
 * apache commons (https://commons.apache.org/)
   * commons-beanutils-1.9.2.jar
