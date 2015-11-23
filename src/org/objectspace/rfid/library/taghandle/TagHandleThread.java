@@ -58,6 +58,7 @@ public class TagHandleThread implements Runnable {
 		this.reader = reader;
 		inventoryCallback = new TagHandleInventory(config, mainDialog, wct);
 		numBlocks = config.getInt("numblocks", 8);
+		sleep = config.getInt( "taghandle.sleep", 500 );
 	}
 
 	@Override
@@ -72,7 +73,7 @@ public class TagHandleThread implements Runnable {
 					e.printStackTrace();
 				}
 
-				Thread.sleep(500);
+				Thread.sleep(sleep);
 			}
 		} catch (InterruptedException e) {
 			e.printStackTrace();
@@ -98,5 +99,6 @@ public class TagHandleThread implements Runnable {
 	protected ISO15693Reader reader = null;
 	protected TagHandleInventory inventoryCallback;
 	protected int numBlocks = 0;
+	protected int sleep = 500;
 
 }
