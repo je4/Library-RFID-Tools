@@ -1,3 +1,18 @@
+*.png
+*.xcf
+*.ndef
+*.xml
+*.log
+*.ser
+bin/
+dll/
+doc/
+feig/
+.settings/
+.project
+javacv-bin/
+.classpath*
+
 *.class
 
 # Mobile Tools for Java (J2ME)

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<!-- configuration and selection of feig rfid device -->
+	<device>
+		<select>elatec</select>
+		
+		<feig>
+			<!-- only usb type supported due to lack of other hardware -->
+			<type>usb</type>
+
+			<!-- Device ID / needed of multiple devices are connected -->
+			<!-- <id>52E688</id> -->
+
+			<!-- configuration file for rfid reader -->
+			<!-- <configfile>host.xml</configfile> -->
+
+			<!-- configfile to restore on exit -->
+			<!-- <restoreconfig>host.xml</restoreconfig> -->
+		</feig>
+		<elatec>
+			<port>Serial RFID Device</port>
+			<readattempts>2</readattempts>
+			<writeattempts>4</writeattempts>
+			<!-- 
+			<baudrate>9600</baudrate>
+			<bits>8</bits>
+			<parity>false</parity>
+			<stopbit>1</stopbit>  
+			-->
+		</elatec>
+	</device>
+
+
+	<!-- database connection -->
+	<database>
+		<active>false</active>
+		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=XXX]]></dsn>
+		<driver>com.mysql.jdbc.Driver</driver>
+	</database>
+
+	<!-- Number of Blocks to read by default. if tagfeatures are provided, the 
+		software will not read more than the size of usermemory -->
+	<numblocks>12</numblocks>
+
+	<!-- list of technical details of tags. due to lack of test tags only one 
+		entry -->
+	<tagfeatures>
+		<tag>
+			<name><![CDATA[ISO 15693 : NXP I-Code SLIX]]></name>
+			<blocksize>4</blocksize>
+			<usermemory>896</usermemory>
+			<blocks>32</blocks>
+		</tag>
+		<tag>
+			<name><![CDATA[ISO15693]]></name>
+			<blocksize>4</blocksize>
+			<usermemory>896</usermemory>
+			<blocks>32</blocks>
+		</tag>
+	</tagfeatures>
+
+	<!-- configuration part for the taghandle program -->
+	<inventory>
+		<!-- configuration of main window -->
+		<window>
+			<!-- logo image -->
+			<logo><![CDATA[ZIMTLogo.png]]></logo>
+			<!-- background image -->
+			<!-- <background><![CDATA[background.png]]></background> -->
+			<!-- screen position of main window -->
+			<posx>100</posx>
+			<posy>100</posy>
+			<!-- size of main window -->
+			<width>1130</width>
+			<height>670</height>
+		</window>
+		<sleep>300</sleep>
+	</inventory>
+	
+	<!-- configuration part for the taghandle program -->
+	<taghandle>
+		<!-- location of image files. %s will be substituted by primary item id -->
+		<imagefile><![CDATA[c:/Temp/books/%s.jpg]]></imagefile>
+
+		<!-- configuration of main window -->
+		<window>
+			<!-- logo iamge -->
+			<logo><![CDATA[ZIMTLogo.png]]></logo>
+			<!-- background image -->
+			<!-- <background><![CDATA[background.png]]></background> -->
+			<!-- screen position of main window -->
+			<posx>100</posx>
+			<posy>100</posy>
+			<!-- size of main window -->
+			<width>1150</width>
+			<height>650</height>
+		</window>
+
+		<!-- configuration of book webcam -->
+		<camera>
+			<!-- set to fals if no cam is used -->
+			<active>true</active>
+			<!-- id of camera. 0 if only one cam is connected. -->
+			<id>0</id>
+			<!-- preferred size of cam picture -->
+			<width>1900</width>
+			<height>1080</height>
+
+			<!-- flip image. 0: flip around x-axis 1: flip around y-axis -1: flip 
+				around both axis -->
+			<flip>0</flip>
+			<!-- transpose image -->
+			<transpose>true</transpose>
+
+			<!-- crop image AFTER flip and transpose -->
+			<crop>
+				<x>174</x>
+				<y>250</y>
+				<width>752</width>
+				<height>1091</height>
+			</crop>
+
+			<!-- delay between two images in grabber window -->
+			<sleep>100</sleep>
+			<!-- configuration of grabber preview window -->
+			<window>
+				<!-- title of grabber window -->
+				<windowtitle>Book Cam</windowtitle>
+				<!-- screen position of main window -->
+				<posx>0</posx>
+				<posy>0</posy>
+				<!-- size of main window -->
+				<width>640</width>
+				<height>364</height>
+			</window>
+		</camera>
+
+		<autocorrect>
+			<active>true</active>
+			<image>true</image>
+			<countryofownerlib>
+				<active>true</active>
+				<matches>
+					<match>
+						<field>CountryOfOwnerLib</field>
+						<pattern><![CDATA[^$]]></pattern>
+					</match>
+					<match>
+						<field>ISIL</field>
+						<pattern><![CDATA[^CH-00159$]]></pattern>
+					</match>
+				</matches>
+				<replacement><![CDATA[CH]]></replacement>
+			</countryofownerlib>
+			<isil>
+				<active>true</active>
+				<matches>
+					<match>
+						<match>
+							<field>CountryOfOwnerLib</field>
+							<pattern><![CDATA[]]>
+							</pattern>
+						</match>
+						<field>ISIL</field>
+						<pattern><![CDATA[^CH-00159$]]></pattern>
+					</match>
+				</matches>
+				<replacement><![CDATA[001596-0]]></replacement>
+			</isil>
+		</autocorrect>
+
+		<countryofownerlib>DE</countryofownerlib>
+		<isil><![CDATA[HIL3/9]]></isil>
+		<usage>1</usage>
+	</taghandle>
+</configuration>
