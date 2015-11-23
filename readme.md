@@ -1,4 +1,7 @@
 #Library RFID Tools
+
+![TagHandle](https://raw.githubusercontent.com/je4/Library-RFID-Tools/master/screenshot/TagHandle-01.png)
+
 The following additional libraries are needed to use these tools under the Windows Operating System
 * FEIG SDK for JAVA (http://www.feig.de, for FEIG ISC.MR102-USB support) 
   * fecom.dll
