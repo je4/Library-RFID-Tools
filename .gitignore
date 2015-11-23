@@ -7,7 +7,7 @@
 bin/
 dll/
 doc/
-feig/
+/feig/
 .settings/
 .project
 javacv-bin/
