@@ -59,7 +59,7 @@
 		</tag>
 	</tagfeatures>
 
-	<!-- configuration part for the taghandle program -->
+	<!-- configuration part for the inventory application -->
 	<inventory>
 		<!-- configuration of main window -->
 		<window>
@@ -77,7 +77,7 @@
 		<sleep>300</sleep>
 	</inventory>
 	
-	<!-- configuration part for the taghandle program -->
+	<!-- configuration part for the taghandle application -->
 	<taghandle>
 		<!-- location of image files. %s will be substituted by primary item id -->
 		<imagefile><![CDATA[c:/Temp/books/%s.jpg]]></imagefile>
