@@ -141,6 +141,8 @@ public class ISO15693Feig implements ISO15693Reader {
 				// paranoia don't read too much
 				numBlocks = Math.min(numBlocks, maxBlocks);
 
+				// read data blocks
+				int back = th.readMultipleBlocks(0, numBlocks, res);
 				if (res.data == null)
 					continue;
 				byte[] newBlock = inventoryCallback.doIt(counter, mapTH.size(), th.getManufacturerName(), tagName,
