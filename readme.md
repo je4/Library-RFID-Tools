@@ -2,6 +2,8 @@
 
 ![TagHandle](https://raw.githubusercontent.com/je4/Library-RFID-Tools/master/screenshot/TagHandle-01.png)
 
+These tools support ISO 15693 compatible RFID tags which are written according to the "Finnish Data Model" (http://www.kansalliskirjasto.fi/attachments/5kSvIrHoj/5kXbVnVS7/Files/CurrentFile/RFID-DataModel-FI-20051124.pdf, the basis for ISO 28560-2)  
+
 The following additional libraries are needed to use these tools under the Windows Operating System
 * FEIG SDK for JAVA (http://www.feig.de, for FEIG ISC.MR102-USB support) 
   * fecom.dll
