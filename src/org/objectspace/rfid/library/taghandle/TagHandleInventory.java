@@ -113,7 +113,7 @@ public class TagHandleInventory implements TagCallback {
 
 	public void writeMainDialog(int typeOfUsage, int partsInItem, int partNumber, String primaryItemId,
 			String countryOfOwnerLib, String ISIL, byte[] crc, boolean crcError, boolean isEmpty, Image img,
-			TreeSet<String> uidList, String UID, String tagName, String manufacturerName, byte[] data) {
+			TreeSet<String> uidList, String UID, String tagName, String manufacturerName, byte[] data, HashMap<Long, byte[]> optionalBlocks) {
 		if (!mainDialog.isDisposed())
 			mainDialog.getDisplay().syncExec(new Runnable() {
 				public void run() {
@@ -145,6 +145,8 @@ public class TagHandleInventory implements TagCallback {
 					mainDialog.txtCRC.setText(String.format("%02x %02x", crc[0], crc[1]));
 					mainDialog.btnEmpty.setSelection(isEmpty);
 					mainDialog.setData(data);
+					mainDialog.setOptionalBlocks(optionalBlocks);
+
 
 				}
 			});
@@ -160,7 +162,7 @@ public class TagHandleInventory implements TagCallback {
 	public void empty() {
 		uidListOld = new TreeSet<String>();
 		uidList = new TreeSet<String>();
-		writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, false, null, null, "", "", "", null);
+		writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, false, null, null, "", "", "", null, null);
 	}
 
 	/*
@@ -187,7 +189,7 @@ public class TagHandleInventory implements TagCallback {
 		if (elements > 1 && counter >= elements - 1) {
 			if (!uidListOld.equals(uidList) || lastCount != elements) {
 				writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, true, null, uidList, "", "", "",
-						data);
+						data, null);
 			}
 		} else if (elements > 1 && counter < elements - 1) {
 			// there should be another
@@ -200,14 +202,14 @@ public class TagHandleInventory implements TagCallback {
 				System.out.println("UID: " + UID);
 
 				writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, true, null, null, UID, tagName,
-						manufacturerName, data);
+						manufacturerName, data, null);
 				try {
 					metadata.setBlock(data, numBlocks);
 
 					if (metadata.isEmpty()) {
 						// empty tag
 						writeMainDialog(usage, 1, 1, "", countryOfOwnerLib, ISIL, new byte[] { 0x00, 0x00 }, false,
-								metadata.isEmpty(), null, null, UID, tagName, manufacturerName, data);
+								metadata.isEmpty(), null, null, UID, tagName, manufacturerName, data, null);
 					} else {
 						if (metadata.getCRCError()) {
 							System.out.println("CRC ERROR!!!!");
@@ -229,7 +231,7 @@ public class TagHandleInventory implements TagCallback {
 						writeMainDialog(metadata.getTypeOfUsage(), metadata.getPartsInItem(), metadata.getPartNumber(),
 								metadata.getPrimaryItemId(), metadata.getCountryOfOwnerLib(), metadata.getISIL(),
 								metadata.getCRCOrigBytes(), metadata.getCRCError(), metadata.isEmpty(), img, null, UID,
-								tagName, manufacturerName, data);
+								tagName, manufacturerName, data, metadata.getOptionalBlocks());
 						if (metadata.doRegex(regex)) {
 							System.out.println("Autocorrect!!!");
 							block = metadata.getBlock(data.length);

@@ -35,6 +35,7 @@
  *******************************************************************************/
 package org.objectspace.rfid;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -61,8 +62,12 @@ public class FinnishDataModel {
 
 	/**
 	 * parse a data block and set internal variables
-	 * @param byte[] data the data block must contain a multiple of blockSize
-	 * @param long blockSize atomic size of smallest block (depends on hardware tag)  
+	 * 
+	 * @param byte[]
+	 *            data the data block must contain a multiple of blockSize
+	 * @param long
+	 *            blockSize atomic size of smallest block (depends on hardware
+	 *            tag)
 	 * @throws Exception
 	 */
 	public void setBlock(byte[] data, long blockSize) throws Exception {
@@ -86,7 +91,7 @@ public class FinnishDataModel {
 		partsInItem = data[1];
 		// 3rd byte
 		partNumber = data[2];
-		
+
 		// byte 3-18 primaryItemId
 		primaryItemId = new String(Arrays.copyOfRange(data, 3, 3 + 15)).trim();
 		// byte 19/29
@@ -94,7 +99,8 @@ public class FinnishDataModel {
 		// byte 21/22 is the country part of ISIL
 		countryOfOwnerLib = new String(Arrays.copyOfRange(data, 21, 21 + 2)).trim();
 		// byte 23-33(35) ISIL
-		ISIL = new String(Arrays.copyOfRange(data, 23, Math.min(data.length, 36) - 1)).trim();
+		int optStart = Math.min(data.length, 35) - 1;
+		ISIL = new String(Arrays.copyOfRange(data, 23, optStart)).trim();
 
 		// create CRC
 		crc = TagCRC(data);
@@ -114,10 +120,57 @@ public class FinnishDataModel {
 			System.out.println("Country of owner library: " + countryOfOwnerLib);
 			System.out.println("ISIL: " + ISIL);
 		}
+
+		do {
+			optStart = (int) loadOptionalBlock(data, optStart);
+		} while (optStart > 0);
+	}
+
+	private long loadOptionalBlock(byte[] data, int optStart) throws Exception {
+		assert data.length > optStart;
+
+		if (data[optStart] == 0x00)
+			return 0;
+		int dataStart;
+		long dataLength;
+		long id;
+		long length = data[optStart];
+		if (length == 1) {
+			throw new Exception("i do not know how to handle filler block");
+		}
+
+		if (data[optStart + 2] == 0xff) {
+			id = ((long) data[optStart + 4]) << 16 + ((long) data[optStart + 3]) << 8 + ((long) data[optStart + 1]);
+			dataStart = optStart + 5;
+			dataLength = length - 5 - 1;
+		} else {
+			id = (((long) data[optStart + 2]) << 8) + ((long) data[optStart + 1]);
+			dataStart = optStart + 3;
+			dataLength = length - 3 - 1;
+		}
+		if (data.length < dataStart + dataLength + 1)
+			throw new Exception("optional data block corrupt");
+		byte[] d = Arrays.copyOfRange(data, dataStart, (int) Math.min(data.length, dataStart + dataLength));
+		optionalBlocks.put(id, d);
+
+		// checksum of optional block is xor of block including checksum (0)
+		byte checksum = 0x00;
+		for (int i = optStart; i < Math.min(data.length, optStart + length - 1); i++) {
+			checksum ^= data[i];
+		}
+		checksum ^= 0;
+
+		if (data[(int) (optStart + length-1)] != checksum) {
+			throw new Exception("optional data block checksum error");
+		}
+
+		return optStart + length;
+
 	}
 
 	/**
-	 * set internal values 
+	 * set internal values
+	 * 
 	 * @param typeOfUsage
 	 * @param partsInItem
 	 * @param partNumber
@@ -138,7 +191,9 @@ public class FinnishDataModel {
 
 	/**
 	 * Execute regex Expressions on primaryItemId, CountryOfOwnerLib and ISIL
-	 * @param regex map with regex
+	 * 
+	 * @param regex
+	 *            map with regex
 	 * @return true, if data has been changed
 	 */
 	public boolean doRegex(HashMap<String, FinnishDataModelRegex> regex) {
@@ -177,6 +232,7 @@ public class FinnishDataModel {
 
 	/**
 	 * creates an empty data block (zero values)
+	 * 
 	 * @param size
 	 * @return data block with zero values
 	 */
@@ -188,11 +244,12 @@ public class FinnishDataModel {
 
 	/**
 	 * builds a data block containing the actual values
+	 * 
 	 * @param size
 	 * @return
 	 */
 	public byte[] getBlock(int size) {
-		byte[] block = getEmptyBlock( size );
+		byte[] block = getEmptyBlock(size);
 		block[0] = (byte) ((version << 4) | typeOfUsage);
 		block[1] = (byte) partsInItem;
 		block[2] = (byte) partNumber;
@@ -227,6 +284,7 @@ public class FinnishDataModel {
 
 	/**
 	 * creates crc checksum of data block (excluding byte 19/20)
+	 * 
 	 * @param data
 	 * @return
 	 */
@@ -246,9 +304,13 @@ public class FinnishDataModel {
 
 	/**
 	 * creates a crc16 checksum of a data block
-	 * @param data the data block
-	 * @param start start byte
-	 * @param length number of bytes to use
+	 * 
+	 * @param data
+	 *            the data block
+	 * @param start
+	 *            start byte
+	 * @param length
+	 *            number of bytes to use
 	 * @return
 	 */
 	protected static int CRC16CCITT(byte[] data, int start, int length) {
@@ -274,6 +336,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return primaryItemId
 	 */
 	public String getPrimaryItemId() {
@@ -282,6 +345,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return countryOfOwnerLib
 	 */
 	public String getCountryOfOwnerLib() {
@@ -290,6 +354,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return ISIL
 	 */
 	public String getISIL() {
@@ -298,6 +363,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return typeOfUsage
 	 */
 	public int getTypeOfUsage() {
@@ -306,6 +372,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return partsInItem
 	 */
 	public int getPartsInItem() {
@@ -314,6 +381,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return partNumber
 	 */
 	public int getPartNumber() {
@@ -322,6 +390,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return version
 	 */
 	public int getVersion() {
@@ -330,6 +399,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter for crc (integer)
+	 * 
 	 * @return crc (actual)
 	 */
 	public int getCRC() {
@@ -338,6 +408,7 @@ public class FinnishDataModel {
 
 	/**
 	 * getter for crc (byte[])
+	 * 
 	 * @return crc (actual)
 	 */
 	public byte[] getCRCBytes() {
@@ -346,14 +417,16 @@ public class FinnishDataModel {
 
 	/**
 	 * getter
+	 * 
 	 * @return original crc
 	 */
 	public byte[] getCRCOrigBytes() {
 		return crcOrig;
 	}
-	
+
 	/**
 	 * check for crc error
+	 * 
 	 * @return true, if crc is not correct
 	 */
 	public boolean getCRCError() {
@@ -362,15 +435,22 @@ public class FinnishDataModel {
 
 	/**
 	 * check for empty tag
+	 * 
 	 * @return true if empty
 	 */
 	public boolean isEmpty() {
 		return isEmpty;
 	}
 
+	public HashMap<Long, byte[]> getOptionalBlocks() {
+		return optionalBlocks;
+	}
+
 	/**
 	 * get value by field name
-	 * @param field name
+	 * 
+	 * @param field
+	 *            name
 	 * @return field value
 	 */
 	public String getStringValue(String field) {
@@ -400,5 +480,6 @@ public class FinnishDataModel {
 	protected boolean crcError = false;
 	protected boolean isEmpty = false;
 	protected boolean dataChanged = false;
+	protected HashMap<Long, byte[]> optionalBlocks = new HashMap<Long, byte[]>();
 
 }

@@ -52,8 +52,8 @@ import de.feig.FedmIscReaderInfo;
 import de.feig.TagHandler.FedmIscTagHandler;
 
 /**
- * class representing a feig reader
- * actually supported: ISC.MR102-USB
+ * class representing a feig reader actually supported: ISC.MR102-USB
+ * 
  * @author Juergen Enge
  *
  */
@@ -61,7 +61,9 @@ public class FeigRFID {
 
 	/**
 	 * constructor with abstract configuration
-	 * @param config abstract configuration
+	 * 
+	 * @param config
+	 *            abstract configuration
 	 */
 	public FeigRFID(AbstractConfiguration config) {
 		this.config = config;
@@ -69,10 +71,10 @@ public class FeigRFID {
 	}
 
 	/**
-	 * connects to the feig rfid reader
-	 * needs optional configuration values:
-	 * * device.feig.id (to bind to a specific hardware)
-	 * * device.feig.type (must be "usb")
+	 * connects to the feig rfid reader needs optional configuration values: *
+	 * device.feig.id (to bind to a specific hardware) * device.feig.type (must
+	 * be "usb")
+	 * 
 	 * @throws Exception
 	 * @throws FedmException
 	 * 
@@ -113,17 +115,28 @@ public class FeigRFID {
 	}
 
 	/**
-	 * initializes the reader to deal with BRM or ISO tags
-	 * needs optional configuration value
-	 * * device.feig.configfile (name of firmware configuration) 
-	 * @throws FedmException
+	 * initializes the reader to deal with BRM or ISO tags needs optional
+	 * configuration value * device.feig.storeconfigfile *
+	 * device.feig.configfile (name of firmware configuration)
 	 * 
+	 * @throws Exception
 	 */
-	public void init() throws FedmException {
-		String readerConfigFile = config.getString("device.feig.configfile");
-		if (readerConfigFile != null && Files.isRegularFile(Paths.get(readerConfigFile))) {
+	public void init() throws Exception {
+		String storeConfigFile = config.getString("device.feig.storeconfigfile", null);
+		if (storeConfigFile != null) {
+			if (Files.isRegularFile(Paths.get(storeConfigFile))) {
+				Files.delete(Paths.get(storeConfigFile));
+			}
+			System.out.println("Storing actual configuration to " + storeConfigFile);
+			copyConfigToFile( storeConfigFile );
+		}
+		String readerConfigFile = config.getString("device.feig.configfile", null);
+		if (readerConfigFile != null) {
+			if (!Files.isRegularFile(Paths.get(readerConfigFile))) {
+				throw new Exception("configfile " + readerConfigFile + " not a regular file");
+			}
 			System.out.println("Loading configuration file: " + readerConfigFile);
-			reader.transferXmlFileToReaderCfg(readerConfigFile);
+			copyFileToConfig(readerConfigFile);
 		}
 
 		reader.setTableSize(FedmIscReaderConst.ISO_TABLE, 17496);
@@ -131,31 +144,48 @@ public class FeigRFID {
 	}
 
 	/**
-	 * stores firmware configuration in xml-file
-	 * @param fileName xml-filename
-	 * @throws Exception
-	 * 
+	 * closes the connections and restores configuration (optional)
+	 * @throws Exception 
 	 */
-	public void copyConfigToFile(String fileName) throws Exception {
-		int back = reader.readCompleteConfiguration(false);
-		if (back == 0) {
-			reader.transferReaderCfgToXmlFile(fileName);
-		} else
-			throw new Exception("Error reading complete configuration from RAM");
+	public void close() throws Exception {
+		String restoreconfig = config.getString("device.feig.restoreconfig", null);
+		if (restoreconfig != null) {
+			if (!Files.isRegularFile(Paths.get(restoreconfig))) {
+				throw new Exception("restoreconfigfile " + restoreconfig + " not a regular file");
+			}
+			System.out.println("restoring configuration from " + restoreconfig);
+			copyFileToConfig(restoreconfig);
+		}
+		reader.disConnect();
+	}
+
+	/**
+	 * stores firmware configuration in xml-file
+	 * 
+	 * @param fileName xml-filename
+	 * @throws FedmException
+	 * @throws FeReaderDriverException
+	 * @throws FePortDriverException
+	 */
+	public void copyConfigToFile(String fileName) throws FedmException, FePortDriverException, FeReaderDriverException {
+		reader.readCompleteConfiguration(false);
+		reader.transferReaderCfgToXmlFile(fileName);
 	}
 
 	/**
 	 * writes firmware configuration to connected hardware device
-	 * @param fileName xml-filename
-	 * @throws Exception
 	 * 
+	 * @param fileName
+	 *            xml-filename
+	 * @throws FedmException
 	 */
-	public void copyFileToConfig(String fileName) throws Exception {
+	public void copyFileToConfig(String fileName) throws FedmException {
 		reader.transferXmlFileToReaderCfg(fileName);
 	}
 
 	/**
 	 * get last reader error
+	 * 
 	 * @return last error of reader
 	 */
 	public int getLastError() {
@@ -163,88 +193,22 @@ public class FeigRFID {
 	}
 
 	/**
-	 * executes an inventory of tags 
-	 * @param all automatic mode (should be true)
-	 * @param mode manual control (should be 0)
-	 * @param antennas flag field with antennas (should be 1)
+	 * executes an inventory of tags
+	 * 
+	 * @param all
+	 *            automatic mode (should be true)
+	 * @param mode
+	 *            manual control (should be 0)
+	 * @param antennas
+	 *            flag field with antennas (should be 1)
 	 * @return map of transponders
 	 * @throws FedmException
 	 * @throws FePortDriverException
 	 * @throws FeReaderDriverException
 	 */
-	HashMap<String, FedmIscTagHandler> tagInventory(boolean all, byte mode, byte antennas) throws FedmException, FePortDriverException, FeReaderDriverException {
+	HashMap<String, FedmIscTagHandler> tagInventory(boolean all, byte mode, byte antennas)
+			throws FedmException, FePortDriverException, FeReaderDriverException {
 		return reader.tagInventory(all, mode, antennas);
-	}
-
-
-	/**
-	 * not implemented. do not use...
-	 * @throws Exception
-	 */
-	public void readBRMBuffer() throws Exception {
-		// reader.setData(FedmIscReaderID.FEDM_ISC_TMP_ADV_BRM_SETS, sets);
-		reader.sendProtocol((byte) 0x22);
-		FedmBrmTableItem[] brmItems = null;
-		if (reader.getTableLength(FedmIscReaderConst.BRM_TABLE) > 0)
-			brmItems = (FedmBrmTableItem[]) reader.getTable(FedmIscReaderConst.BRM_TABLE);
-
-		if (brmItems != null) {
-			String[] type = new String[brmItems.length];
-			String[] serialNumber = new String[brmItems.length];
-			String[] data = new String[brmItems.length];
-			String[] time = new String[brmItems.length];
-			String[] date = new String[brmItems.length];
-			String[] antNr = new String[brmItems.length];
-			String[] input = new String[brmItems.length];
-			String[] state = new String[brmItems.length];
-
-			for (int i = 0; i < brmItems.length; i++) {
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_SNR)) {
-					serialNumber[i] = brmItems[i].getStringData(FedmIscReaderConst.DATA_SNR);
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_RxDB)) { // data
-																				// block
-					byte[] b = brmItems[i].getByteArrayData(FedmIscReaderConst.DATA_RxDB, brmItems[i].getBlockAddress(),
-							brmItems[i].getBlockCount());
-					data[i] = FeHexConvert.byteArrayToHexString(b);
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_TRTYPE)) { // tranponder
-																				// type
-					type[i] = brmItems[i].getStringData(FedmIscReaderConst.DATA_TRTYPE);
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_TIMER)) { // Timer
-					time[i] = brmItems[i].getReaderTime().getTime();
-
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_DATE)) { // date
-					date[i] = brmItems[i].getReaderTime().getDate();
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_ANT_NR)) { // antenna
-																				// number
-					antNr[i] = brmItems[i].getStringData(FedmIscReaderConst.DATA_ANT_NR);
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_IS_RSSI)) { // RSSI
-																				
-				} else {
-				}
-
-				if (brmItems[i].isDataValid(FedmIscReaderConst.DATA_INPUT)) { // input,
-																				// state
-					input[i] = brmItems[i].getStringData(FedmIscReaderConst.DATA_INPUT);
-					state[i] = brmItems[i].getStringData(FedmIscReaderConst.DATA_STATE);
-				}
-
-			}
-			// readerListener.onGetRecsets(brmItems.length, type, serialNumber,
-			// data, date, time, antNr, dicRSSI, input, state);
-		}
-
 	}
 
 	protected AbstractConfiguration config;

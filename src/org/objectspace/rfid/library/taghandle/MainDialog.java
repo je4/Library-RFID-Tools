@@ -35,6 +35,9 @@
  *******************************************************************************/
 package org.objectspace.rfid.library.taghandle;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
@@ -47,6 +50,7 @@ import org.eclipse.wb.swt.SWTResourceManager;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.List;
 import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.events.FocusAdapter;
 import org.eclipse.swt.events.FocusEvent;
@@ -57,6 +61,7 @@ import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Canvas;
 
 public class MainDialog extends Composite {
@@ -77,6 +82,7 @@ public class MainDialog extends Composite {
 	protected Canvas bookCanvas;
 	protected Image bookImage = null;
 	protected byte[] data = null;
+	protected HashMap<Long, byte[]> optionalBlocks = null;
 
 	/**
 	 * Create the composite.
@@ -371,8 +377,7 @@ public class MainDialog extends Composite {
 		btnCode.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
-				MessageBox warn = new MessageBox(e.widget.getDisplay().getActiveShell(),
-						SWT.ICON_INFORMATION | SWT.YES);
+
 				String msg = "";
 				if (data != null) {
 
@@ -393,9 +398,35 @@ public class MainDialog extends Composite {
 				} else
 					msg = "no data";
 
-				warn.setMessage(msg);
-				warn.open();
-
+				String blocks = "";
+				if( optionalBlocks != null ) {
+					for( Map.Entry<Long, byte[]> entry : optionalBlocks.entrySet() ) {
+						blocks += String.format("% 5d:", entry.getKey());
+						for( byte b : entry.getValue()) {
+							blocks += String.format(" %02d", b);
+							blocks += "\n";
+						}
+					}
+				}
+				Display display = getDisplay();
+				Shell shell = new Shell(display);
+				FillLayout layout = new FillLayout();
+				shell.setLayout(layout);
+				DetailDialog dd = new DetailDialog(shell, SWT.NONE, blocks.trim(), msg.trim());
+				shell.setLocation(180, 140);
+				shell.setSize(820, 600);
+				shell.open();
+				while (!shell.isDisposed()) {
+					if (!display.readAndDispatch())
+						display.sleep();
+				}
+				shell.dispose();
+				/*
+				 * MessageBox warn = new
+				 * MessageBox(e.widget.getDisplay().getActiveShell(),
+				 * SWT.ICON_INFORMATION | SWT.YES); warn.setMessage(msg);
+				 * warn.open();
+				 */
 			}
 		});
 		btnCode.setText("#");
@@ -435,6 +466,10 @@ public class MainDialog extends Composite {
 
 	public void setData(byte[] data) {
 		this.data = data;
+	}
+
+	public void setOptionalBlocks(HashMap<Long, byte[]> blocks) {
+		this.optionalBlocks = blocks;
 	}
 
 	protected String store = null;
