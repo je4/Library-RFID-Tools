@@ -39,6 +39,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Map;
@@ -47,6 +51,11 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 
+import org.apache.commons.configuration2.AbstractConfiguration;
+import org.apache.commons.configuration2.XMLConfiguration;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.fluent.Parameters;
+import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
@@ -58,10 +67,35 @@ import org.xml.sax.helpers.DefaultHandler;
 public class MarcReader extends DefaultHandler {
 
 	/**
+	 * @param config
+	 * @throws ClassNotFoundException
+	 * @throws IllegalAccessException
+	 * @throws InstantiationException
+	 * @throws SQLException
 	 * 
 	 */
-	public MarcReader() {
-		// TODO Auto-generated constructor stub
+	public MarcReader(AbstractConfiguration config)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+		sig_datafield = config.getString("marcreader.signature.datafield");
+		sig_subfield = config.getString("marcreader.signature.subfield");
+		code_datafield = config.getString("marcreader.barcode.datafield");
+		code_subfield = config.getString("marcreader.barcode.subfield");
+		title_datafield = config.getString("marcreader.title.datafield");
+		title_subfield = config.getString("marcreader.title.subfield");
+
+		if (conn == null) {
+
+			if (config != null) {
+				String driver = config.getString("database.driver");
+				String dsn = config.getString("database.dsn");
+
+				if (driver != null && dsn != null) {
+					Class.forName(driver).newInstance();
+					conn = DriverManager.getConnection(dsn);
+					conn.setAutoCommit(true);
+				}
+			}
+		}
 	}
 
 	/**
@@ -69,8 +103,28 @@ public class MarcReader extends DefaultHandler {
 	 * @throws SAXException
 	 * @throws ParserConfigurationException
 	 * @throws IOException
+	 * @throws ConfigurationException
+	 * @throws SQLException
+	 * @throws ClassNotFoundException
+	 * @throws IllegalAccessException
+	 * @throws InstantiationException
 	 */
-	public static void main(String[] args) throws ParserConfigurationException, SAXException, IOException {
+	public static void main(String[] args)
+			throws ParserConfigurationException, SAXException, IOException, ConfigurationException,
+			InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+		String configfilename = "tagreader.xml";
+		if (args.length > 0) {
+			configfilename = args[0];
+		}
+
+		Parameters params = new Parameters();
+		FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<XMLConfiguration>(
+				XMLConfiguration.class).configure(params.xml().setFileName(configfilename));
+
+		XMLConfiguration config = builder.getConfiguration();
+
+		String xmlfile = config.getString("marcreader.file", null);
+
 		// Create a "parser factory" for creating SAX parsers
 		SAXParserFactory spfac = SAXParserFactory.newInstance();
 
@@ -78,12 +132,12 @@ public class MarcReader extends DefaultHandler {
 		SAXParser sp = spfac.newSAXParser();
 
 		// Create an instance of this class; it defines all the handler methods
-		MarcReader handler = new MarcReader();
+		MarcReader handler = new MarcReader(config);
 
 		// HIL3/2$0030422 639.1 Hes MARC 954
 
 		// Finally, tell the parser to parse the input and notify the handler
-		sp.parse("hawk_91_2015-10-23.pp.xml", handler);
+		sp.parse(xmlfile, handler);
 
 	}
 
@@ -119,14 +173,23 @@ public class MarcReader extends DefaultHandler {
 		if (qName.equalsIgnoreCase("record")) {
 			if (barcode != null && signatur != null) {
 				table.put(barcode, signatur);
+			} else {
+				System.out.println("Keine Signatur und Barcode: " + titel);
 			}
 			barcode = null;
 			signatur = null;
+			titel = null;
 		} else if (qName.equalsIgnoreCase("subfield")) {
-			if (currentDataField.equals("980") && currentSubField.equals("d")) {
+			// if (currentDataField.equals("980") &&
+			// currentSubField.equals("d")) {
+			if (currentDataField.equals(sig_datafield) && currentSubField.equals(sig_subfield)) {
 				signatur = temp;
-			} else if (currentDataField.equals("984") && currentSubField.equals("a")) {
+				// } else if (currentDataField.equals("984") &&
+				// currentSubField.equals("a")) {
+			} else if (currentDataField.equals(code_datafield) && currentSubField.equals(code_subfield)) {
 				barcode = temp;
+			} else if (currentDataField.equals(title_datafield) && currentSubField.equals(title_subfield)) {
+				titel = temp;
 			}
 
 		}
@@ -138,30 +201,55 @@ public class MarcReader extends DefaultHandler {
 
 	public void endDocument() throws SAXException {
 
-		int i = 1;
-		for (Map.Entry<String, String> entry : table.entrySet()) {
-			System.out.println(String.format("% 6d - %s: %s", i++, entry.getKey(), entry.getValue()));
+		String insertSQL = "INSERT INTO `rfid`.`code_sig` "
+				+ "(`barcode`, `signatur`) VALUES (?, ?)";
+		try {
+			PreparedStatement stmt = conn.prepareStatement(insertSQL);
+
+			int i = 1;
+			System.out.println(String.format("\"%s\";\"%s\";\"%s\"", "Barcode", "Signatur", "Titel"));
+			for (Map.Entry<String, String> entry : table.entrySet()) {
+				// System.out.println(String.format("% 6d - %s: %s", i++,
+				// entry.getKey(), entry.getValue()));
+				System.out.println(String.format("%s;%s", entry.getKey(), entry.getValue()));
+				stmt.setString(1, entry.getKey());
+				stmt.setString(2, entry.getValue());
+				int numRows = stmt.executeUpdate();
+			}
+
+			try {
+				FileOutputStream fileout = new FileOutputStream("bc_sig.ser");
+				ObjectOutputStream objout = new ObjectOutputStream(fileout);
+				objout.writeObject(table);
+				objout.close();
+				fileout.close();
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		} catch (SQLException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
 		}
 
-		try {
-			FileOutputStream fileout = new FileOutputStream("bc_sig.ser");
-			ObjectOutputStream objout = new ObjectOutputStream( fileout );
-			objout.writeObject(table);
-			objout.close();
-			fileout.close();
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 	}
 
 	protected String barcode = null;
 	protected String signatur = null;
+	protected String titel = null;
 	private String temp = null;
 	private Map<String, String> table = null;
 	private String currentDataField = null;
 	private String currentSubField = null;
+	private String sig_datafield = null;
+	private String sig_subfield = null;
+	private String title_datafield = null;
+	private String title_subfield = null;
+	private String code_datafield = null;
+	private String code_subfield = null;
+
+	protected static Connection conn = null;
 }

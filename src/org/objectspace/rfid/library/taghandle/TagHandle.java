@@ -94,14 +94,14 @@ public class TagHandle {
 		Image background = null;
 		if( bgImgName != null ) background = new Image(display, bgImgName );
 
-		MainDialog md = new MainDialog(shell, SWT.NONE, logo, background);
+		MainDialog md = new MainDialog(shell, SWT.NONE, logo, background, config.getInt("taghandle.camera.edgetresholdmin", 100), config.getInt("taghandle.camera.edgetresholdmax", 200));
 		shell.setLocation(config.getInt("taghandle.window.posx", 100), config.getInt("taghandle.window.posy", 100));
 		shell.setSize(config.getInt("taghandle.window.width", 1150), config.getInt("taghandle.window.height", 650));
 		shell.open();
 
 		WebCamThread webCamThread = null;
 		if (config.getBoolean("taghandle.camera.active")) {
-			webCamThread = new WebCamThread(config);
+			webCamThread = new WebCamThread(config, md);
 			Thread runner = new Thread(webCamThread);
 			runner.start();
 		}

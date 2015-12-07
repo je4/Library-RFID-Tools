@@ -40,6 +40,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.TreeSet;
@@ -50,6 +51,7 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.wb.swt.SWTResourceManager;
 import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.FinnishDataModelOptionalBlock;
 import org.objectspace.rfid.FinnishDataModelRegex;
 import org.objectspace.rfid.TagCallback;
 
@@ -111,18 +113,27 @@ public class TagHandleInventory implements TagCallback {
 
 	}
 
-	public void writeMainDialog(int typeOfUsage, int partsInItem, int partNumber, String primaryItemId,
-			String countryOfOwnerLib, String ISIL, byte[] crc, boolean crcError, boolean isEmpty, Image img,
-			TreeSet<String> uidList, String UID, String tagName, String manufacturerName, byte[] data, HashMap<Long, byte[]> optionalBlocks) {
+	// public void writeMainDialog(int typeOfUsage, int partsInItem, int
+	// partNumber, String primaryItemId,
+	// String countryOfOwnerLib, String ISIL, byte[] crc, boolean crcError,
+	// boolean isEmpty, Image img,
+	// TreeSet<String> uidList, String UID, String tagName, String
+	// manufacturerName, byte[] data, ArrayList<FinnishDataModelOptionalBlock>
+	// optionalBlocks) {
+	public void writeMainDialog(FinnishDataModel fdm, Image img, String UID, String tagName, String manufacturerName,
+			TreeSet<String> uidList) {
 		if (!mainDialog.isDisposed())
 			mainDialog.getDisplay().syncExec(new Runnable() {
 				public void run() {
-					mainDialog.txtCode.setText(primaryItemId);
-					mainDialog.txtLibraryCountry.setText(countryOfOwnerLib);
-					mainDialog.txtISIL.setText(ISIL);
-					mainDialog.cbUsage.select(ArrayUtils.indexOf(usageList, typeOfUsage));
-					mainDialog.parts.setText(((Integer) partsInItem).toString());
-					mainDialog.part.setText(((Integer) partNumber).toString());
+					FinnishDataModel fdx = fdm;
+					if (fdx == null)
+						fdx = new FinnishDataModel();
+					mainDialog.txtCode.setText(fdx.getPrimaryItemId());
+					mainDialog.txtLibraryCountry.setText(fdx.getCountryOfOwnerLib());
+					mainDialog.txtISIL.setText(fdx.getISIL());
+					mainDialog.cbUsage.select(ArrayUtils.indexOf(usageList, fdx.getTypeOfUsage()));
+					mainDialog.parts.setText(((Integer) fdx.getPartsInItem()).toString());
+					mainDialog.part.setText(((Integer) fdx.getPartNumber()).toString());
 					mainDialog.txtCode.setFocus();
 					mainDialog.txtCode.selectAll();
 					mainDialog.txtUID.setText(UID);
@@ -138,16 +149,15 @@ public class TagHandleInventory implements TagCallback {
 					}
 					mainDialog.txtManufacturerName.setText(manufacturerName);
 					mainDialog.txtTagName.setText(tagName);
-					if (crcError)
+					if (fdx.getCRCError())
 						mainDialog.txtCRC.setForeground(SWTResourceManager.getColor(SWT.COLOR_RED));
 					else
 						mainDialog.txtCRC.setForeground(SWTResourceManager.getColor(SWT.COLOR_DARK_GREEN));
+					byte[] crc = fdx.getCRCBytes();
 					mainDialog.txtCRC.setText(String.format("%02x %02x", crc[0], crc[1]));
-					mainDialog.btnEmpty.setSelection(isEmpty);
-					mainDialog.setData(data);
-					mainDialog.setOptionalBlocks(optionalBlocks);
-
-
+					mainDialog.btnEmpty.setSelection(fdx.isEmpty());
+					mainDialog.setData(fdx.getData());
+					mainDialog.setFinnishDataModel(fdx);
 				}
 			});
 
@@ -162,7 +172,7 @@ public class TagHandleInventory implements TagCallback {
 	public void empty() {
 		uidListOld = new TreeSet<String>();
 		uidList = new TreeSet<String>();
-		writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, false, null, null, "", "", "", null, null);
+		writeMainDialog(null, null, "", "", "", null);
 	}
 
 	/*
@@ -188,8 +198,7 @@ public class TagHandleInventory implements TagCallback {
 
 		if (elements > 1 && counter >= elements - 1) {
 			if (!uidListOld.equals(uidList) || lastCount != elements) {
-				writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, true, null, uidList, "", "", "",
-						data, null);
+				writeMainDialog(null, null, "", "", "", uidList);
 			}
 		} else if (elements > 1 && counter < elements - 1) {
 			// there should be another
@@ -201,15 +210,13 @@ public class TagHandleInventory implements TagCallback {
 				System.out.println("Tag Name: " + tagName);
 				System.out.println("UID: " + UID);
 
-				writeMainDialog(-1, 0, 0, "", "", "", new byte[] { 0x00, 0x00 }, false, true, null, null, UID, tagName,
-						manufacturerName, data, null);
+				writeMainDialog(null, null, UID, tagName, manufacturerName, null);
 				try {
 					metadata.setBlock(data, numBlocks);
 
 					if (metadata.isEmpty()) {
 						// empty tag
-						writeMainDialog(usage, 1, 1, "", countryOfOwnerLib, ISIL, new byte[] { 0x00, 0x00 }, false,
-								metadata.isEmpty(), null, null, UID, tagName, manufacturerName, data, null);
+						writeMainDialog(metadata, null, UID, tagName, manufacturerName, null);
 					} else {
 						if (metadata.getCRCError()) {
 							System.out.println("CRC ERROR!!!!");
@@ -228,13 +235,10 @@ public class TagHandleInventory implements TagCallback {
 							img = new Image(mainDialog.getDisplay(), imgName);
 						}
 
-						writeMainDialog(metadata.getTypeOfUsage(), metadata.getPartsInItem(), metadata.getPartNumber(),
-								metadata.getPrimaryItemId(), metadata.getCountryOfOwnerLib(), metadata.getISIL(),
-								metadata.getCRCOrigBytes(), metadata.getCRCError(), metadata.isEmpty(), img, null, UID,
-								tagName, manufacturerName, data, metadata.getOptionalBlocks());
+						writeMainDialog(metadata, img, UID, tagName, manufacturerName, null);
 						if (metadata.doRegex(regex)) {
 							System.out.println("Autocorrect!!!");
-							block = metadata.getBlock(data.length);
+							block = metadata.getBlock(0);
 							uidList = new TreeSet<String>();
 						}
 					}
@@ -260,8 +264,13 @@ public class TagHandleInventory implements TagCallback {
 								String countryOfOwnerLib = mainDialog.txtLibraryCountry.getText();
 								String ISIL = mainDialog.txtISIL.getText();
 								metadata.setValues(typeOfUsage, partsInItem, partNumber, primaryItemId,
-										countryOfOwnerLib, ISIL);
-								block = metadata.getBlock(data.length);
+										countryOfOwnerLib, ISIL, mainDialog.fdm.getOptionalBlocks());
+								try {
+									block = metadata.getBlock(0);
+								} catch (Exception e1) {
+									// TODO Auto-generated catch block
+									e1.printStackTrace();
+								}
 								if (imageFile != null && wct != null) {
 									try {
 										wct.storeImage(String.format(imageFile, primaryItemId));

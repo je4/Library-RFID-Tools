@@ -24,6 +24,8 @@ The following additional libraries are needed to use these tools under the Windo
 * SWT: The Standard Widget Toolkit (https://www.eclipse.org/swt/)
 * jSerialComm (https://github.com/Fazecast/jSerialComm, for Elatec TWN4 Support)
   * jSerialComm-1.3.9.jar
+* Opal Project (https://github.com/lcaron/opal, for RangeSlider)
+  * opal-1.0.3.jar
 * MySQL Connector (https://dev.mysql.com/downloads/connector/j/, if you want to use MySQL, configurable)
   * mysql-connector-java-5.1.3.6-bin.jar
 

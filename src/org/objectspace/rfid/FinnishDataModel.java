@@ -73,6 +73,9 @@ public class FinnishDataModel {
 	public void setBlock(byte[] data, long blockSize) throws Exception {
 		assert data.length % blockSize == 0 : data.length >= 32;
 
+		nodata = false;
+		this.data = data;
+		
 		// check, whether block is empty (only zero values)
 		boolean notEmpty = false;
 		for (int i = 0; i < data.length; i++)
@@ -121,51 +124,12 @@ public class FinnishDataModel {
 			System.out.println("ISIL: " + ISIL);
 		}
 
-		do {
-			optStart = (int) loadOptionalBlock(data, optStart);
-		} while (optStart > 0);
-	}
-
-	private long loadOptionalBlock(byte[] data, int optStart) throws Exception {
-		assert data.length > optStart;
-
-		if (data[optStart] == 0x00)
-			return 0;
-		int dataStart;
-		long dataLength;
-		long id;
-		long length = data[optStart];
-		if (length == 1) {
-			throw new Exception("i do not know how to handle filler block");
+		// if length of optional block > 0 load the block
+		while (optStart > 0 && data[optStart] != 0x00) {
+			FinnishDataModelOptionalBlock op = new FinnishDataModelOptionalBlock();
+			optStart = op.setBlock(data, optStart);
+			optionalBlocks.add(op);
 		}
-
-		if (data[optStart + 2] == 0xff) {
-			id = ((long) data[optStart + 4]) << 16 + ((long) data[optStart + 3]) << 8 + ((long) data[optStart + 1]);
-			dataStart = optStart + 5;
-			dataLength = length - 5 - 1;
-		} else {
-			id = (((long) data[optStart + 2]) << 8) + ((long) data[optStart + 1]);
-			dataStart = optStart + 3;
-			dataLength = length - 3 - 1;
-		}
-		if (data.length < dataStart + dataLength + 1)
-			throw new Exception("optional data block corrupt");
-		byte[] d = Arrays.copyOfRange(data, dataStart, (int) Math.min(data.length, dataStart + dataLength));
-		optionalBlocks.put(id, d);
-
-		// checksum of optional block is xor of block including checksum (0)
-		byte checksum = 0x00;
-		for (int i = optStart; i < Math.min(data.length, optStart + length - 1); i++) {
-			checksum ^= data[i];
-		}
-		checksum ^= 0;
-
-		if (data[(int) (optStart + length-1)] != checksum) {
-			throw new Exception("optional data block checksum error");
-		}
-
-		return optStart + length;
-
 	}
 
 	/**
@@ -179,7 +143,7 @@ public class FinnishDataModel {
 	 * @param ISIL
 	 */
 	public void setValues(int typeOfUsage, int partsInItem, int partNumber, String primaryItemId,
-			String countryOfOwnerLib, String ISIL) {
+			String countryOfOwnerLib, String ISIL, ArrayList<FinnishDataModelOptionalBlock> optionalBlocks) {
 		this.version = 1;
 		this.typeOfUsage = typeOfUsage;
 		this.partsInItem = partsInItem;
@@ -187,6 +151,8 @@ public class FinnishDataModel {
 		this.primaryItemId = primaryItemId;
 		this.countryOfOwnerLib = countryOfOwnerLib;
 		this.ISIL = ISIL;
+		this.optionalBlocks = optionalBlocks;
+		this.nodata = false;
 	}
 
 	/**
@@ -247,8 +213,11 @@ public class FinnishDataModel {
 	 * 
 	 * @param size
 	 * @return
+	 * @throws Exception
 	 */
-	public byte[] getBlock(int size) {
+	public byte[] getBlock(int size) throws Exception {
+		if (size == 0)
+			size = 2048;
 		byte[] block = getEmptyBlock(size);
 		block[0] = (byte) ((version << 4) | typeOfUsage);
 		block[1] = (byte) partsInItem;
@@ -273,13 +242,58 @@ public class FinnishDataModel {
 			}
 		}
 
+		// optional data blocks start here
+		int optStart = 23 + temp.length;
+
 		int crc = TagCRC(block);
 		// Binary encoding with the lsb stored at the lowest memory location
 		crcbytes = new byte[] { (byte) (crc & 0xFF), (byte) (crc >> 8 & 0xFF) };
 		block[19] = crcbytes[0];
 		block[20] = crcbytes[1];
 
-		return block;
+		if (optionalBlocks != null) {
+			for (FinnishDataModelOptionalBlock entry : optionalBlocks) {
+				byte[] d = entry.getData();
+				long id = entry.getID();
+				int s;
+				if (id < 0xffff) {
+					s = d.length + 4;
+					if (optStart + s > size)
+						throw new Exception("blocksize too small");
+					block[optStart] = (byte) s;
+					block[optStart + 1] = (byte) (id & 0xff);
+					block[optStart + 2] = (byte) ((id >> 8) & 0xff);
+					for (int i = 0; i < d.length; i++) {
+						block[optStart + 3 + i] = d[i];
+					}
+				} else {
+					s = d.length + 6;
+					if (optStart + s > size)
+						throw new Exception("blocksize too small");
+					block[optStart] = (byte) s;
+					block[optStart + 1] = (byte) (id & 0xff);
+					block[optStart + 2] = (byte) (0xff);
+					block[optStart + 3] = (byte) ((id >> 8) & 0xff);
+					block[optStart + 4] = (byte) ((id >> 16) & 0xff);
+					for (int i = 0; i < d.length; i++) {
+						block[optStart + 5 + i] = d[i];
+					}
+				}
+				byte xor = 0;
+				for (int i = 0; i < s - 1; i++) {
+					xor ^= block[optStart + i];
+				}
+				xor ^= 0;
+				block[optStart + s - 1] = xor;
+				optStart += s;
+			}
+		}
+
+		// end block (size==0)
+		block[optStart] = 0x00;
+
+		data = Arrays.copyOfRange(block, 0, optStart + 1);
+		return data;
 	}
 
 	/**
@@ -430,6 +444,7 @@ public class FinnishDataModel {
 	 * @return true, if crc is not correct
 	 */
 	public boolean getCRCError() {
+		if( nodata ) return true;
 		return crcError;
 	}
 
@@ -439,10 +454,22 @@ public class FinnishDataModel {
 	 * @return true if empty
 	 */
 	public boolean isEmpty() {
+		if( nodata ) return false;
 		return isEmpty;
 	}
+	
+	/**
+	 * get original raw data
+	 * 
+	 * @return raw data
+	 */
+	public byte[] getData() {
+		if( nodata ) return null;
+		return data;
+	}
 
-	public HashMap<Long, byte[]> getOptionalBlocks() {
+	public ArrayList<FinnishDataModelOptionalBlock> getOptionalBlocks() {
+		if( nodata ) return null;
 		return optionalBlocks;
 	}
 
@@ -467,19 +494,21 @@ public class FinnishDataModel {
 	}
 
 	protected AbstractConfiguration config;
-	protected String primaryItemId = null;
-	protected String countryOfOwnerLib = null;
-	protected String ISIL = null;
+	protected String primaryItemId = "";
+	protected String countryOfOwnerLib = "";
+	protected String ISIL = "";
 	protected int typeOfUsage = 0;
 	protected int partsInItem = 0;
 	protected int partNumber = 0;
 	protected int crc = 0;
 	protected int version = 0;
-	protected byte[] crcbytes = null;
+	protected byte[] crcbytes = new byte[] {0x00, 0x00 };
 	protected byte[] crcOrig;
 	protected boolean crcError = false;
 	protected boolean isEmpty = false;
 	protected boolean dataChanged = false;
-	protected HashMap<Long, byte[]> optionalBlocks = new HashMap<Long, byte[]>();
+	protected ArrayList<FinnishDataModelOptionalBlock> optionalBlocks = new ArrayList<FinnishDataModelOptionalBlock>();
+	protected byte[] data = null;
+	protected boolean nodata = true;
 
 }

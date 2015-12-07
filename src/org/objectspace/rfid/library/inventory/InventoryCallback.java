@@ -38,6 +38,7 @@ package org.objectspace.rfid.library.inventory;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.TreeSet;
@@ -90,8 +91,11 @@ public class InventoryCallback implements TagCallback {
 
 		String insertSQL = "INSERT INTO `rfid`.`inventory` "
 				+ "(`uid`, `version`, `usagetype`, `parts`, `partno`, `itemid`, `country`, `isil`, `inventorytime`"
-				+ ", `marker`, `sessionname`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)";
+				+ ", `marker`, `sessionname`, `raw`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
 		stmt = conn.prepareStatement(insertSQL);
+
+		String selectsql = "SELECT signatur FROM code_sig WHERE barcode=?";
+		stmt2 = conn.prepareStatement(selectsql);
 	}
 
 	protected void print(String txt) {
@@ -104,6 +108,7 @@ public class InventoryCallback implements TagCallback {
 	}
 
 	private String tagInfo;
+
 	protected String getTagInfo() {
 		if (!dlg.isDisposed())
 			dlg.getDisplay().syncExec(new Runnable() {
@@ -113,8 +118,7 @@ public class InventoryCallback implements TagCallback {
 			});
 		return tagInfo;
 	}
-	
-	
+
 	protected void println(String txt) {
 		print(txt + "\n");
 	}
@@ -156,6 +160,22 @@ public class InventoryCallback implements TagCallback {
 						+ (metadata.getCRCError() ? " Error" : " OK") + "\n";
 				txt += "Country of owner library: " + metadata.getCountryOfOwnerLib() + "\n";
 				txt += "ISIL: " + metadata.getISIL() + "\n";
+
+				stmt2.setString(1, metadata.getPrimaryItemId());
+				String sig = "";
+				try {
+					ResultSet rs = stmt.executeQuery();
+					while( rs.next()) {
+						sig += rs.getString(1) + "    ";
+					}
+					rs.close();
+					
+				} catch (SQLException e) {
+					e.printStackTrace();
+					println("Error: " + e.getMessage());
+				}
+				if( sig == "" ) sig = "not found!!!";
+				txt += "Signature: " + sig.trim() + "\n";
 			}
 			println(txt);
 
@@ -169,6 +189,7 @@ public class InventoryCallback implements TagCallback {
 			stmt.setString(8, metadata.getISIL());
 			stmt.setString(9, getTagInfo());
 			stmt.setString(10, sessionName);
+			stmt.setBytes(11, metadata.getData());
 			try {
 				int numRows = stmt.executeUpdate();
 				uidList.add(UID);
@@ -176,6 +197,7 @@ public class InventoryCallback implements TagCallback {
 				e.printStackTrace();
 				println("Error: " + e.getMessage());
 			}
+
 		} catch (Exception ex) {
 			// empty tag
 			/*
@@ -213,6 +235,7 @@ public class InventoryCallback implements TagCallback {
 	protected String sessionName;
 	protected TreeSet<String> uidList = null;
 	protected PreparedStatement stmt = null;
+	protected PreparedStatement stmt2 = null;
 	protected String marker = null;
 	protected InventoryDialog dlg = null;
 

@@ -35,9 +35,7 @@
  *******************************************************************************/
 package org.objectspace.rfid.library.taghandle;
 
-import java.util.HashMap;
-import java.util.Map;
-
+import java.util.ArrayList;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
@@ -47,6 +45,9 @@ import org.eclipse.ui.forms.widgets.FormToolkit;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.wb.swt.SWTResourceManager;
+import org.mihalis.opal.rangeSlider.RangeSlider;
+import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.FinnishDataModelOptionalBlock;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.List;
 import org.eclipse.swt.widgets.MessageBox;
@@ -82,7 +83,7 @@ public class MainDialog extends Composite {
 	protected Canvas bookCanvas;
 	protected Image bookImage = null;
 	protected byte[] data = null;
-	protected HashMap<Long, byte[]> optionalBlocks = null;
+	protected FinnishDataModel fdm = null;
 
 	/**
 	 * Create the composite.
@@ -91,12 +92,14 @@ public class MainDialog extends Composite {
 	 * @param style
 	 * @param background
 	 */
-	public MainDialog(Composite parent, int style, Image logo, Image bgImage) {
+	public MainDialog(Composite parent, int style, Image logo, Image bgImage, int minTreshold, int maxTreshold) {
 		super(parent, style);
 		setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		this.logo = logo;
 		this.bgImage = bgImage;
 		this.data = null;
+		this.maxTreshold = maxTreshold;
+		this.minTreshold = minTreshold;
 		addDisposeListener(new DisposeListener() {
 			public void widgetDisposed(DisposeEvent e) {
 				toolkit.dispose();
@@ -398,21 +401,34 @@ public class MainDialog extends Composite {
 				} else
 					msg = "no data";
 
-				String blocks = "";
-				if( optionalBlocks != null ) {
-					for( Map.Entry<Long, byte[]> entry : optionalBlocks.entrySet() ) {
-						blocks += String.format("% 5d:", entry.getKey());
-						for( byte b : entry.getValue()) {
-							blocks += String.format(" %02d", b);
+				String blocks = "   ID | XOR | Data\n";
+				blocks += "==================================================\n";
+				if (fdm.getOptionalBlocks() != null) {
+					for (FinnishDataModelOptionalBlock entry : fdm.getOptionalBlocks()) {
+						blocks += String.format("% 5d | %02x  |", entry.getID(), entry.xorError() ? 0 : entry.getXOR());
+						for (byte b : entry.getData()) {
+							blocks += String.format(" %02x", b);
 							blocks += "\n";
 						}
 					}
 				}
+
+				String std = "First Block\n";
+				std += "===========\n";
+				std += String.format("Version:          %d\n", fdm.getVersion());
+				std += String.format("Type of usage:    %d\n", fdm.getTypeOfUsage());
+				std += String.format("Parts in item:    %d\n", fdm.getPartsInItem());
+				std += String.format("Part number:      %d\n", fdm.getPartNumber());
+				std += String.format("Primary item id:  %s\n", fdm.getPrimaryItemId());
+				std += String.format("CRC:              %02x %02x\n", fdm.getCRCBytes()[0], fdm.getCRCBytes()[1]);
+				std += String.format("Country of Owner: %s\n", fdm.getCountryOfOwnerLib());
+				std += String.format("ISIL:             %s\n", fdm.getISIL());
+
 				Display display = getDisplay();
 				Shell shell = new Shell(display);
 				FillLayout layout = new FillLayout();
 				shell.setLayout(layout);
-				DetailDialog dd = new DetailDialog(shell, SWT.NONE, blocks.trim(), msg.trim());
+				DetailDialog dd = new DetailDialog(shell, SWT.NONE, std, blocks, msg.trim());
 				shell.setLocation(180, 140);
 				shell.setSize(820, 600);
 				shell.open();
@@ -468,12 +484,16 @@ public class MainDialog extends Composite {
 		this.data = data;
 	}
 
-	public void setOptionalBlocks(HashMap<Long, byte[]> blocks) {
-		this.optionalBlocks = blocks;
+	public void setFinnishDataModel(FinnishDataModel fdm) {
+		this.fdm = fdm;
 	}
 
 	protected String store = null;
 	protected String delete = null;
 	protected Image logo = null;
 	protected Image bgImage = null;
+	protected int minTreshold = 0;
+	protected int maxTreshold = 0;
+	protected int minCanny = 0;
+	protected int maxCanny = 0;
 }

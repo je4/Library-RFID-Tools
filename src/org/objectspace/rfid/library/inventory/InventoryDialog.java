@@ -136,10 +136,10 @@ public class InventoryDialog extends Composite {
 				text.setTopIndex(text.getLineCount() - 1);
 			}
 		});
-		text.setBounds(0, 165, 1100, 450);
+		text.setBounds(0, 165, 1100, 449);
 		toolkit.adapt(text);
 		toolkit.paintBordersFor(text);
-
+		
 	}
 
 	public void print(String t) {
@@ -166,5 +166,4 @@ public class InventoryDialog extends Composite {
 	protected Image logo = null;
 	protected Image bgImage = null;
 	protected boolean isRunning = false;
-
 }
