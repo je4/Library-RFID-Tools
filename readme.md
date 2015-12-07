@@ -32,6 +32,7 @@ The following additional libraries are needed to use these tools under the Windo
 ##Tools
 ###Inventory
 The Inventory Tool is used to mass-read RFIDs and write the contents into a SQL database system.
+![Inventory](https://raw.githubusercontent.com/je4/Library-RFID-Tools/master/screenshot/Inventory-01.png)
 ###TagHandle
 The TagHandle Tool is used to provide an alternative to Biblioteca/Nedap RFID tag read/write tool. It is capable of creating a picture of the book while writing the RFID tag. To use this only a webcam is needed.
 
