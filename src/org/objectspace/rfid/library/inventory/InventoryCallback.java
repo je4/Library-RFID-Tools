@@ -89,7 +89,7 @@ public class InventoryCallback implements TagCallback {
 
 		uidList = new TreeSet<String>();
 
-		String insertSQL = "INSERT INTO `rfid`.`inventory` "
+		String insertSQL = "REPLACE INTO `rfid`.`inventory` "
 				+ "(`uid`, `version`, `usagetype`, `parts`, `partno`, `itemid`, `country`, `isil`, `inventorytime`"
 				+ ", `marker`, `sessionname`, `raw`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
 		stmt = conn.prepareStatement(insertSQL);
@@ -135,7 +135,7 @@ public class InventoryCallback implements TagCallback {
 		byte[] block = null;
 
 		if (uidList.contains(UID)) {
-			println("UID already in inventory: " + UID);
+			// println("UID already in inventory: " + UID);
 			return null;
 		}
 
@@ -164,7 +164,7 @@ public class InventoryCallback implements TagCallback {
 				stmt2.setString(1, metadata.getPrimaryItemId());
 				String sig = "";
 				try {
-					ResultSet rs = stmt.executeQuery();
+					ResultSet rs = stmt2.executeQuery();
 					while( rs.next()) {
 						sig += rs.getString(1) + "    ";
 					}
@@ -220,6 +220,13 @@ public class InventoryCallback implements TagCallback {
 
 	}
 
+	/**
+	 * clear the list of known uid's
+	 */
+	public void clearUIDList() {
+		uidList.clear();
+	}
+	
 	/*
 	 * (non-Javadoc)
 	 * 

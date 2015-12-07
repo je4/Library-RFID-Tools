@@ -100,10 +100,7 @@ public class ISO15693Feig implements ISO15693Reader {
 	 * @see org.objectspace.rfid.library.ISO15693Reader#close() 
 	 */
 	public void close() throws Exception {
-		String restoreconfig = config.getString("device.feig.restoreconfig", null);
-		if( restoreconfig != null ) {
-			feig.copyFileToConfig(restoreconfig);
-		}
+		feig.close();
 	}
 
 

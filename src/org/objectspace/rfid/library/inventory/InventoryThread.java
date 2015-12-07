@@ -48,7 +48,7 @@ public class InventoryThread implements Runnable {
 	/**
 	 * 
 	 */
-	public InventoryThread(ISO15693Reader reader, TagCallback inventoryCallback, InventoryDialog id,
+	public InventoryThread(ISO15693Reader reader, InventoryCallback inventoryCallback, InventoryDialog id,
 			AbstractConfiguration config) {
 		this.reader = reader;
 		this.inventoryCallback = inventoryCallback;
@@ -82,6 +82,8 @@ public class InventoryThread implements Runnable {
 				try {
 					if (inventoryRunning())
 						reader.inventory(inventoryCallback, numBlocks);
+					else
+						inventoryCallback.clearUIDList();
 				} catch (Exception e) {
 					e.printStackTrace();
 					running = false;
@@ -108,7 +110,7 @@ public class InventoryThread implements Runnable {
 	private boolean running = true;
 	private boolean inventoryRunning = false;
 	protected ISO15693Reader reader = null;
-	protected TagCallback inventoryCallback;
+	protected InventoryCallback inventoryCallback;
 	private AbstractConfiguration config;
 	protected int numBlocks = 0;
 	protected InventoryDialog id = null;
