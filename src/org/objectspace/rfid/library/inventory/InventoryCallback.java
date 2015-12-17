@@ -98,11 +98,11 @@ public class InventoryCallback implements TagCallback {
 		stmt2 = conn.prepareStatement(selectsql);
 	}
 
-	protected void print(String txt) {
+	protected void print(String txt, int c1, int c2) {
 		if (!dlg.isDisposed())
 			dlg.getDisplay().syncExec(new Runnable() {
 				public void run() {
-					dlg.print(txt);
+					dlg.print(txt, c1, c2);
 				}
 			});
 	}
@@ -119,8 +119,8 @@ public class InventoryCallback implements TagCallback {
 		return tagInfo;
 	}
 
-	protected void println(String txt) {
-		print(txt + "\n");
+	protected void println(String txt, int c1, int c2) {
+		print(txt + "\n", c1, c2);
 	}
 
 	/*
@@ -134,16 +134,19 @@ public class InventoryCallback implements TagCallback {
 			long blockSize) throws Exception {
 		byte[] block = null;
 
+		c2++;
 		if (uidList.contains(UID)) {
 			// println("UID already in inventory: " + UID);
+			print("", c1, c2 );
 			return null;
 		}
 
+		c1++;
 		FinnishDataModel metadata = new FinnishDataModel();
 		String txt = "Manufacturer Name: " + manufacturerName + "\n";
 		txt += "Tag Name: " + tagName + "\n";
 		txt += "UID: " + UID + "\n";
-		print(txt);
+		print(txt, c1, c2);
 
 		try {
 			metadata.setBlock(data, blockSize);
@@ -165,19 +168,20 @@ public class InventoryCallback implements TagCallback {
 				String sig = "";
 				try {
 					ResultSet rs = stmt2.executeQuery();
-					while( rs.next()) {
+					while (rs.next()) {
 						sig += rs.getString(1) + "    ";
 					}
 					rs.close();
-					
+
 				} catch (SQLException e) {
 					e.printStackTrace();
-					println("Error: " + e.getMessage());
+					println("Error: " + e.getMessage(), c1, c2);
 				}
-				if( sig == "" ) sig = "not found!!!";
+				if (sig == "")
+					sig = "not found!!!";
 				txt += "Signature: " + sig.trim() + "\n";
 			}
-			println(txt);
+			println(txt, c1, c2);
 
 			stmt.setString(1, UID);
 			stmt.setInt(2, metadata.getVersion());
@@ -195,7 +199,7 @@ public class InventoryCallback implements TagCallback {
 				uidList.add(UID);
 			} catch (SQLException e) {
 				e.printStackTrace();
-				println("Error: " + e.getMessage());
+				println("Error: " + e.getMessage(), c1, c2);
 			}
 
 		} catch (Exception ex) {
@@ -225,8 +229,10 @@ public class InventoryCallback implements TagCallback {
 	 */
 	public void clearUIDList() {
 		uidList.clear();
+		c1 = 0;
+		print("", c1, c2);
 	}
-	
+
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -245,5 +251,7 @@ public class InventoryCallback implements TagCallback {
 	protected PreparedStatement stmt2 = null;
 	protected String marker = null;
 	protected InventoryDialog dlg = null;
+	protected int c1 = 0;
+	protected int c2 = 0;
 
 }

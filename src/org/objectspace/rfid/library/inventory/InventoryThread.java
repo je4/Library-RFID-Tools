@@ -60,12 +60,14 @@ public class InventoryThread implements Runnable {
 
 	protected boolean inventoryRunning() {
 		inventoryRunning = false;
-		if (!id.isDisposed())
+		if (!id.isDisposed()) {
 			id.getDisplay().syncExec(new Runnable() {
 				public void run() {
 					inventoryRunning = id.isRunning();
 				}
 			});
+		} else
+			running = false;
 		return inventoryRunning;
 	}
 

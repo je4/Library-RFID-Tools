@@ -76,9 +76,8 @@ public class MarcReader extends DefaultHandler {
 	 */
 	public MarcReader(AbstractConfiguration config)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
-		sig_datafield = config.getString("marcreader.signature.datafield");
 		sig_subfield = config.getString("marcreader.signature.subfield");
-		code_datafield = config.getString("marcreader.barcode.datafield");
+		datafield = config.getString("marcreader.datafield");
 		code_subfield = config.getString("marcreader.barcode.subfield");
 		title_datafield = config.getString("marcreader.title.datafield");
 		title_subfield = config.getString("marcreader.title.subfield");
@@ -156,10 +155,10 @@ public class MarcReader extends DefaultHandler {
 	public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
 		temp = "";
 		if (qName.equalsIgnoreCase("record")) {
-			barcode = null;
-			signatur = null;
 		} else if (qName.equalsIgnoreCase("datafield")) {
 			currentDataField = attributes.getValue("tag");
+			barcode = null;
+			signatur = null;
 		} else if (qName.equalsIgnoreCase("subfield")) {
 			currentSubField = attributes.getValue("code");
 		}
@@ -170,11 +169,13 @@ public class MarcReader extends DefaultHandler {
 	 */
 	public void endElement(String uri, String localName, String qName) throws SAXException {
 
-		if (qName.equalsIgnoreCase("record")) {
-			if (barcode != null && signatur != null) {
-				table.put(barcode, signatur);
-			} else {
-				System.out.println("Keine Signatur und Barcode: " + titel);
+		if (qName.equalsIgnoreCase("datafield")) {
+			if (currentDataField.equalsIgnoreCase(datafield)) {
+				if (barcode != null && signatur != null) {
+					table.put(barcode, signatur);
+				} else {
+					System.out.println("Keine Signatur und Barcode: " + titel);
+				}
 			}
 			barcode = null;
 			signatur = null;
@@ -182,11 +183,11 @@ public class MarcReader extends DefaultHandler {
 		} else if (qName.equalsIgnoreCase("subfield")) {
 			// if (currentDataField.equals("980") &&
 			// currentSubField.equals("d")) {
-			if (currentDataField.equals(sig_datafield) && currentSubField.equals(sig_subfield)) {
+			if (currentDataField.equals(datafield) && currentSubField.equals(sig_subfield)) {
 				signatur = temp;
 				// } else if (currentDataField.equals("984") &&
 				// currentSubField.equals("a")) {
-			} else if (currentDataField.equals(code_datafield) && currentSubField.equals(code_subfield)) {
+			} else if (currentDataField.equals(datafield) && currentSubField.equals(code_subfield)) {
 				barcode = temp;
 			} else if (currentDataField.equals(title_datafield) && currentSubField.equals(title_subfield)) {
 				titel = temp;
@@ -201,8 +202,7 @@ public class MarcReader extends DefaultHandler {
 
 	public void endDocument() throws SAXException {
 
-		String insertSQL = "INSERT INTO `rfid`.`code_sig` "
-				+ "(`barcode`, `signatur`) VALUES (?, ?)";
+		String insertSQL = "INSERT INTO `rfid`.`code_sig` " + "(`barcode`, `signatur`) VALUES (?, ?)";
 		try {
 			PreparedStatement stmt = conn.prepareStatement(insertSQL);
 
@@ -244,11 +244,10 @@ public class MarcReader extends DefaultHandler {
 	private Map<String, String> table = null;
 	private String currentDataField = null;
 	private String currentSubField = null;
-	private String sig_datafield = null;
 	private String sig_subfield = null;
 	private String title_datafield = null;
 	private String title_subfield = null;
-	private String code_datafield = null;
+	private String datafield = null;
 	private String code_subfield = null;
 
 	protected static Connection conn = null;

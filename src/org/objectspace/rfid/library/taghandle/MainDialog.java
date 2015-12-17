@@ -35,7 +35,6 @@
  *******************************************************************************/
 package org.objectspace.rfid.library.taghandle;
 
-import java.util.ArrayList;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
@@ -45,7 +44,6 @@ import org.eclipse.ui.forms.widgets.FormToolkit;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.wb.swt.SWTResourceManager;
-import org.mihalis.opal.rangeSlider.RangeSlider;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.FinnishDataModelOptionalBlock;
 import org.eclipse.swt.widgets.Text;

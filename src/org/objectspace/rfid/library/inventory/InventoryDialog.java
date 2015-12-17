@@ -104,7 +104,7 @@ public class InventoryDialog extends Composite {
 
 		tInventoryTag = new Text(this, SWT.BORDER);
 		tInventoryTag.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
-		tInventoryTag.setBounds(144, 118, 812, 41);
+		tInventoryTag.setBounds(144, 118, 692, 41);
 		toolkit.adapt(tInventoryTag, true, true);
 
 		bStartStop = new Button(this, SWT.NONE);
@@ -121,7 +121,7 @@ public class InventoryDialog extends Composite {
 		});
 		bStartStop.setText("Start");
 		bStartStop.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
-		bStartStop.setBounds(962, 118, 138, 43);
+		bStartStop.setBounds(842, 118, 138, 43);
 		toolkit.adapt(bStartStop, true, true);
 
 		text = new StyledText(this, SWT.BORDER | SWT.WRAP | SWT.V_SCROLL);
@@ -140,9 +140,14 @@ public class InventoryDialog extends Composite {
 		toolkit.adapt(text);
 		toolkit.paintBordersFor(text);
 		
+		txtCounter = new Text(this, SWT.BORDER);
+		txtCounter.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
+		txtCounter.setBounds(986, 118, 114, 41);
+		toolkit.adapt(txtCounter, true, true);
+		
 	}
 
-	public void print(String t) {
+	public void print(String t, int c1, int c2) {
 		text.append(t);
 		if (text.getLineCount() > 500) {
 			String txt = text.getText();
@@ -153,10 +158,11 @@ public class InventoryDialog extends Composite {
 			}
 			text.setText(txt);
 		}
+		txtCounter.setText(String.format("%d / %d", c1, c2));
 	}
 
-	public void println(String t) {
-		print(t + "\n");
+	public void println(String t, int c1, int c2) {
+		print(t + "\n", c1, c2);
 	}
 
 	public boolean isRunning() {
@@ -166,4 +172,5 @@ public class InventoryDialog extends Composite {
 	protected Image logo = null;
 	protected Image bgImage = null;
 	protected boolean isRunning = false;
+	private Text txtCounter;
 }
