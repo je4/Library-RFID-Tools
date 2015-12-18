@@ -70,6 +70,7 @@ public class InventoryDialog extends Composite {
 	 */
 	public InventoryDialog(Composite parent, int style, Image logo, Image bgImage) {
 		super(parent, style);
+		this.thread = thread;
 		// setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		this.logo = logo;
 		this.bgImage = bgImage;
@@ -113,8 +114,12 @@ public class InventoryDialog extends Composite {
 			public void widgetSelected(SelectionEvent e) {
 				if (!isRunning) {
 					bStartStop.setText("Stop");
+					if (thread != null)
+						thread.pause(false);
 				} else {
 					bStartStop.setText("Start");
+					if (thread != null)
+						thread.pause(true);
 				}
 				isRunning = !isRunning;
 			}
@@ -139,12 +144,12 @@ public class InventoryDialog extends Composite {
 		text.setBounds(0, 165, 1100, 449);
 		toolkit.adapt(text);
 		toolkit.paintBordersFor(text);
-		
+
 		txtCounter = new Text(this, SWT.BORDER);
 		txtCounter.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtCounter.setBounds(986, 118, 114, 41);
 		toolkit.adapt(txtCounter, true, true);
-		
+
 	}
 
 	public void print(String t, int c1, int c2) {
@@ -169,8 +174,13 @@ public class InventoryDialog extends Composite {
 		return isRunning;
 	}
 
+	public void setThread(InventoryThread thread) {
+		this.thread = thread;
+	}
+
 	protected Image logo = null;
 	protected Image bgImage = null;
 	protected boolean isRunning = false;
 	private Text txtCounter;
+	protected InventoryThread thread = null;
 }

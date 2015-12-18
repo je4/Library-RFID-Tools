@@ -82,10 +82,8 @@ public class InventoryThread implements Runnable {
 			while (running) {
 				// read buffer
 				try {
-					if (inventoryRunning())
+					if (!pause )
 						reader.inventory(inventoryCallback, numBlocks);
-					else
-						inventoryCallback.clearUIDList();
 				} catch (Exception e) {
 					e.printStackTrace();
 					running = false;
@@ -105,6 +103,12 @@ public class InventoryThread implements Runnable {
 
 	}
 
+	public void pause(boolean pause) {
+		this.pause = pause;
+		if (pause == false)
+			inventoryCallback.clearUIDList();
+	}
+
 	public void dispose() {
 		running = false;
 	}
@@ -117,5 +121,6 @@ public class InventoryThread implements Runnable {
 	protected int numBlocks = 0;
 	protected InventoryDialog id = null;
 	protected int sleep = 500;
+	private boolean pause = true;
 
 }

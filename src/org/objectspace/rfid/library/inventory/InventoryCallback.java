@@ -44,9 +44,6 @@ import java.time.LocalDateTime;
 import java.util.TreeSet;
 
 import org.apache.commons.configuration2.AbstractConfiguration;
-import org.apache.commons.lang3.ArrayUtils;
-import org.eclipse.swt.SWT;
-import org.eclipse.wb.swt.SWTResourceManager;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.TagCallback;
 
@@ -155,6 +152,7 @@ public class InventoryCallback implements TagCallback {
 			if (metadata.isEmpty()) {
 				txt += "empty" + "\n";
 			} else {
+				String tagInfo = getTagInfo();
 				txt += "Type of usage: " + metadata.getTypeOfUsage() + "\n";
 				txt += "Parts in item: " + metadata.getPartsInItem() + "\n";
 				txt += "Part number: " + metadata.getPartNumber() + "\n";
@@ -163,6 +161,7 @@ public class InventoryCallback implements TagCallback {
 						+ (metadata.getCRCError() ? " Error" : " OK") + "\n";
 				txt += "Country of owner library: " + metadata.getCountryOfOwnerLib() + "\n";
 				txt += "ISIL: " + metadata.getISIL() + "\n";
+				txt += "Marker: " + tagInfo + "(" + c1 + "/" + c2 + ")\n";
 
 				stmt2.setString(1, metadata.getPrimaryItemId());
 				String sig = "";
@@ -191,7 +190,7 @@ public class InventoryCallback implements TagCallback {
 			stmt.setString(6, metadata.getPrimaryItemId());
 			stmt.setString(7, metadata.getCountryOfOwnerLib());
 			stmt.setString(8, metadata.getISIL());
-			stmt.setString(9, getTagInfo());
+			stmt.setString(9, tagInfo);
 			stmt.setString(10, sessionName);
 			stmt.setBytes(11, metadata.getData());
 			try {
@@ -230,6 +229,7 @@ public class InventoryCallback implements TagCallback {
 	public void clearUIDList() {
 		uidList.clear();
 		c1 = 0;
+		c2 = 0;
 		print("", c1, c2);
 	}
 

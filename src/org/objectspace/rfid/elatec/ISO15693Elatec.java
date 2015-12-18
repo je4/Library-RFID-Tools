@@ -187,7 +187,6 @@ public class ISO15693Elatec implements ISO15693Reader {
 	 * @see org.objectspace.rfid.library.ISO156893Reader#close()
 	 */
 	public void close() throws Exception {
-
 	}
 
 	private AbstractConfiguration config;

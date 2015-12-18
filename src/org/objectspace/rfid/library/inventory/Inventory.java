@@ -105,6 +105,7 @@ public class Inventory {
 		
 		InventoryCallback callback = new InventoryCallback( md, config);
 		InventoryThread inventoryThread = new InventoryThread(reader, callback, md, config);
+		md.setThread(inventoryThread);
 		Thread runner = new Thread(inventoryThread);
 		runner.start();
 
