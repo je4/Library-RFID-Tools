@@ -12,6 +12,7 @@ doc/
 .project
 javacv-bin/
 .classpath*
+hgkmediathek.*
 
 *.class
 
