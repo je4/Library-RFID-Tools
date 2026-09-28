@@ -4,8 +4,8 @@
 
 These tools support ISO 15693 compatible RFID tags which are written according to the "Finnish Data Model" (http://www.kansalliskirjasto.fi/attachments/5kSvIrHoj/5kXbVnVS7/Files/CurrentFile/RFID-DataModel-FI-20051124.pdf, the basis for ISO 28560-2)  
 
-The following additional libraries are needed to use these tools under the Windows Operating System
-* FEIG SDK for JAVA (http://www.feig.de, for FEIG ISC.MR102-USB support) 
+The following additional libraries/SDKs are needed to use these tools under the Windows Operating System:
+* FEIG SDK for JAVA (v5.6.3, located in `ID_ISC.SDK.Java.Win-V5.6.3`, for FEIG ISC.MR102-USB support) 
   * fecom.dll
   * fefu.dll
   * feisc.dll
@@ -14,20 +14,20 @@ The following additional libraries are needed to use these tools under the Windo
   * feusb.dll
   * OBIDISC4J.dll
   * OBIDISC4J.jar
+  * OBIDISC4J_API.jar
 * javacv (https://github.com/bytedeco/javacv)
-* apache commons (https://commons.apache.org/)
-  * commons-beanutils-1.9.2.jar
-  * commons-collections4-4.0.jar
-  * commons-configuration2-2.0-beta1.jar
-  * commons-lang3-3.4.jar
-  * commons-logging-1.2.jar
+* apache commons (configuration2, collections4, lang3)
+* SLF4J / Logback (Logging)
 * SWT: The Standard Widget Toolkit (https://www.eclipse.org/swt/)
-* jSerialComm (https://github.com/Fazecast/jSerialComm, for Elatec TWN4 Support)
-  * jSerialComm-1.3.9.jar
 * Opal Project (https://github.com/lcaron/opal, for RangeSlider)
-  * opal-1.0.3.jar
-* MySQL Connector (https://dev.mysql.com/downloads/connector/j/, if you want to use MySQL, configurable)
-  * mysql-connector-java-5.1.3.6-bin.jar
+* MySQL Connector/J (https://dev.mysql.com/downloads/connector/j/)
+
+## Build and Modernization
+The project has been modernized:
+* Maven build system configured with Java 17/21 compatibility.
+* FEIG SDK v5.6.3 integration (x64 native support).
+* Deprecated Elatec support removed.
+* Modern logging and ISO 28560 / Finnish Data Model unit tests.
 
 ##Tools
 ###Inventory

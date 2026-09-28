@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -40,7 +40,6 @@ import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
-import org.eclipse.ui.forms.widgets.FormToolkit;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.wb.swt.SWTResourceManager;
@@ -65,7 +64,6 @@ import org.eclipse.swt.widgets.Canvas;
 
 public class MainDialog extends Composite {
 
-	private final FormToolkit toolkit = new FormToolkit(Display.getCurrent());
 	protected Text txtCode;
 	protected Text txtUID;
 	protected Text txtTagName;
@@ -98,14 +96,6 @@ public class MainDialog extends Composite {
 		this.data = null;
 		this.maxTreshold = maxTreshold;
 		this.minTreshold = minTreshold;
-		addDisposeListener(new DisposeListener() {
-			public void widgetDisposed(DisposeEvent e) {
-				toolkit.dispose();
-			}
-		});
-		toolkit.adapt(this);
-		toolkit.setBackground(null);
-		toolkit.paintBordersFor(this);
 		setLayout(null);
 
 		if (bgImage != null)
@@ -121,20 +111,17 @@ public class MainDialog extends Composite {
 		});
 		btnClear.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		btnClear.setBounds(547, 547, 165, 43);
-		toolkit.adapt(btnClear, true, true);
 		btnClear.setText("Delete");
 
 		txtCode = new Text(this, SWT.BORDER);
 		txtCode.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtCode.setBounds(225, 318, 487, 41);
-		toolkit.adapt(txtCode, true, true);
 
 		Label lblNewLabel_1 = new Label(this, SWT.NONE);
 		lblNewLabel_1.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		lblNewLabel_1.setAlignment(SWT.RIGHT);
 		lblNewLabel_1.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblNewLabel_1.setBounds(10, 321, 209, 38);
-		toolkit.adapt(lblNewLabel_1, true, true);
 		lblNewLabel_1.setText("Primary item ID");
 
 		Label lblUid = new Label(this, SWT.NONE);
@@ -143,14 +130,12 @@ public class MainDialog extends Composite {
 		lblUid.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblUid.setAlignment(SWT.RIGHT);
 		lblUid.setBounds(10, 274, 209, 38);
-		toolkit.adapt(lblUid, true, true);
 
 		txtUID = new Text(this, SWT.BORDER);
 		txtUID.setEnabled(false);
 		txtUID.setEditable(false);
 		txtUID.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtUID.setBounds(225, 271, 487, 41);
-		toolkit.adapt(txtUID, true, true);
 
 		Label lblTagname = new Label(this, SWT.NONE);
 		lblTagname.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -158,14 +143,12 @@ public class MainDialog extends Composite {
 		lblTagname.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblTagname.setAlignment(SWT.RIGHT);
 		lblTagname.setBounds(10, 227, 209, 38);
-		toolkit.adapt(lblTagname, true, true);
 
 		txtTagName = new Text(this, SWT.BORDER);
 		txtTagName.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtTagName.setEnabled(false);
 		txtTagName.setEditable(false);
 		txtTagName.setBounds(225, 224, 487, 41);
-		toolkit.adapt(txtTagName, true, true);
 
 		Label lblManufacturerName = new Label(this, SWT.NONE);
 		lblManufacturerName.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -173,14 +156,12 @@ public class MainDialog extends Composite {
 		lblManufacturerName.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblManufacturerName.setAlignment(SWT.RIGHT);
 		lblManufacturerName.setBounds(10, 179, 209, 38);
-		toolkit.adapt(lblManufacturerName, true, true);
 
 		txtManufacturerName = new Text(this, SWT.BORDER);
 		txtManufacturerName.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtManufacturerName.setEnabled(false);
 		txtManufacturerName.setEditable(false);
 		txtManufacturerName.setBounds(225, 176, 487, 41);
-		toolkit.adapt(txtManufacturerName, true, true);
 
 		Label lblIsil = new Label(this, SWT.NONE);
 		lblIsil.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -188,21 +169,18 @@ public class MainDialog extends Composite {
 		lblIsil.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblIsil.setAlignment(SWT.RIGHT);
 		lblIsil.setBounds(10, 457, 209, 38);
-		toolkit.adapt(lblIsil, true, true);
 
 		txtLibraryCountry = new Text(this, SWT.BORDER);
 		txtLibraryCountry.setEnabled(false);
 		txtLibraryCountry.setEditable(false);
 		txtLibraryCountry.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtLibraryCountry.setBounds(225, 454, 487, 41);
-		toolkit.adapt(txtLibraryCountry, true, true);
 
 		txtISIL = new Text(this, SWT.BORDER);
 		txtISIL.setEnabled(false);
 		txtISIL.setEditable(false);
 		txtISIL.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtISIL.setBounds(225, 500, 487, 41);
-		toolkit.adapt(txtISIL, true, true);
 
 		Label label = new Label(this, SWT.NONE);
 		label.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -210,13 +188,11 @@ public class MainDialog extends Composite {
 		label.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		label.setAlignment(SWT.RIGHT);
 		label.setBounds(10, 503, 209, 38);
-		toolkit.adapt(label, true, true);
 
 		lstUIDs = new List(this, SWT.BORDER);
 		lstUIDs.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		lstUIDs.setEnabled(false);
 		lstUIDs.setBounds(739, 530, 348, 60);
-		toolkit.adapt(lstUIDs, true, true);
 
 		Button btnSave = new Button(this, SWT.NONE);
 		btnSave.addSelectionListener(new SelectionAdapter() {
@@ -229,7 +205,6 @@ public class MainDialog extends Composite {
 		btnSave.setText("Save");
 		btnSave.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		btnSave.setBounds(376, 547, 165, 43);
-		toolkit.adapt(btnSave, true, true);
 
 		Label lblPart = new Label(this, SWT.NONE);
 		lblPart.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -237,7 +212,6 @@ public class MainDialog extends Composite {
 		lblPart.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblPart.setAlignment(SWT.RIGHT);
 		lblPart.setBounds(10, 368, 209, 38);
-		toolkit.adapt(lblPart, true, true);
 
 		parts = new Text(this, SWT.BORDER);
 		parts.addFocusListener(new FocusAdapter() {
@@ -270,7 +244,6 @@ public class MainDialog extends Composite {
 		parts.setText("1");
 		parts.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		parts.setBounds(330, 365, 63, 41);
-		toolkit.adapt(parts, true, true);
 
 		part = new Text(this, SWT.BORDER);
 		part.addFocusListener(new FocusAdapter() {
@@ -304,7 +277,6 @@ public class MainDialog extends Composite {
 		part.setText("1");
 		part.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		part.setBounds(225, 365, 63, 41);
-		toolkit.adapt(part, true, true);
 
 		Label lblOf = new Label(this, SWT.NONE);
 		lblOf.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -312,7 +284,6 @@ public class MainDialog extends Composite {
 		lblOf.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblOf.setAlignment(SWT.CENTER);
 		lblOf.setBounds(294, 368, 29, 38);
-		toolkit.adapt(lblOf, true, true);
 
 		cbUsage = new Combo(this, SWT.READ_ONLY);
 		cbUsage.add("--", 0);
@@ -323,8 +294,6 @@ public class MainDialog extends Composite {
 		cbUsage.add("Patron Card", 5);
 		cbUsage.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		cbUsage.setBounds(225, 412, 487, 36);
-		toolkit.adapt(cbUsage);
-		toolkit.paintBordersFor(cbUsage);
 
 		Label lblTypeOfUsage = new Label(this, SWT.NONE);
 		lblTypeOfUsage.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
@@ -332,31 +301,27 @@ public class MainDialog extends Composite {
 		lblTypeOfUsage.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		lblTypeOfUsage.setAlignment(SWT.RIGHT);
 		lblTypeOfUsage.setBounds(10, 410, 209, 38);
-		toolkit.adapt(lblTypeOfUsage, true, true);
 
 		Canvas cvsHeading = new Canvas(this, SWT.NONE);
 		cvsHeading.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		cvsHeading.setBounds(10, 10, 1100, 112);
-		toolkit.adapt(cvsHeading);
-		toolkit.paintBordersFor(cvsHeading);
 		cvsHeading.addPaintListener(new PaintListener() {
 			public void paintControl(PaintEvent e) {
 				Rectangle clientArea = cvsHeading.getClientArea();
-				e.gc.drawImage(logo, 0, 0);
+				if (logo != null) {
+					e.gc.drawImage(logo, 0, 0);
+				}
 			}
 		});
 
 		bookCanvas = new Canvas(this, SWT.NONE);
 		bookCanvas.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		bookCanvas.setBounds(739, 176, 348, 348);
-		toolkit.adapt(bookCanvas);
-		toolkit.paintBordersFor(bookCanvas);
 
 		txtCRC = new Text(this, SWT.BORDER);
 		txtCRC.setForeground(SWTResourceManager.getColor(SWT.COLOR_RED));
 		txtCRC.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtCRC.setBounds(618, 365, 94, 41);
-		toolkit.adapt(txtCRC, true, true);
 
 		Label lblCrc = new Label(this, SWT.NONE);
 		lblCrc.setText("CRC");
@@ -364,14 +329,12 @@ public class MainDialog extends Composite {
 		lblCrc.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		lblCrc.setAlignment(SWT.CENTER);
 		lblCrc.setBounds(566, 368, 45, 38);
-		toolkit.adapt(lblCrc, true, true);
 
 		btnEmpty = new Button(this, SWT.CHECK);
 		btnEmpty.setEnabled(false);
 		btnEmpty.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		btnEmpty.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		btnEmpty.setBounds(453, 365, 88, 41);
-		toolkit.adapt(btnEmpty, true, true);
 		btnEmpty.setText("Empty");
 
 		Button btnCode = new Button(this, SWT.NONE);
@@ -446,7 +409,6 @@ public class MainDialog extends Composite {
 		btnCode.setText("#");
 		btnCode.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		btnCode.setBounds(225, 547, 53, 43);
-		toolkit.adapt(btnCode, true, true);
 
 		bookCanvas.addPaintListener(new PaintListener() {
 			public void paintControl(PaintEvent e) {

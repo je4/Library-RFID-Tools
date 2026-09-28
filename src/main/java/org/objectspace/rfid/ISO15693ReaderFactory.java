@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,52 +20,43 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
  *******************************************************************************/
-package org.objectspace.rfid.library;
+package org.objectspace.rfid;
 
-import org.objectspace.rfid.TagCallback;
+import org.apache.commons.configuration2.AbstractConfiguration;
+import org.objectspace.rfid.feig.ISO15693Feig;
+import org.objectspace.rfid.library.ISO15693Reader;
 
 /**
- * interface for ISO15693 tag compliant reader
+ * Factory to create ISO15693 readers
  * @author Juergen Enge
  *
  */
-public interface ISO15693Reader {
-	/**
-	 * connect hardware device
-	 * @throws Exception
-	 */
-	public void connect() throws Exception;
-	
-	/**
-	 * initialize hardware device
-	 * @throws Exception
-	 */
-	public void init() throws Exception;
+public class ISO15693ReaderFactory {
 
-	/**
-	 * execute an inventory and read data blocks
-	 * @param inventoryCallback
-	 * @param numBlocks number of blocks to read
-	 * @throws Exception
-	 */
-	public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception;
+	public ISO15693ReaderFactory() {
+	}
 	
-	/**
-	 * cleanup
-	 * @throws Exception
-	 */
-	public void close() throws Exception;
+	public static ISO15693Reader createReader( AbstractConfiguration config ) throws Exception {
+		String reader = config != null ? config.getString("device.select", "feig") : "feig";
+		switch(reader.toLowerCase()) {
+		case "feig":
+			return new ISO15693Feig(config);
+		default:
+			throw new IllegalArgumentException("Unknown reader: " + reader);
+		}
+	}
+
 }

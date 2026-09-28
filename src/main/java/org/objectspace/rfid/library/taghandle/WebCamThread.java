@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -38,20 +38,17 @@ package org.objectspace.rfid.library.taghandle;
 import org.apache.commons.configuration2.AbstractConfiguration;
 import org.bytedeco.javacpp.IntPointer;
 import org.bytedeco.javacpp.Loader;
-import org.bytedeco.javacpp.opencv_core.CvSeq;
-import org.bytedeco.javacpp.opencv_core.CvSize;
-import org.bytedeco.javacpp.opencv_core.IplImage;
-import org.bytedeco.javacpp.opencv_core.Size2f;
+import org.bytedeco.opencv.opencv_core.*;
 import org.bytedeco.javacv.CanvasFrame;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import org.bytedeco.javacv.OpenCVFrameConverter;
 import org.bytedeco.javacv.FrameGrabber.Exception;
 import org.bytedeco.javacv.VideoInputFrameGrabber;
-import static org.bytedeco.javacpp.opencv_core.*;
-import static org.bytedeco.javacpp.opencv_imgcodecs.*;
-import static org.bytedeco.javacpp.opencv_imgproc.*;
-import static org.bytedeco.javacpp.opencv_highgui.*;
+import static org.bytedeco.opencv.global.opencv_core.*;
+import static org.bytedeco.opencv.global.opencv_imgcodecs.*;
+import static org.bytedeco.opencv.global.opencv_imgproc.*;
+import static org.bytedeco.opencv.global.opencv_highgui.*;
 
 /**
  * @author Juergen Enge

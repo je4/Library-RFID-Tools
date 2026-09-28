@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -75,12 +75,12 @@ public class FinnishDataModelOptionalBlock {
 
 		int rawStart;
 		long rawLength;
-		if (raw[start + 2] == 0xff) {
-			id = ((long) raw[start + 4]) << 16 + ((long) raw[start + 3]) << 8 + ((long) raw[start + 1]);
+		if ((raw[start + 2] & 0xff) == 0xff) {
+			id = ((raw[start + 4] & 0xffL) << 16) | ((raw[start + 3] & 0xffL) << 8) | (raw[start + 1] & 0xffL);
 			rawStart = start + 5;
 			rawLength = length - 5 - 1;
 		} else {
-			id = (((long) raw[start + 2]) << 8) + ((long) raw[start + 1]);
+			id = ((raw[start + 2] & 0xffL) << 8) | (raw[start + 1] & 0xffL);
 			rawStart = start + 3;
 			rawLength = length - 3 - 1;
 		}
@@ -119,17 +119,18 @@ public class FinnishDataModelOptionalBlock {
 	public byte[] getBlock() {
 		int length = 4 + data.length;
 		int st;
-		if( id > 0xffff ) length += 2;
+		if (id > 0xffff) {
+			length += 2;
+		}
 		byte[] d = new byte[length];
 		d[0] = (byte) length;
 		d[1] = (byte) (id & 0xff);
-		if( id >= 0xffff ) {
+		if (id > 0xffff) {
 			d[2] = (byte) 0xff;
 			d[3] = (byte) ((id >> 8) & 0xff);
 			d[4] = (byte) ((id >> 16) & 0xff);
 			st = 5;
-		}
-		else {
+		} else {
 			d[2] = (byte) ((id >> 8) & 0xff);
 			st = 3;
 		}

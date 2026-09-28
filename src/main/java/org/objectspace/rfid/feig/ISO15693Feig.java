@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -97,10 +97,20 @@ public class ISO15693Feig implements ISO15693Reader {
 	}
 
 	/**
+	 * @see org.objectspace.rfid.library.ISO15693Reader#isConnected() 
+	 */
+	@Override
+	public boolean isConnected() {
+		return feig != null && feig.isConnected();
+	}
+
+	/**
 	 * @see org.objectspace.rfid.library.ISO15693Reader#close() 
 	 */
 	public void close() throws Exception {
-		feig.close();
+		if (feig != null) {
+			feig.close();
+		}
 	}
 
 
@@ -110,6 +120,9 @@ public class ISO15693Feig implements ISO15693Reader {
 	 */
 	@Override
 	public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {
+		if (!isConnected()) {
+			return;
+		}
 		HashMap<String, FedmIscTagHandler> mapTH = null;
 		FedmIscTagHandler tagHandler = null;
 		FedmIscTagHandler_Result res = new FedmIscTagHandler_Result();

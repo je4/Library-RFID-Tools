@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -44,7 +44,6 @@ import org.eclipse.swt.events.PaintListener;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
-import org.eclipse.ui.forms.widgets.FormToolkit;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Text;
@@ -57,7 +56,6 @@ import org.eclipse.swt.events.SelectionEvent;
 
 public class InventoryDialog extends Composite {
 
-	private final FormToolkit toolkit = new FormToolkit(Display.getCurrent());
 	protected Text tInventoryTag;
 	private Button bStartStop;
 	private StyledText text;
@@ -70,17 +68,9 @@ public class InventoryDialog extends Composite {
 	 */
 	public InventoryDialog(Composite parent, int style, Image logo, Image bgImage) {
 		super(parent, style);
-		this.thread = thread;
 		// setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		this.logo = logo;
 		this.bgImage = bgImage;
-		addDisposeListener(new DisposeListener() {
-			public void widgetDisposed(DisposeEvent e) {
-				toolkit.dispose();
-			}
-		});
-		toolkit.adapt(this);
-		toolkit.paintBordersFor(this);
 		setLayout(null);
 
 		Canvas cvsHeading = new Canvas(this, SWT.NONE);
@@ -89,11 +79,11 @@ public class InventoryDialog extends Composite {
 		cvsHeading.addPaintListener(new PaintListener() {
 			public void paintControl(PaintEvent e) {
 				// Rectangle clientArea = cvsHeading.getClientArea();
-				e.gc.drawImage(logo, 0, 0);
+				if (logo != null) {
+					e.gc.drawImage(logo, 0, 0);
+				}
 			}
 		});
-		toolkit.adapt(cvsHeading);
-		toolkit.paintBordersFor(cvsHeading);
 
 		Label lblInventoryTag = new Label(this, SWT.NONE);
 		lblInventoryTag.setText("Inventory Tag");
@@ -101,12 +91,10 @@ public class InventoryDialog extends Composite {
 		lblInventoryTag.setBackground(SWTResourceManager.getColor(SWT.COLOR_TRANSPARENT));
 		lblInventoryTag.setAlignment(SWT.RIGHT);
 		lblInventoryTag.setBounds(0, 121, 138, 38);
-		toolkit.adapt(lblInventoryTag, true, true);
 
 		tInventoryTag = new Text(this, SWT.BORDER);
 		tInventoryTag.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		tInventoryTag.setBounds(144, 118, 692, 41);
-		toolkit.adapt(tInventoryTag, true, true);
 
 		bStartStop = new Button(this, SWT.NONE);
 		bStartStop.addSelectionListener(new SelectionAdapter() {
@@ -127,7 +115,6 @@ public class InventoryDialog extends Composite {
 		bStartStop.setText("Start");
 		bStartStop.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		bStartStop.setBounds(842, 118, 138, 43);
-		toolkit.adapt(bStartStop, true, true);
 
 		text = new StyledText(this, SWT.BORDER | SWT.WRAP | SWT.V_SCROLL);
 		text.setForeground(SWTResourceManager.getColor(SWT.COLOR_BLACK));
@@ -142,13 +129,10 @@ public class InventoryDialog extends Composite {
 			}
 		});
 		text.setBounds(0, 165, 1100, 449);
-		toolkit.adapt(text);
-		toolkit.paintBordersFor(text);
 
 		txtCounter = new Text(this, SWT.BORDER);
 		txtCounter.setFont(SWTResourceManager.getFont("Segoe UI", 12, SWT.NORMAL));
 		txtCounter.setBounds(986, 118, 114, 41);
-		toolkit.adapt(txtCounter, true, true);
 
 	}
 

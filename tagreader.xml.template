@@ -2,13 +2,13 @@
 <configuration>
 	<!-- configuration and selection of feig rfid device -->
 	<device>
-		<select>elatec</select>
+		<select>feig</select>
 		
 		<feig>
 			<!-- only usb type supported due to lack of other hardware -->
 			<type>usb</type>
 
-			<!-- Device ID / needed of multiple devices are connected -->
+			<!-- Device ID / needed if multiple devices are connected -->
 			<!-- <id>52E688</id> -->
 
 			<!-- configuration file for rfid reader -->
@@ -17,17 +17,6 @@
 			<!-- configfile to restore on exit -->
 			<!-- <restoreconfig>host.xml</restoreconfig> -->
 		</feig>
-		<elatec>
-			<port>Serial RFID Device</port>
-			<readattempts>2</readattempts>
-			<writeattempts>4</writeattempts>
-			<!-- 
-			<baudrate>9600</baudrate>
-			<bits>8</bits>
-			<parity>false</parity>
-			<stopbit>1</stopbit>  
-			-->
-		</elatec>
 	</device>
 
 
@@ -35,7 +24,7 @@
 	<database>
 		<active>false</active>
 		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=XXX]]></dsn>
-		<driver>com.mysql.jdbc.Driver</driver>
+		<driver>com.mysql.cj.jdbc.Driver</driver>
 	</database>
 
 	<!-- Number of Blocks to read by default. if tagfeatures are provided, the 

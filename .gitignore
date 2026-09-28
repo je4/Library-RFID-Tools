@@ -73,3 +73,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+/ID_ISC.SDK.Java.Win-V5.6.3/
+target/
+.output.txt

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -83,9 +83,14 @@ public class Inventory {
 
 		XMLConfiguration config = builder.getConfiguration();
 
-		ISO15693Reader reader = ISO15693ReaderFactory.createReader(config);
-		reader.connect();
-		reader.init();
+		ISO15693Reader reader = null;
+		try {
+			reader = ISO15693ReaderFactory.createReader(config);
+			reader.connect();
+			reader.init();
+		} catch (Exception e) {
+			System.out.println("Notice: RFID reader not connected (" + e.getMessage() + "). Application starting anyway.");
+		}
 		
 		Display display = new Display();
 		Shell shell = new Shell(display);
@@ -93,10 +98,16 @@ public class Inventory {
 		FillLayout layout = new FillLayout();
 		shell.setLayout(layout);
 
-		Image logo = new Image(display, config.getString("inventory.window.logo"));
+		String logoName = config.getString("inventory.window.logo");
+		Image logo = null;
+		if (logoName != null && new java.io.File(logoName).exists()) {
+			logo = new Image(display, logoName);
+		}
 		String bgImgName = config.getString("inventory.window.background");
 		Image background = null;
-		if( bgImgName != null ) background = new Image(display, bgImgName );
+		if (bgImgName != null && new java.io.File(bgImgName).exists()) {
+			background = new Image(display, bgImgName);
+		}
 
 		InventoryDialog md = new InventoryDialog(shell, SWT.NONE, logo, background);
 		shell.setLocation(config.getInt("inventory.window.posx", 100), config.getInt("inventory.window.posy", 100));
@@ -115,7 +126,13 @@ public class Inventory {
 		}
 		inventoryThread.dispose();
 		
-		reader.close();
+		if (reader != null && reader.isConnected()) {
+			try {
+				reader.close();
+			} catch (Exception e) {
+				// Ignore
+			}
+		}
 
 	}
 

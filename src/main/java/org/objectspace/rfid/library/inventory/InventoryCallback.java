@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -71,28 +71,35 @@ public class InventoryCallback implements TagCallback {
 		sessionName = LocalDateTime.now().toString();
 
 		if (conn == null) {
-
 			if (config != null) {
-				String driver = config.getString("database.driver");
-				String dsn = config.getString("database.dsn");
+				if (config.getBoolean("database.active", false)) {
+					String driver = config.getString("database.driver");
+					String dsn = config.getString("database.dsn");
 
-				if (driver != null && dsn != null) {
-					Class.forName(driver).newInstance();
-					conn = DriverManager.getConnection(dsn);
-					conn.setAutoCommit(true);
+					if (driver != null && dsn != null) {
+						try {
+							Class.forName(driver).newInstance();
+							conn = DriverManager.getConnection(dsn);
+							conn.setAutoCommit(true);
+						} catch (Exception e) {
+							System.err.println("Database connection failed: " + e.getMessage());
+						}
+					}
 				}
 			}
 		}
 
 		uidList = new TreeSet<String>();
 
-		String insertSQL = "REPLACE INTO `rfid`.`inventory` "
-				+ "(`uid`, `version`, `usagetype`, `parts`, `partno`, `itemid`, `country`, `isil`, `inventorytime`"
-				+ ", `marker`, `sessionname`, `raw`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
-		stmt = conn.prepareStatement(insertSQL);
+		if (conn != null) {
+			String insertSQL = "REPLACE INTO `rfid`.`inventory` "
+					+ "(`uid`, `version`, `usagetype`, `parts`, `partno`, `itemid`, `country`, `isil`, `inventorytime`"
+					+ ", `marker`, `sessionname`, `raw`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)";
+			stmt = conn.prepareStatement(insertSQL);
 
-		String selectsql = "SELECT signatur FROM code_sig WHERE barcode=?";
-		stmt2 = conn.prepareStatement(selectsql);
+			String selectsql = "SELECT signatur FROM code_sig WHERE barcode=?";
+			stmt2 = conn.prepareStatement(selectsql);
+		}
 	}
 
 	protected void print(String txt, int c1, int c2) {
@@ -163,18 +170,20 @@ public class InventoryCallback implements TagCallback {
 				txt += "ISIL: " + metadata.getISIL() + "\n";
 				txt += "Marker: " + tagInfo + "(" + c1 + "/" + c2 + ")\n";
 
-				stmt2.setString(1, metadata.getPrimaryItemId());
 				String sig = "";
-				try {
-					ResultSet rs = stmt2.executeQuery();
-					while (rs.next()) {
-						sig += rs.getString(1) + "    ";
-					}
-					rs.close();
+				if (stmt2 != null) {
+					stmt2.setString(1, metadata.getPrimaryItemId());
+					try {
+						ResultSet rs = stmt2.executeQuery();
+						while (rs.next()) {
+							sig += rs.getString(1) + "    ";
+						}
+						rs.close();
 
-				} catch (SQLException e) {
-					e.printStackTrace();
-					println("Error: " + e.getMessage(), c1, c2);
+					} catch (SQLException e) {
+						e.printStackTrace();
+						println("Error: " + e.getMessage(), c1, c2);
+					}
 				}
 				if (sig == "")
 					sig = "not found!!!";
@@ -182,23 +191,27 @@ public class InventoryCallback implements TagCallback {
 			}
 			println(txt, c1, c2);
 
-			stmt.setString(1, UID);
-			stmt.setInt(2, metadata.getVersion());
-			stmt.setInt(3, metadata.getTypeOfUsage());
-			stmt.setInt(4, metadata.getPartsInItem());
-			stmt.setInt(5, metadata.getPartNumber());
-			stmt.setString(6, metadata.getPrimaryItemId());
-			stmt.setString(7, metadata.getCountryOfOwnerLib());
-			stmt.setString(8, metadata.getISIL());
-			stmt.setString(9, tagInfo);
-			stmt.setString(10, sessionName);
-			stmt.setBytes(11, metadata.getData());
-			try {
-				int numRows = stmt.executeUpdate();
+			if (stmt != null) {
+				stmt.setString(1, UID);
+				stmt.setInt(2, metadata.getVersion());
+				stmt.setInt(3, metadata.getTypeOfUsage());
+				stmt.setInt(4, metadata.getPartsInItem());
+				stmt.setInt(5, metadata.getPartNumber());
+				stmt.setString(6, metadata.getPrimaryItemId());
+				stmt.setString(7, metadata.getCountryOfOwnerLib());
+				stmt.setString(8, metadata.getISIL());
+				stmt.setString(9, tagInfo);
+				stmt.setString(10, sessionName);
+				stmt.setBytes(11, metadata.getData());
+				try {
+					int numRows = stmt.executeUpdate();
+					uidList.add(UID);
+				} catch (SQLException e) {
+					e.printStackTrace();
+					println("Error: " + e.getMessage(), c1, c2);
+				}
+			} else {
 				uidList.add(UID);
-			} catch (SQLException e) {
-				e.printStackTrace();
-				println("Error: " + e.getMessage(), c1, c2);
 			}
 
 		} catch (Exception ex) {
@@ -240,8 +253,24 @@ public class InventoryCallback implements TagCallback {
 	 */
 	@Override
 	public void close() throws Exception {
-		stmt.close();
-		conn.close();
+		if (stmt != null) {
+			try {
+				stmt.close();
+			} catch (Exception e) {
+			}
+		}
+		if (stmt2 != null) {
+			try {
+				stmt2.close();
+			} catch (Exception e) {
+			}
+		}
+		if (conn != null) {
+			try {
+				conn.close();
+			} catch (Exception e) {
+			}
+		}
 	}
 
 	protected AbstractConfiguration config;

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -80,6 +80,7 @@ public class FeigRFID {
 	 * 
 	 */
 	public void connect() throws FedmException, Exception {
+		connected = false;
 		usbHelper = new FeUsb();
 		reader = new FedmIscReader();
 		String configDeviceID = null;
@@ -112,6 +113,15 @@ public class FeigRFID {
 		reader.connectUSB(currentDeviceID);
 		FedmIscReaderInfo info = reader.getReaderInfo();
 		System.out.println(info.getReport());
+		connected = true;
+	}
+
+	/**
+	 * returns connection state
+	 * @return true if connected
+	 */
+	public boolean isConnected() {
+		return connected;
 	}
 
 	/**
@@ -156,7 +166,14 @@ public class FeigRFID {
 			System.out.println("restoring configuration from " + restoreconfig);
 			copyFileToConfig(restoreconfig);
 		}
-		reader.disConnect();
+		if (reader != null && connected) {
+			try {
+				reader.disConnect();
+			} catch (Exception e) {
+				// Ignore
+			}
+		}
+		connected = false;
 	}
 
 	/**
@@ -208,12 +225,21 @@ public class FeigRFID {
 	 */
 	HashMap<String, FedmIscTagHandler> tagInventory(boolean all, byte mode, byte antennas)
 			throws FedmException, FePortDriverException, FeReaderDriverException {
-		return reader.tagInventory(all, mode, antennas);
+		if (!connected || reader == null) {
+			return new HashMap<>();
+		}
+		try {
+			return reader.tagInventory(all, mode, antennas);
+		} catch (FePortDriverException | FedmException | FeReaderDriverException e) {
+			connected = false;
+			throw e;
+		}
 	}
 
 	protected AbstractConfiguration config;
 	protected FeUsb usbHelper = null;
 	protected FedmIscReader reader = null;
 	protected long currentDeviceID = 0;
+	private volatile boolean connected = false;
 
 }

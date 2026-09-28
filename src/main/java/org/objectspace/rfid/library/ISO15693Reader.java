@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,52 +20,58 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
  *******************************************************************************/
-package org.objectspace.rfid.elatec;
+package org.objectspace.rfid.library;
 
-import java.util.Arrays;
+import org.objectspace.rfid.TagCallback;
 
 /**
+ * interface for ISO15693 tag compliant reader
  * @author Juergen Enge
  *
  */
-public class ElatecDESFireKeySettings {
+public interface ISO15693Reader {
+	/**
+	 * connect hardware device
+	 * @throws Exception
+	 */
+	public void connect() throws Exception;
+	
+	/**
+	 * initialize hardware device
+	 * @throws Exception
+	 */
+	public void init() throws Exception;
 
 	/**
-	 * 
+	 * execute an inventory and read data blocks
+	 * @param inventoryCallback
+	 * @param numBlocks number of blocks to read
+	 * @throws Exception
 	 */
-	public ElatecDESFireKeySettings(byte[] data) {
-		KeySettings = data[0];
-		NumberOfKeys = ElatecRFID.LSBBytesToLong(Arrays.copyOfRange(data, 1, 5));
-		KeyType = ElatecRFID.LSBBytesToLong(Arrays.copyOfRange(data, 6, 10));
-	}
-
-	static public String getKeyTypeString(int KeyType ) {
-		switch( KeyType ) {
-		case ElatecRFID.DESF_KEYTYPE_3DES:
-			return "DESF_KEYTYPE_3DES";
-		case ElatecRFID.DESF_KEYTYPE_3K3DES:
-			return "DESF_KEYTYPE_3K3DES";
-		case ElatecRFID.DESF_KEYTYPE_AES:
-			return "DESF_KEYTYPE_3K3DES";
-		default:
-			return "unknown keytype";
-		}
-	}
+	public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception;
 	
-	public byte KeySettings;
-	public long NumberOfKeys;
-	public long KeyType;
+	/**
+	 * check if hardware device is currently connected
+	 * @return true if connected
+	 */
+	public boolean isConnected();
+
+	/**
+	 * cleanup
+	 * @throws Exception
+	 */
+	public void close() throws Exception;
 }

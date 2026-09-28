@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2015
  * Center for Information, Media and Technology (ZIMT)
- * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Göttingen
+ * HAWK University for Applied Sciences and Arts Hildesheim/Holzminden/Gï¿½ttingen
  *
  * This file is part of HAWK RFID Library Tools.
  * 
@@ -20,15 +20,15 @@
  * 
  * Diese Datei ist Teil von HAWK RFID Library Tools.
  *  
- * HAWK RFID Library Tools ist Freie Software: Sie können es unter den Bedingungen
+ * HAWK RFID Library Tools ist Freie Software: Sie kï¿½nnen es unter den Bedingungen
  * der GNU General Public License, wie von der Free Software Foundation,
  * Version 3 der Lizenz oder (nach Ihrer Wahl) jeder neueren
- * veröffentlichten Version, weiterverbreiten und/oder modifizieren.
+ * verï¿½ffentlichten Version, weiterverbreiten und/oder modifizieren.
  * 
- * Dieses Programm wird in der Hoffnung, dass es nützlich sein wird, aber
- * OHNE JEDE GEWÄHRLEISTUNG, bereitgestellt; sogar ohne die implizite
- * Gewährleistung der MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
- * Siehe die GNU General Public License für weitere Details.
+ * Dieses Programm wird in der Hoffnung, dass es nï¿½tzlich sein wird, aber
+ * OHNE JEDE GEWï¿½HRLEISTUNG, bereitgestellt; sogar ohne die implizite
+ * Gewï¿½hrleistung der MARKTFï¿½HIGKEIT oder EIGNUNG Fï¿½R EINEN BESTIMMTEN ZWECK.
+ * Siehe die GNU General Public License fï¿½r weitere Details.
  * 
  * Sie sollten eine Kopie der GNU General Public License zusammen mit diesem
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
@@ -95,15 +95,15 @@ public class FinnishDataModel {
 		// 3rd byte
 		partNumber = data[2];
 
-		// byte 3-18 primaryItemId
-		primaryItemId = new String(Arrays.copyOfRange(data, 3, 3 + 15)).trim();
-		// byte 19/29
+		// byte 3-18 primaryItemId (16 bytes: 3 to 18)
+		primaryItemId = new String(Arrays.copyOfRange(data, 3, 19)).trim();
+		// byte 19/20 CRC
 		crcOrig = new byte[] { data[19], data[20] };
-		// byte 21/22 is the country part of ISIL
-		countryOfOwnerLib = new String(Arrays.copyOfRange(data, 21, 21 + 2)).trim();
-		// byte 23-33(35) ISIL
-		int optStart = Math.min(data.length, 35) - 1;
-		ISIL = new String(Arrays.copyOfRange(data, 23, optStart)).trim();
+		// byte 21/22 is the country part of ISIL (2 bytes: 21 to 22)
+		countryOfOwnerLib = new String(Arrays.copyOfRange(data, 21, 23)).trim();
+		// byte 23-34 ISIL (up to 12 bytes: 23 to 34)
+		int isilEnd = Math.min(data.length, 35);
+		ISIL = (data.length > 23) ? new String(Arrays.copyOfRange(data, 23, isilEnd)).trim() : "";
 
 		// create CRC
 		crc = TagCRC(data);
@@ -124,8 +124,9 @@ public class FinnishDataModel {
 			System.out.println("ISIL: " + ISIL);
 		}
 
-		// if length of optional block > 0 load the block
-		while (optStart > 0 && data[optStart] != 0x00) {
+		// optional data blocks start at byte 35
+		int optStart = 35;
+		while (optStart > 0 && optStart < data.length && data[optStart] != 0x00) {
 			FinnishDataModelOptionalBlock op = new FinnishDataModelOptionalBlock();
 			optStart = op.setBlock(data, optStart);
 			optionalBlocks.add(op);
@@ -216,34 +217,33 @@ public class FinnishDataModel {
 	 * @throws Exception
 	 */
 	public byte[] getBlock(int size) throws Exception {
-		if (size == 0)
-			size = 2048;
-		byte[] block = getEmptyBlock(size);
+		int targetSize = (size == 0) ? 2048 : size;
+		byte[] block = getEmptyBlock(Math.max(targetSize, 36));
 		block[0] = (byte) ((version << 4) | typeOfUsage);
 		block[1] = (byte) partsInItem;
 		block[2] = (byte) partNumber;
 
-		byte[] temp = primaryItemId.getBytes();
-		for (int i = 3; i <= 3 + 15; i++) {
+		byte[] temp = (primaryItemId != null) ? primaryItemId.getBytes() : new byte[0];
+		for (int i = 3; i <= 3 + 15 && i < block.length; i++) {
 			if (i - 3 < temp.length) {
 				block[i] = temp[i - 3];
 			}
 		}
-		temp = countryOfOwnerLib.getBytes();
-		for (int i = 21; i <= 21 + 2; i++) {
+		temp = (countryOfOwnerLib != null) ? countryOfOwnerLib.getBytes() : new byte[0];
+		for (int i = 21; i <= 21 + 2 && i < block.length; i++) {
 			if (i - 21 < temp.length) {
 				block[i] = temp[i - 21];
 			}
 		}
-		temp = ISIL.getBytes();
-		for (int i = 23; i < block.length; i++) {
+		temp = (ISIL != null) ? ISIL.getBytes() : new byte[0];
+		for (int i = 23; i < 35 && i < block.length; i++) {
 			if (i - 23 < temp.length) {
 				block[i] = temp[i - 23];
 			}
 		}
 
 		// optional data blocks start here
-		int optStart = 23 + temp.length;
+		int optStart = 35;
 
 		int crc = TagCRC(block);
 		// Binary encoding with the lsb stored at the lowest memory location
@@ -258,7 +258,7 @@ public class FinnishDataModel {
 				int s;
 				if (id < 0xffff) {
 					s = d.length + 4;
-					if (optStart + s > size)
+					if (optStart + s > block.length)
 						throw new Exception("blocksize too small");
 					block[optStart] = (byte) s;
 					block[optStart + 1] = (byte) (id & 0xff);
@@ -268,7 +268,7 @@ public class FinnishDataModel {
 					}
 				} else {
 					s = d.length + 6;
-					if (optStart + s > size)
+					if (optStart + s > block.length)
 						throw new Exception("blocksize too small");
 					block[optStart] = (byte) s;
 					block[optStart + 1] = (byte) (id & 0xff);
@@ -290,9 +290,15 @@ public class FinnishDataModel {
 		}
 
 		// end block (size==0)
-		block[optStart] = 0x00;
+		if (optStart < block.length) {
+			block[optStart] = 0x00;
+		}
 
-		data = Arrays.copyOfRange(block, 0, optStart + 1);
+		if (size == 0) {
+			data = Arrays.copyOfRange(block, 0, optStart + 1);
+		} else {
+			data = Arrays.copyOfRange(block, 0, size);
+		}
 		return data;
 	}
 
@@ -304,10 +310,13 @@ public class FinnishDataModel {
 	 */
 	protected static int TagCRC(byte[] data) {
 		// create a byte array without crc bytes
-		byte[] crcdata = new byte[data.length];
-		System.arraycopy(data, 0, crcdata, 0, 19);
-		System.arraycopy(data, 21, crcdata, 19, data.length - 21);
-		int p = 19 + data.length - 21;
+		byte[] crcdata = new byte[Math.max(data.length, 32)];
+		int copyLen1 = Math.min(data.length, 19);
+		System.arraycopy(data, 0, crcdata, 0, copyLen1);
+		if (data.length > 21) {
+			System.arraycopy(data, 21, crcdata, 19, data.length - 21);
+		}
+		int p = 19 + Math.max(0, data.length - 21);
 		while (p < 32) {
 			crcdata[p] = 0x00;
 			p++;
