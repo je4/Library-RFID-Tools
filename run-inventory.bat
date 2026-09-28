@@ -6,7 +6,7 @@ set "PATH=%~dp0lib\native\x64;%PATH%"
 
 if not exist "%~dp0lib\ext" (
     mkdir "%~dp0lib\ext"
-    powershell -NoProfile -Command "Get-ChildItem -Recurse '$HOME\.m2\repository\*.jar' | Where-Object { $_.Name -notmatch '-sources.jar' } | ForEach-Object { Copy-Item $_.FullName 'lib\ext\' -Force }"
+    powershell -NoProfile -Command "$patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*'); Get-ChildItem -Recurse '$HOME\.m2\repository\*.jar' | Where-Object { $name = $_.Name; $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ }) } | ForEach-Object { Copy-Item $_.FullName 'lib\ext\' -Force }"
 )
 
 if not exist "%~dp0target\classes\org\objectspace\rfid\library\inventory\Inventory.class" (

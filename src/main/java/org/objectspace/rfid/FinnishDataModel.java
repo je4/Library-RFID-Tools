@@ -37,9 +37,6 @@ package org.objectspace.rfid;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import org.apache.commons.configuration2.AbstractConfiguration;
 
 import de.feig.FeHexConvert;
 
@@ -154,47 +151,6 @@ public class FinnishDataModel {
 		this.ISIL = ISIL;
 		this.optionalBlocks = optionalBlocks;
 		this.nodata = false;
-	}
-
-	/**
-	 * Execute regex Expressions on primaryItemId, CountryOfOwnerLib and ISIL
-	 * 
-	 * @param regex
-	 *            map with regex
-	 * @return true, if data has been changed
-	 */
-	public boolean doRegex(HashMap<String, FinnishDataModelRegex> regex) {
-		dataChanged = false;
-		for (Map.Entry<String, FinnishDataModelRegex> e : regex.entrySet()) {
-			String result = null;
-			FinnishDataModelRegex fdmr = e.getValue();
-			String fld = e.getKey();
-			switch (fld) {
-			case "PrimaryItemId":
-				result = fdmr.replace(this, fld);
-				if (!result.equals(primaryItemId)) {
-					primaryItemId = result;
-					dataChanged = true;
-				}
-				break;
-			case "CountryOfOwnerLib":
-				result = fdmr.replace(this, fld);
-				if (!result.equals(countryOfOwnerLib)) {
-					countryOfOwnerLib = result;
-					dataChanged = true;
-				}
-				break;
-			case "ISIL":
-				result = fdmr.replace(this, fld);
-				if (!result.equals(ISIL)) {
-					ISIL = result;
-					dataChanged = true;
-				}
-				break;
-			default:
-			}
-		}
-		return dataChanged;
 	}
 
 	/**
@@ -502,7 +458,6 @@ public class FinnishDataModel {
 		}
 	}
 
-	protected AbstractConfiguration config;
 	protected String primaryItemId = "";
 	protected String countryOfOwnerLib = "";
 	protected String ISIL = "";

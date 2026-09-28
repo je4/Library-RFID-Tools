@@ -46,7 +46,6 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.objectspace.rfid.ISO15693ReaderFactory;
 import org.objectspace.rfid.library.ISO15693Reader;
-import org.objectspace.rfid.library.taghandle.MainDialog;
 
 /**
  * Application for creating a library inventory. writes rfid tag data into sql database.
