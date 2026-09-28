@@ -36,10 +36,12 @@
 package org.objectspace.rfid.library.inventory;
 
 import org.apache.commons.configuration2.AbstractConfiguration;
-import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.library.ISO15693Reader;
 
 /**
+ * Background worker thread for RFID inventory and hardware monitoring.
+ * Continuously polls hardware connection and executes tag scans.
+ * 
  * @author Juergen Enge
  *
  */
@@ -60,14 +62,15 @@ public class InventoryThread implements Runnable {
 
 	protected boolean inventoryRunning() {
 		inventoryRunning = false;
-		if (!id.isDisposed()) {
+		if (id != null && !id.isDisposed()) {
 			id.getDisplay().syncExec(new Runnable() {
 				public void run() {
 					inventoryRunning = id.isRunning();
 				}
 			});
-		} else
+		} else {
 			running = false;
+		}
 		return inventoryRunning;
 	}
 
@@ -78,33 +81,65 @@ public class InventoryThread implements Runnable {
 	 */
 	@Override
 	public void run() {
+		Boolean lastReportedState = null;
 		try {
 			while (running) {
-				// read buffer
-				try {
-					if (!pause && reader != null) {
+				boolean currentlyConnected = false;
+
+				if (reader != null) {
+					try {
 						if (!reader.isConnected()) {
+							// Attempt to connect if plugged in
 							try {
 								reader.connect();
 								reader.init();
 							} catch (Exception e) {
-								// Device not connected yet
+								// Device not plugged in yet
+							}
+						} else {
+							// Check if still reachable
+							reader.checkConnection();
+						}
+						currentlyConnected = reader.isConnected();
+					} catch (Exception e) {
+						currentlyConnected = false;
+					}
+				}
+
+				// If connection state changed, notify UI immediately
+				if (lastReportedState == null || lastReportedState.booleanValue() != currentlyConnected) {
+					lastReportedState = Boolean.valueOf(currentlyConnected);
+					String devInfo = (reader != null && currentlyConnected) ? reader.getDeviceInfo() : null;
+					if (id != null && !id.isDisposed()) {
+						id.onReaderConnectionChanged(currentlyConnected, devInfo);
+					}
+				}
+
+				// Perform inventory scan if active and reader is connected
+				if (!pause && currentlyConnected && reader != null) {
+					try {
+						reader.inventory(inventoryCallback, numBlocks);
+					} catch (Exception e) {
+						// Error during scan (e.g., cable pulled)
+						currentlyConnected = reader.isConnected();
+						if (lastReportedState == null || lastReportedState.booleanValue() != currentlyConnected) {
+							lastReportedState = Boolean.valueOf(currentlyConnected);
+							if (id != null && !id.isDisposed()) {
+								id.onReaderConnectionChanged(currentlyConnected, null);
 							}
 						}
-						if (reader.isConnected()) {
-							reader.inventory(inventoryCallback, numBlocks);
-						}
 					}
-				} catch (Exception e) {
-					// Communication error during scan
 				}
+
 				Thread.sleep(sleep);
 			}
 		} catch (InterruptedException e) {
 			// Thread interrupted
 		} finally {
 			try {
-				inventoryCallback.close();
+				if (inventoryCallback != null) {
+					inventoryCallback.close();
+				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -114,7 +149,7 @@ public class InventoryThread implements Runnable {
 
 	public void pause(boolean pause) {
 		this.pause = pause;
-		if (pause == false)
+		if (pause == false && inventoryCallback != null)
 			inventoryCallback.clearUIDList();
 	}
 
@@ -130,6 +165,6 @@ public class InventoryThread implements Runnable {
 	protected int numBlocks = 0;
 	protected InventoryDialog id = null;
 	protected int sleep = 500;
-	private boolean pause = true;
+	private volatile boolean pause = true;
 
 }

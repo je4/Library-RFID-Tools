@@ -88,6 +88,7 @@ public class InventoryDialog extends Composite {
 	private Text txtSearch;
 	private Table table;
 	private StyledText logText;
+	private Label lblReaderBadge;
 	private Label lblStatusBadge;
 	private Label lblCountUnique;
 	private Label lblCountTotal;
@@ -113,6 +114,7 @@ public class InventoryDialog extends Composite {
 	protected Image logo = null;
 	protected Image bgImage = null;
 	protected boolean isRunning = false;
+	protected boolean isReaderConnected = false;
 	protected InventoryThread thread = null;
 	private final List<InventoryItemEntry> itemList = new ArrayList<>();
 	private final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -179,26 +181,48 @@ public class InventoryDialog extends Composite {
 		titleComp.setLayout(tl);
 
 		Label lblTitle = new Label(titleComp, SWT.NONE);
-		lblTitle.setText("RFID Inventarisierung & Medienpr\u00FCfung");
+		lblTitle.setText("RFID Inventory - info-age GmbH, Basel");
 		lblTitle.setFont(SWTResourceManager.getFont("Segoe UI", 14, SWT.BOLD));
 		lblTitle.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
 		lblTitle.setBackground(SWTResourceManager.getColor(26, 36, 56));
 
 		Label lblSubtitle = new Label(titleComp, SWT.NONE);
-		lblSubtitle.setText("ISO 28560 / Finnish Data Model - FEIG SDK v5.6.3");
+		lblSubtitle.setText("RFID Inventarisierung & Medienpr\u00FCfung \u2013 ISO 28560 / FEIG SDK v5.6.3");
 		lblSubtitle.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
 		lblSubtitle.setForeground(SWTResourceManager.getColor(148, 163, 184));
 		lblSubtitle.setBackground(SWTResourceManager.getColor(26, 36, 56));
 
-		// Live Status Badge
-		lblStatusBadge = new Label(header, SWT.CENTER);
-		lblStatusBadge.setText("  \u25CF BEREIT (PAUSIERT)  ");
-		lblStatusBadge.setFont(SWTResourceManager.getFont("Segoe UI", 10, SWT.BOLD));
+		// Badges Container (Hardware Reader Status + Scan Workflow Status)
+		Composite badgeComp = new Composite(header, SWT.NONE);
+		badgeComp.setBackground(SWTResourceManager.getColor(26, 36, 56));
+		GridData bgd = new GridData(SWT.RIGHT, SWT.CENTER, false, false);
+		badgeComp.setLayoutData(bgd);
+		GridLayout bgl = new GridLayout(2, false);
+		bgl.marginWidth = 0;
+		bgl.marginHeight = 0;
+		bgl.horizontalSpacing = 8;
+		badgeComp.setLayout(bgl);
+
+		// Hardware Reader Badge (FEIG)
+		lblReaderBadge = new Label(badgeComp, SWT.CENTER);
+		lblReaderBadge.setText("  \u25CB FEIG: Nicht verbunden  ");
+		lblReaderBadge.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.BOLD));
+		lblReaderBadge.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
+		lblReaderBadge.setBackground(SWTResourceManager.getColor(185, 28, 28)); // Red
+		lblReaderBadge.setToolTipText("Kein FEIG Leseger\u00E4t angeschlossen. Bitte USB-Kabel verbinden.");
+		GridData rgd = new GridData(SWT.RIGHT, SWT.CENTER, false, false);
+		rgd.heightHint = 28;
+		lblReaderBadge.setLayoutData(rgd);
+
+		// Live Scan Workflow Status Badge
+		lblStatusBadge = new Label(badgeComp, SWT.CENTER);
+		lblStatusBadge.setText("  \u23F8 BEREIT (PAUSIERT)  ");
+		lblStatusBadge.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.BOLD));
 		lblStatusBadge.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
 		lblStatusBadge.setBackground(SWTResourceManager.getColor(71, 85, 105)); // Slate 600
-		GridData bgd = new GridData(SWT.RIGHT, SWT.CENTER, false, false);
-		bgd.heightHint = 28;
-		lblStatusBadge.setLayoutData(bgd);
+		GridData sgd = new GridData(SWT.RIGHT, SWT.CENTER, false, false);
+		sgd.heightHint = 28;
+		lblStatusBadge.setLayoutData(sgd);
 	}
 
 	/**
@@ -297,8 +321,10 @@ public class InventoryDialog extends Composite {
 		bStartStop = new Button(toolbar, SWT.PUSH);
 		bStartStop.setText("\u25B6  Scan starten");
 		bStartStop.setFont(SWTResourceManager.getFont("Segoe UI", 10, SWT.BOLD));
-		bStartStop.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
+		bStartStop.setEnabled(false);
+		bStartStop.setBackground(SWTResourceManager.getColor(156, 163, 175)); // Inactive Gray
 		bStartStop.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
+		bStartStop.setToolTipText("Kein Leseger\u00E4t verbunden. Bitte FEIG USB-Kabel anschlie\u00DFen.");
 		GridData bgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
 		bgd.widthHint = 140;
 		bgd.heightHint = 32;
@@ -513,7 +539,7 @@ public class InventoryDialog extends Composite {
 		status.setLayout(sl);
 
 		lblStatusBar = new Label(status, SWT.NONE);
-		lblStatusBar.setText("Bereit. Klicken Sie auf 'Scan starten', um die automatische Inventarisierung zu beginnen.");
+		lblStatusBar.setText("FEIG Leseger\u00E4t nicht verbunden. Bitte USB-Kabel des Leseger\u00E4ts anschlie\u00DFen.");
 		lblStatusBar.setFont(SWTResourceManager.getFont("Segoe UI", 8, SWT.NORMAL));
 		lblStatusBar.setForeground(SWTResourceManager.getColor(71, 85, 105));
 		lblStatusBar.setBackground(SWTResourceManager.getColor(226, 232, 240));
@@ -521,10 +547,14 @@ public class InventoryDialog extends Composite {
 	}
 
 	public void toggleScan() {
+		if (!isReaderConnected) {
+			return;
+		}
 		if (!isRunning) {
 			isRunning = true;
 			bStartStop.setText("\u25A0  Scan anhalten");
 			bStartStop.setBackground(SWTResourceManager.getColor(220, 38, 38)); // Red
+			bStartStop.setToolTipText("Klicken, um den Scan zu pausieren");
 			updateStatusBadge(true);
 			lblStatusBar.setText("RFID-Scanner aktiv. Suche nach Transpondern im Antennenfeld...");
 			if (thread != null) {
@@ -534,6 +564,7 @@ public class InventoryDialog extends Composite {
 			isRunning = false;
 			bStartStop.setText("\u25B6  Scan starten");
 			bStartStop.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
+			bStartStop.setToolTipText("Klicken, um die Inventarisierung zu starten");
 			updateStatusBadge(false);
 			lblStatusBar.setText("Scan pausiert. Bisher " + itemList.size() + " Medien erfasst.");
 			if (thread != null) {
@@ -546,11 +577,92 @@ public class InventoryDialog extends Composite {
 		if (lblStatusBadge == null || lblStatusBadge.isDisposed()) return;
 		if (active) {
 			lblStatusBadge.setText("  \u25CF SCAN AKTIV  ");
-			lblStatusBadge.setBackground(SWTResourceManager.getColor(5, 150, 105));
+			lblStatusBadge.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
 		} else {
 			lblStatusBadge.setText("  \u23F8 BEREIT (PAUSIERT)  ");
-			lblStatusBadge.setBackground(SWTResourceManager.getColor(71, 85, 105));
+			lblStatusBadge.setBackground(SWTResourceManager.getColor(71, 85, 105)); // Slate
 		}
+	}
+
+	/**
+	 * Callback from background thread when the hardware connection state changes.
+	 * Updates the reader badge, start/stop button enablement, status bar text, and log dynamically.
+	 * 
+	 * @param connected true if FEIG device is plugged in and ready
+	 * @param deviceInfo hardware details (e.g. device ID / model)
+	 */
+	public void onReaderConnectionChanged(boolean connected, String deviceInfo) {
+		if (isDisposed()) return;
+		getDisplay().asyncExec(() -> {
+			if (isDisposed()) return;
+			this.isReaderConnected = connected;
+			if (connected) {
+				if (lblReaderBadge != null && !lblReaderBadge.isDisposed()) {
+					lblReaderBadge.setText("  \u25CF FEIG: Verbunden  ");
+					lblReaderBadge.setToolTipText(deviceInfo != null ? deviceInfo : "FEIG USB Reader verbunden");
+					lblReaderBadge.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Emerald Green
+				}
+				if (bStartStop != null && !bStartStop.isDisposed()) {
+					bStartStop.setEnabled(true);
+					if (isRunning) {
+						bStartStop.setText("\u25A0  Scan anhalten");
+						bStartStop.setBackground(SWTResourceManager.getColor(220, 38, 38)); // Red
+						bStartStop.setToolTipText("Klicken, um den Scan zu pausieren");
+					} else {
+						bStartStop.setText("\u25B6  Scan starten");
+						bStartStop.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
+						bStartStop.setToolTipText("Klicken, um die Inventarisierung zu starten");
+					}
+				}
+				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+					if (!isRunning) {
+						lblStatusBar.setText("FEIG Leseger\u00E4t verbunden (" + (deviceInfo != null ? deviceInfo : "USB") + "). Bereit zum Scannen.");
+					}
+				}
+				addLogMessage("FEIG Leseger\u00E4t verbunden (" + (deviceInfo != null ? deviceInfo : "USB-Ger\u00E4t erkannt") + ")");
+			} else {
+				if (lblReaderBadge != null && !lblReaderBadge.isDisposed()) {
+					lblReaderBadge.setText("  \u25CB FEIG: Getrennt  ");
+					lblReaderBadge.setToolTipText("Kein FEIG Leseger\u00E4t angeschlossen. Bitte USB-Kabel verbinden.");
+					lblReaderBadge.setBackground(SWTResourceManager.getColor(185, 28, 28)); // Vivid Red
+				}
+				if (isRunning) {
+					isRunning = false;
+					updateStatusBadge(false);
+					if (thread != null) {
+						thread.pause(true);
+					}
+				}
+				if (bStartStop != null && !bStartStop.isDisposed()) {
+					bStartStop.setEnabled(false);
+					bStartStop.setText("\u25B6  Scan starten");
+					bStartStop.setBackground(SWTResourceManager.getColor(156, 163, 175)); // Inactive Gray
+					bStartStop.setToolTipText("Kein Leseger\u00E4t verbunden. Bitte FEIG USB-Kabel anschlie\u00DFen.");
+				}
+				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+					lblStatusBar.setText("FEIG Leseger\u00E4t nicht verbunden. Bitte USB-Kabel anschlie\u00DFen.");
+				}
+				addLogMessage("WARNUNG: FEIG Leseger\u00E4t getrennt oder nicht erreichbar. Scan deaktiviert.");
+			}
+			if (lblReaderBadge != null && lblReaderBadge.getParent() != null && !lblReaderBadge.getParent().isDisposed()) {
+				lblReaderBadge.getParent().layout(true, true);
+			}
+		});
+	}
+
+	/**
+	 * Appends a timestamped system log line to the scan protocol tab.
+	 * 
+	 * @param message log text
+	 */
+	public void addLogMessage(String message) {
+		if (isDisposed()) return;
+		getDisplay().asyncExec(() -> {
+			if (isDisposed() || logText == null || logText.isDisposed()) return;
+			String time = LocalDateTime.now().format(timeFormatter);
+			logText.append("[" + time + "] " + message + "\n");
+			logText.setTopIndex(logText.getLineCount() - 1);
+		});
 	}
 
 	/**

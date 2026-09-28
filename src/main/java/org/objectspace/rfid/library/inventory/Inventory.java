@@ -94,7 +94,7 @@ public class Inventory {
 		
 		Display display = new Display();
 		Shell shell = new Shell(display);
-		shell.setText("HAWK Library RFID Tools – Inventarisierung");
+		shell.setText("RFID Inventory - info-age GmbH, Basel");
 
 		FillLayout layout = new FillLayout();
 		shell.setLayout(layout);

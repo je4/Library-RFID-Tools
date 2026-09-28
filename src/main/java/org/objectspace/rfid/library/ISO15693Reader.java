@@ -70,6 +70,18 @@ public interface ISO15693Reader {
 	public boolean isConnected();
 
 	/**
+	 * verifies if the connection is still active and valid
+	 * @return true if verified and connected
+	 */
+	public boolean checkConnection();
+
+	/**
+	 * returns descriptive hardware / device information
+	 * @return device information string or null
+	 */
+	public String getDeviceInfo();
+
+	/**
 	 * cleanup
 	 * @throws Exception
 	 */

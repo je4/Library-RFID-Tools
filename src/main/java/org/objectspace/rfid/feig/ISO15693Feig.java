@@ -105,6 +105,22 @@ public class ISO15693Feig implements ISO15693Reader {
 	}
 
 	/**
+	 * @see org.objectspace.rfid.library.ISO15693Reader#checkConnection()
+	 */
+	@Override
+	public boolean checkConnection() {
+		return feig != null && feig.checkConnection();
+	}
+
+	/**
+	 * @see org.objectspace.rfid.library.ISO15693Reader#getDeviceInfo()
+	 */
+	@Override
+	public String getDeviceInfo() {
+		return feig != null ? feig.getDeviceInfo() : null;
+	}
+
+	/**
 	 * @see org.objectspace.rfid.library.ISO15693Reader#close() 
 	 */
 	public void close() throws Exception {

@@ -108,7 +108,7 @@ public class FinnishDataModelTest {
     }
 
     @Test
-    @DisplayName("Test Reader Factory validation")
+    @DisplayName("Test Reader Factory validation and connection check methods")
     public void testReaderFactoryValidation() throws Exception {
         assertThrows(IllegalArgumentException.class, () -> {
             org.apache.commons.configuration2.BaseConfiguration cfg = new org.apache.commons.configuration2.BaseConfiguration();
@@ -121,6 +121,8 @@ public class FinnishDataModelTest {
         org.objectspace.rfid.library.ISO15693Reader reader = ISO15693ReaderFactory.createReader(cfg);
         assertNotNull(reader);
         assertFalse(reader.isConnected(), "Reader should not report connected before connect() is called");
+        assertFalse(reader.checkConnection(), "checkConnection() should return false when not connected");
+        assertNull(reader.getDeviceInfo(), "getDeviceInfo() should be null when not connected");
     }
 
     @Test

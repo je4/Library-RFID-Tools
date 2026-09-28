@@ -112,7 +112,10 @@ public class FeigRFID {
 		System.out.println("Connecting to: " + FeHexConvert.longToHexString(currentDeviceID));
 		reader.connectUSB(currentDeviceID);
 		FedmIscReaderInfo info = reader.getReaderInfo();
-		System.out.println(info.getReport());
+		if (info != null) {
+			System.out.println(info.getReport());
+		}
+		deviceInfo = "FEIG ISC.MR102-USB (" + FeHexConvert.longToHexString(currentDeviceID) + ")";
 		connected = true;
 	}
 
@@ -122,6 +125,66 @@ public class FeigRFID {
 	 */
 	public boolean isConnected() {
 		return connected;
+	}
+
+	/**
+	 * Verifies if the reader is still reachable via USB.
+	 * If not reachable or unplugged, sets connection state to false and disconnects cleanly.
+	 * @return true if connected and reachable
+	 */
+	public synchronized boolean checkConnection() {
+		if (!connected || reader == null) {
+			return false;
+		}
+		try {
+			FeUsb checkUsb = new FeUsb();
+			int back = checkUsb.scan(FeUsbScanSearch.SCAN_ALL, null);
+			if (back != 0 || checkUsb.getScanListSize() == 0) {
+				disconnectInternal();
+				return false;
+			}
+			boolean found = false;
+			for (int i = 0; i < checkUsb.getScanListSize(); i++) {
+				String para = checkUsb.getScanListPara(i, "Device-ID");
+				if (para != null) {
+					long devId = FeHexConvert.hexStringToLong(para);
+					if (devId == currentDeviceID || currentDeviceID == 0) {
+						found = true;
+						break;
+					}
+				}
+			}
+			if (!found) {
+				disconnectInternal();
+				return false;
+			}
+			return true;
+		} catch (Throwable t) {
+			disconnectInternal();
+			return false;
+		}
+	}
+
+	/**
+	 * Returns descriptive information about the connected device.
+	 * @return device information or null
+	 */
+	public String getDeviceInfo() {
+		return connected ? deviceInfo : null;
+	}
+
+	/**
+	 * Internal safe disconnect without throwing exceptions.
+	 */
+	public synchronized void disconnectInternal() {
+		connected = false;
+		if (reader != null) {
+			try {
+				reader.disConnect();
+			} catch (Throwable t) {
+				// Ignore
+			}
+		}
 	}
 
 	/**
@@ -230,9 +293,18 @@ public class FeigRFID {
 		}
 		try {
 			return reader.tagInventory(all, mode, antennas);
-		} catch (FePortDriverException | FedmException | FeReaderDriverException e) {
-			connected = false;
+		} catch (FePortDriverException e) {
+			disconnectInternal();
 			throw e;
+		} catch (FeReaderDriverException e) {
+			disconnectInternal();
+			throw e;
+		} catch (FedmException e) {
+			disconnectInternal();
+			throw e;
+		} catch (Throwable t) {
+			disconnectInternal();
+			throw new FedmException(t.getMessage() != null ? t.getMessage() : "tag inventory error", -1);
 		}
 	}
 
@@ -240,6 +312,7 @@ public class FeigRFID {
 	protected FeUsb usbHelper = null;
 	protected FedmIscReader reader = null;
 	protected long currentDeviceID = 0;
+	protected String deviceInfo = null;
 	private volatile boolean connected = false;
 
 }
