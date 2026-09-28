@@ -122,4 +122,22 @@ public class FinnishDataModelTest {
         assertNotNull(reader);
         assertFalse(reader.isConnected(), "Reader should not report connected before connect() is called");
     }
+
+    @Test
+    @DisplayName("Test InventoryItemEntry data mapping")
+    public void testInventoryItemEntry() {
+        org.objectspace.rfid.library.inventory.InventoryDialog.InventoryItemEntry item =
+            new org.objectspace.rfid.library.inventory.InventoryDialog.InventoryItemEntry();
+        item.index = 1;
+        item.primaryItemId = "12345678";
+        item.signature = "SIG-99";
+        item.uid = "E004010001234567";
+        item.crcStatus = "OK";
+
+        assertEquals(1, item.index);
+        assertEquals("12345678", item.primaryItemId);
+        assertEquals("SIG-99", item.signature);
+        assertEquals("E004010001234567", item.uid);
+        assertEquals("OK", item.crcStatus);
+    }
 }

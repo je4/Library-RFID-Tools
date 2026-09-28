@@ -156,6 +156,7 @@ public class InventoryCallback implements TagCallback {
 			metadata.setBlock(data, blockSize);
 
 			txt = "";
+			String sig = "";
 			if (metadata.isEmpty()) {
 				txt += "empty" + "\n";
 			} else {
@@ -170,7 +171,6 @@ public class InventoryCallback implements TagCallback {
 				txt += "ISIL: " + metadata.getISIL() + "\n";
 				txt += "Marker: " + tagInfo + "(" + c1 + "/" + c2 + ")\n";
 
-				String sig = "";
 				if (stmt2 != null) {
 					stmt2.setString(1, metadata.getPrimaryItemId());
 					try {
@@ -190,6 +190,12 @@ public class InventoryCallback implements TagCallback {
 				txt += "Signature: " + sig.trim() + "\n";
 			}
 			println(txt, c1, c2);
+
+			String currentMarker = getTagInfo();
+			String finalSig = sig.trim();
+			if (!dlg.isDisposed()) {
+				dlg.addInventoryItem(UID, metadata, finalSig, currentMarker, manufacturerName, tagName, c1, c2);
+			}
 
 			if (stmt != null) {
 				stmt.setString(1, UID);
