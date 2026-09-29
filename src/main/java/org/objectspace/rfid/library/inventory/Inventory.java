@@ -71,7 +71,7 @@ public class Inventory {
 	 * @throws Exception 
 	 */
 	public static void main(String[] args) throws Exception {
-		String configfilename = "tagreader.xml";
+		String configfilename = "inventory.xml";
 		if (args.length > 0) {
 			configfilename = args[0];
 		}
