@@ -203,51 +203,101 @@ public class InventoryCallback implements TagCallback {
 
 			String currentMarker = getTagInfo();
 			String finalSig = sig.trim();
-			if (dlg != null && !dlg.isDisposed()) {
-				dlg.addInventoryItem(UID, metadata, finalSig, currentMarker, manufacturerName, tagName, c1, c2);
-			}
 
-			if (stmt != null) {
-				stmt.setString(1, UID);
-				stmt.setInt(2, metadata.getVersion());
-				stmt.setInt(3, metadata.getTypeOfUsage());
-				stmt.setInt(4, metadata.getPartsInItem());
-				stmt.setInt(5, metadata.getPartNumber());
-				stmt.setString(6, metadata.getPrimaryItemId());
-				stmt.setString(7, metadata.getCountryOfOwnerLib());
-				stmt.setString(8, metadata.getISIL());
-				stmt.setString(9, tagInfo);
-				stmt.setString(10, sessionName);
-				stmt.setBytes(11, metadata.getData());
-				try {
-					int numRows = stmt.executeUpdate();
-				} catch (SQLException e) {
-					e.printStackTrace();
-					println("Error: " + e.getMessage(), c1, c2);
-				}
-			}
+			boolean isDbConfigured = (config != null && config.getBoolean("database.active", false));
+			boolean dbSuccess = true;
+			String dbError = null;
 
-			if (webserviceDispatcher != null) {
-				try {
-					String rawHex = (metadata.getData() != null) ? FeHexConvert.byteArrayToHexString(metadata.getData()) : "";
-					WebserviceResponse wsResp = webserviceDispatcher.dispatchScan(
-							currentMarker,
-							currentMarker,
-							metadata.isEmpty() ? "empty" : metadata.getPrimaryItemId(),
-							rawHex,
-							UID,
-							metadata,
-							sessionName,
-							null
-					);
-					if (webserviceConfig.isDebugMode()) {
-						println("[Webservice] " + wsResp.getHttpStatus() + " (" + wsResp.getDurationMs() + "ms): " + wsResp.getResponseBody(), c1, c2);
-					} else if (!wsResp.isSuccess()) {
-						println("[Webservice Error] " + (wsResp.getErrorMessage() != null ? wsResp.getErrorMessage() : "HTTP " + wsResp.getHttpStatus()), c1, c2);
+			if (isDbConfigured) {
+				if (stmt != null) {
+					stmt.setString(1, UID);
+					stmt.setInt(2, metadata.getVersion());
+					stmt.setInt(3, metadata.getTypeOfUsage());
+					stmt.setInt(4, metadata.getPartsInItem());
+					stmt.setInt(5, metadata.getPartNumber());
+					stmt.setString(6, metadata.getPrimaryItemId());
+					stmt.setString(7, metadata.getCountryOfOwnerLib());
+					stmt.setString(8, metadata.getISIL());
+					stmt.setString(9, tagInfo);
+					stmt.setString(10, sessionName);
+					stmt.setBytes(11, metadata.getData());
+					try {
+						int numRows = stmt.executeUpdate();
+						dbSuccess = true;
+					} catch (SQLException e) {
+						e.printStackTrace();
+						println("Error: " + e.getMessage(), c1, c2);
+						dbSuccess = false;
+						dbError = e.getMessage();
 					}
-				} catch (Exception e) {
-					println("[Webservice Error] " + e.getMessage(), c1, c2);
+				} else {
+					dbSuccess = false;
+					dbError = "Keine aktive Datenbankverbindung";
 				}
+			}
+
+			boolean isWsConfigured = (webserviceConfig != null && webserviceConfig.isActive());
+			boolean wsSuccess = true;
+			String wsError = null;
+
+			if (isWsConfigured) {
+				if (webserviceDispatcher != null) {
+					try {
+						String rawHex = (metadata.getData() != null) ? FeHexConvert.byteArrayToHexString(metadata.getData()) : "";
+						WebserviceResponse wsResp = webserviceDispatcher.dispatchScan(
+								currentMarker,
+								currentMarker,
+								metadata.isEmpty() ? "empty" : metadata.getPrimaryItemId(),
+								rawHex,
+								UID,
+								metadata,
+								sessionName,
+								null
+						);
+						if (wsResp != null && wsResp.getHttpStatus() == 200) {
+							wsSuccess = true;
+							if (webserviceConfig != null && webserviceConfig.isDebugMode()) {
+								println("[Webservice] " + wsResp.getHttpStatus() + " (" + wsResp.getDurationMs() + "ms): " + wsResp.getResponseBody(), c1, c2);
+							}
+						} else {
+							wsSuccess = false;
+							if (wsResp != null) {
+								wsError = "HTTP " + wsResp.getHttpStatus() + (wsResp.getErrorMessage() != null ? " (" + wsResp.getErrorMessage() + ")" : "");
+								println(wsResp.formatScanLogDetails(), c1, c2);
+							} else {
+								wsError = "Keine Antwort erhalten";
+								println("[Webservice Fehler] Keine Antwort erhalten", c1, c2);
+							}
+						}
+					} catch (Exception e) {
+						wsSuccess = false;
+						wsError = e.getMessage();
+						int keyLen = (webserviceConfig != null && webserviceConfig.getJwtKey() != null) ? webserviceConfig.getJwtKey().length() : 0;
+						println("[Webservice Fehler] " + e.getMessage() + "\n  JWT-Key-L\u00E4nge: " + keyLen + (keyLen > 0 ? " Zeichen" : " (kein Key konfiguriert)"), c1, c2);
+					}
+				} else {
+					wsSuccess = false;
+					wsError = "Webservice-Dispatcher nicht initialisiert";
+				}
+			}
+
+			boolean allConfiguredSuccess = (!isDbConfigured || dbSuccess) && (!isWsConfigured || wsSuccess);
+			StringBuilder detailsSb = new StringBuilder();
+			if (!isDbConfigured && !isWsConfigured) {
+				detailsSb.append("Lokal (keine Remote-Dienste aktiv)");
+			} else {
+				if (isDbConfigured) {
+					detailsSb.append("DB: ").append(dbSuccess ? "OK" : ("Fehler (" + dbError + ")"));
+				}
+				if (isWsConfigured) {
+					if (detailsSb.length() > 0) detailsSb.append(", ");
+					detailsSb.append("Webservice: ").append(wsSuccess ? "OK (HTTP 200)" : ("Fehler (" + wsError + ")"));
+				}
+			}
+			String statusDetails = detailsSb.toString();
+
+			if (dlg != null && !dlg.isDisposed()) {
+				dlg.addInventoryItem(UID, metadata, finalSig, currentMarker, manufacturerName, tagName, c1, c2, allConfiguredSuccess, statusDetails);
 			}
 
 			uidList.add(UID);
@@ -321,6 +371,67 @@ public class InventoryCallback implements TagCallback {
 
 	public void setWebserviceDispatcher(WebserviceDispatcher webserviceDispatcher) {
 		this.webserviceDispatcher = webserviceDispatcher;
+	}
+
+	/**
+	 * Triggers an asynchronous mock/test RFID tag scan analogous to the Android NFC Reader application (triggerTestScan).
+	 * Generates a mock FinnishDataModel tag (Version 1, UsageType 1, Parts 1, PartNo 1, ItemId 3011xxxx, CH, ISIL-123)
+	 * and dispatches it through the normal scan processing chain (Webservice, Database, UI metrics, Log, etc.).
+	 *
+	 * @return The generated mock UID
+	 */
+	public String triggerTestScan() {
+		return triggerTestScan(null);
+	}
+
+	/**
+	 * Triggers an asynchronous mock/test RFID tag scan with an optional custom barcode/itemId.
+	 *
+	 * @param customItemId Optional custom item ID / barcode (if null or blank, "3011" + 4-digit random is used)
+	 * @return The generated mock UID
+	 */
+	public String triggerTestScan(String customItemId) {
+		int randomSuffix = 1000 + (int) (Math.random() * 9000);
+		String mockUid = String.format("E0040150%04dABCD", randomSuffix);
+		String itemId = (customItemId != null && !customItemId.trim().isEmpty())
+				? customItemId.trim()
+				: ("3011" + randomSuffix);
+
+		new Thread(() -> {
+			try {
+				processTestScanInternal(mockUid, itemId);
+			} catch (Exception e) {
+				e.printStackTrace();
+				println("[Test-Scan Fehler] " + e.getMessage(), c1, c2);
+			}
+		}, "TestScan-Thread").start();
+
+		return mockUid;
+	}
+
+	/**
+	 * Processes a mock/test RFID tag scan synchronously.
+	 *
+	 * @param customItemId Optional custom item ID / barcode
+	 * @return The processed block data
+	 * @throws Exception on error
+	 */
+	public byte[] processTestScan(String customItemId) throws Exception {
+		int randomSuffix = 1000 + (int) (Math.random() * 9000);
+		String mockUid = String.format("E0040150%04dABCD", randomSuffix);
+		String itemId = (customItemId != null && !customItemId.trim().isEmpty())
+				? customItemId.trim()
+				: ("3011" + randomSuffix);
+
+		return processTestScanInternal(mockUid, itemId);
+	}
+
+	private byte[] processTestScanInternal(String mockUid, String itemId) throws Exception {
+		FinnishDataModel model = new FinnishDataModel();
+		model.setValues(1, 1, 1, itemId, "CH", "ISIL-123", null);
+		byte[] data = model.getBlock(48);
+
+		return doIt(c1, c2, "NXP Semiconductors (Test)", "ISO 15693 : NXP I-Code SLIX (Test)", mockUid, data, 4);
 	}
 
 	protected AbstractConfiguration config;

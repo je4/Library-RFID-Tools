@@ -155,6 +155,10 @@ public class InventoryThread implements Runnable {
 			inventoryCallback.clearUIDList();
 	}
 
+	public InventoryCallback getInventoryCallback() {
+		return inventoryCallback;
+	}
+
 	public void dispose() {
 		running = false;
 	}

@@ -77,6 +77,9 @@ public class InventoryDialog extends Composite {
 
 	// Data model for inventory items
 	public static class InventoryItemEntry {
+		public boolean statusOk = true;
+		public String statusSymbol = "\u2714";
+		public String statusDetails = "OK";
 		public int index;
 		public String time;
 		public String primaryItemId;
@@ -100,6 +103,7 @@ public class InventoryDialog extends Composite {
 	// UI Controls
 	public Text tInventoryTag;
 	private Button bStartStop;
+	private Button btnTestScan;
 	private Button btnClear;
 	private Button btnExport;
 	private Text txtSearch;
@@ -114,6 +118,7 @@ public class InventoryDialog extends Composite {
 	private Label lblStatusBar;
 
 	// Inspector Details
+	private Text detSyncStatus;
 	private Text detBarcode;
 	private Text detSignature;
 	private Text detUID;
@@ -133,6 +138,7 @@ public class InventoryDialog extends Composite {
 	protected boolean isRunning = false;
 	protected boolean isReaderConnected = false;
 	protected InventoryThread thread = null;
+	protected InventoryCallback callback = null;
 	private final List<InventoryItemEntry> itemList = new ArrayList<>();
 	private final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -310,7 +316,7 @@ public class InventoryDialog extends Composite {
 		gd.verticalIndent = 8;
 		toolbar.setLayoutData(gd);
 
-		GridLayout tl = new GridLayout(6, false);
+		GridLayout tl = new GridLayout(7, false);
 		tl.marginWidth = 0;
 		tl.marginHeight = 0;
 		tl.horizontalSpacing = 10;
@@ -350,6 +356,22 @@ public class InventoryDialog extends Composite {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				toggleScan();
+			}
+		});
+
+		// Test Scan Button (analogous to Android App)
+		btnTestScan = new Button(toolbar, SWT.PUSH);
+		btnTestScan.setText("Test-Eintrag");
+		btnTestScan.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
+		btnTestScan.setToolTipText("Generiert einen simulierten RFID-Scan (Test-Eintrag analog zur Android-App)");
+		GridData tbgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
+		tbgd.widthHint = 110;
+		tbgd.heightHint = 32;
+		btnTestScan.setLayoutData(tbgd);
+		btnTestScan.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				triggerTestScan();
 			}
 		});
 
@@ -433,10 +455,10 @@ public class InventoryDialog extends Composite {
 		table.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
 		String[] colTitles = {
-			"#", "Uhrzeit", "Barcode / Medien-ID", "Signatur", "Teil", "ISIL / Land", "Nutzung", "Standort-Marker", "UID", "CRC-Pr\u00FCfung"
+			"Status", "#", "Uhrzeit", "Barcode / Medien-ID", "Signatur", "Teil", "ISIL / Land", "Nutzung", "Standort-Marker", "UID", "CRC-Pr\u00FCfung"
 		};
-		int[] colWidths = { 45, 75, 170, 180, 65, 110, 80, 140, 180, 95 };
-		int[] colAligns = { SWT.CENTER, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER };
+		int[] colWidths = { 55, 45, 75, 170, 180, 65, 110, 80, 140, 180, 95 };
+		int[] colAligns = { SWT.CENTER, SWT.CENTER, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER };
 
 		for (int i = 0; i < colTitles.length; i++) {
 			TableColumn col = new TableColumn(table, colAligns[i]);
@@ -478,6 +500,7 @@ public class InventoryDialog extends Composite {
 		ml.verticalSpacing = 6;
 		grpMeta.setLayout(ml);
 
+		detSyncStatus = addInspectorRow(grpMeta, "\u00DCbertragung (DB/Webservice):");
 		detBarcode = addInspectorRow(grpMeta, "Barcode / Primary Item ID:");
 		detSignature = addInspectorRow(grpMeta, "Katalog-Signatur:");
 		detUID = addInspectorRow(grpMeta, "RFID Chip UID:");
@@ -687,12 +710,23 @@ public class InventoryDialog extends Composite {
 	 */
 	public void addInventoryItem(String uid, FinnishDataModel metadata, String signature, String marker,
 			String manufacturer, String tagName, int c1, int c2) {
+		addInventoryItem(uid, metadata, signature, marker, manufacturer, tagName, c1, c2, true, "OK");
+	}
+
+	/**
+	 * Adds a structured RFID tag entry with execution/sync status to the table and updates all UI metrics.
+	 */
+	public void addInventoryItem(String uid, FinnishDataModel metadata, String signature, String marker,
+			String manufacturer, String tagName, int c1, int c2, boolean syncOk, String statusDetails) {
 		if (isDisposed()) return;
 
 		getDisplay().asyncExec(() -> {
 			if (isDisposed()) return;
 
 			InventoryItemEntry item = new InventoryItemEntry();
+			item.statusOk = syncOk;
+			item.statusSymbol = syncOk ? "\u2714" : "\u2716";
+			item.statusDetails = statusDetails != null ? statusDetails : (syncOk ? "OK" : "Fehler");
 			item.index = c1;
 			item.time = LocalDateTime.now().format(timeFormatter);
 			item.uid = uid != null ? uid : "-";
@@ -726,6 +760,7 @@ public class InventoryDialog extends Composite {
 			// Add row to Table
 			TableItem ti = new TableItem(table, SWT.NONE);
 			ti.setText(new String[] {
+				item.statusSymbol,
 				String.valueOf(item.index),
 				item.time,
 				item.primaryItemId,
@@ -737,6 +772,13 @@ public class InventoryDialog extends Composite {
 				item.uid,
 				item.crcStatus
 			});
+
+			if (item.statusOk) {
+				ti.setForeground(0, SWTResourceManager.getColor(22, 163, 74)); // Green checkmark
+			} else {
+				ti.setForeground(0, SWTResourceManager.getColor(220, 38, 38)); // Red error symbol
+				ti.setBackground(SWTResourceManager.getColor(254, 226, 226)); // Soft red row background
+			}
 
 			if ("FEHLER".equals(item.crcStatus)) {
 				ti.setBackground(SWTResourceManager.getColor(254, 226, 226)); // Soft red
@@ -763,6 +805,9 @@ public class InventoryDialog extends Composite {
 	private void updateInspector(InventoryItemEntry item) {
 		if (detBarcode == null || detBarcode.isDisposed()) return;
 
+		if (detSyncStatus != null && !detSyncStatus.isDisposed()) {
+			detSyncStatus.setText(item.statusDetails != null ? item.statusDetails : (item.statusOk ? "OK (\u2714)" : "Fehler (\u2716)"));
+		}
 		detBarcode.setText(item.primaryItemId != null ? item.primaryItemId : "-");
 		detSignature.setText(item.signature != null ? item.signature : "-");
 		detUID.setText(item.uid != null ? item.uid : "-");
@@ -812,6 +857,7 @@ public class InventoryDialog extends Composite {
 
 				TableItem ti = new TableItem(table, SWT.NONE);
 				ti.setText(new String[] {
+					item.statusSymbol,
 					String.valueOf(item.index),
 					item.time,
 					item.primaryItemId,
@@ -823,6 +869,12 @@ public class InventoryDialog extends Composite {
 					item.uid,
 					item.crcStatus
 				});
+				if (item.statusOk) {
+					ti.setForeground(0, SWTResourceManager.getColor(22, 163, 74));
+				} else {
+					ti.setForeground(0, SWTResourceManager.getColor(220, 38, 38));
+					ti.setBackground(SWTResourceManager.getColor(254, 226, 226));
+				}
 				if ("FEHLER".equals(item.crcStatus)) {
 					ti.setBackground(SWTResourceManager.getColor(254, 226, 226));
 				}
@@ -853,9 +905,10 @@ public class InventoryDialog extends Composite {
 			try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(path), StandardCharsets.UTF_8))) {
 				// UTF-8 BOM for Excel compatibility
 				pw.print('\ufeff');
-				pw.println("Nr;Uhrzeit;Barcode_ID;Signatur;Teil_Nr;Teile_Gesamt;ISIL;Land;Nutzungsart;Standort_Marker;RFID_UID;CRC_Status;Hersteller;Transponder_Typ");
+				pw.println("Status;Nr;Uhrzeit;Barcode_ID;Signatur;Teil_Nr;Teile_Gesamt;ISIL;Land;Nutzungsart;Standort_Marker;RFID_UID;CRC_Status;Hersteller;Transponder_Typ;Status_Details");
 				for (InventoryItemEntry item : itemList) {
-					pw.printf("%d;\"%s\";\"%s\";\"%s\";%d;%d;\"%s\";\"%s\";%d;\"%s\";\"%s\";\"%s\";\"%s\";\"%s\"%n",
+					pw.printf("\"%s\";%d;\"%s\";\"%s\";\"%s\";%d;%d;\"%s\";\"%s\";%d;\"%s\";\"%s\";\"%s\";\"%s\";\"%s\";\"%s\"%n",
+						item.statusSymbol,
 						item.index,
 						item.time,
 						item.primaryItemId.replace("\"", "\"\""),
@@ -869,7 +922,8 @@ public class InventoryDialog extends Composite {
 						item.uid,
 						item.crcStatus,
 						item.manufacturer,
-						item.tagName
+						item.tagName,
+						item.statusDetails != null ? item.statusDetails.replace("\"", "\"\"") : ""
 					);
 				}
 				MessageBox box = new MessageBox(getShell(), SWT.ICON_INFORMATION | SWT.OK);
@@ -894,6 +948,9 @@ public class InventoryDialog extends Composite {
 		if (logText != null && !logText.isDisposed()) {
 			logText.setText("");
 		}
+		if (detSyncStatus != null && !detSyncStatus.isDisposed()) {
+			detSyncStatus.setText("");
+		}
 		if (detBarcode != null && !detBarcode.isDisposed()) {
 			detBarcode.setText("");
 			detSignature.setText("");
@@ -909,6 +966,10 @@ public class InventoryDialog extends Composite {
 			detHexDump.setText("");
 		}
 		lblStatusBar.setText("Inventarliste zur\u00FCckgesetzt.");
+		InventoryCallback cb = getCallback();
+		if (cb != null) {
+			cb.clearUIDList();
+		}
 	}
 
 	public void print(String t, int c1, int c2) {
@@ -938,5 +999,45 @@ public class InventoryDialog extends Composite {
 
 	public void setThread(InventoryThread thread) {
 		this.thread = thread;
+	}
+
+	public void setCallback(InventoryCallback callback) {
+		this.callback = callback;
+	}
+
+	public InventoryCallback getCallback() {
+		if (callback != null) {
+			return callback;
+		}
+		if (thread != null) {
+			return thread.getInventoryCallback();
+		}
+		return null;
+	}
+
+	/**
+	 * Triggers a mock/test RFID tag scan analogous to the Android NFC Reader application.
+	 * Can be executed at any time, even when no physical FEIG reader is connected.
+	 */
+	public void triggerTestScan() {
+		InventoryCallback cb = getCallback();
+		if (cb != null) {
+			cb.triggerTestScan();
+		} else {
+			// Fallback: directly create and display mock item in UI
+			int randomSuffix = 1000 + (int) (Math.random() * 9000);
+			String mockUid = String.format("E0040150%04dABCD", randomSuffix);
+			String itemId = "3011" + randomSuffix;
+			try {
+				FinnishDataModel model = new FinnishDataModel();
+				model.setValues(1, 1, 1, itemId, "CH", "ISIL-123", null);
+				byte[] data = model.getBlock(48);
+				model.setBlock(data, 4);
+				String marker = (tInventoryTag != null && !tInventoryTag.getText().trim().isEmpty()) ? tInventoryTag.getText().trim() : "-";
+				addInventoryItem(mockUid, model, "not found!!!", marker, "NXP Semiconductors (Test)", "ISO 15693 : NXP I-Code SLIX (Test)", itemList.size() + 1, itemList.size() + 1);
+			} catch (Exception e) {
+				addLogMessage("Fehler beim Erstellen des Test-Eintrags: " + e.getMessage());
+			}
+		}
 	}
 }

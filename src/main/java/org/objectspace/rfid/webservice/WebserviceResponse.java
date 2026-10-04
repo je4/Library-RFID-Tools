@@ -128,6 +128,45 @@ public class WebserviceResponse {
 		return httpRequestDebug;
 	}
 
+	public int getJwtKeyLength() {
+		return jwtKey != null ? jwtKey.length() : 0;
+	}
+
+	/**
+	 * Formats detailed request/response diagnostic information for scan protocol / logging
+	 * when webservice result is not 200.
+	 *
+	 * @return formatted string containing HTTP status, error message, URL, JWT key length, headers and body
+	 */
+	public String formatScanLogDetails() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("[Webservice Fehler] HTTP Status: ").append(httpStatus);
+		if (errorMessage != null && !errorMessage.isEmpty()) {
+			sb.append(" (").append(errorMessage).append(")");
+		}
+		sb.append("\n  URL: ").append(requestUrl != null && !requestUrl.isEmpty() ? requestUrl : "(keine URL)");
+
+		int keyLen = getJwtKeyLength();
+		sb.append("\n  JWT-Key-L\u00E4nge: ").append(keyLen).append(keyLen > 0 ? " Zeichen" : " (kein Key konfiguriert)");
+
+		sb.append("\n  Header:\n");
+		if (requestHeaders != null && !requestHeaders.isEmpty()) {
+			for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+				sb.append("    ").append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+			}
+		} else {
+			sb.append("    (keine Header)\n");
+		}
+
+		sb.append("  Body: ");
+		if (requestBody != null && !requestBody.isEmpty()) {
+			sb.append(requestBody);
+		} else {
+			sb.append("(kein Body / GET-Aufruf)");
+		}
+		return sb.toString();
+	}
+
 	@Override
 	public String toString() {
 		return "WebserviceResponse{" +

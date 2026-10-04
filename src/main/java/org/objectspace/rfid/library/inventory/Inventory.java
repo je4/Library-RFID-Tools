@@ -116,7 +116,8 @@ public class Inventory {
 		shell.setSize(config.getInt("inventory.window.width", 1150), config.getInt("inventory.window.height", 700));
 		shell.open();
 		
-		InventoryCallback callback = new InventoryCallback( md, config);
+		InventoryCallback callback = new InventoryCallback(md, config);
+		md.setCallback(callback);
 		InventoryThread inventoryThread = new InventoryThread(reader, callback, md, config);
 		md.setThread(inventoryThread);
 		Thread runner = new Thread(inventoryThread);

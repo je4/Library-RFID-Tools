@@ -110,19 +110,6 @@ public class WebserviceDispatcher {
 				userText
 		);
 
-		if (fullUrl == null || fullUrl.trim().isEmpty()) {
-			return WebserviceResponse.failure(
-					0,
-					"Target URL is empty or invalid",
-					"",
-					0,
-					jwtKey,
-					Map.of(),
-					null,
-					"Target URL is empty"
-			);
-		}
-
 		Map<String, String> headers = new LinkedHashMap<>();
 		headers.put("User-Agent", "Iso15693NfcReader/1.0 (Desktop)");
 		headers.put("Accept", "application/json, text/plain, */*");
@@ -133,6 +120,24 @@ public class WebserviceDispatcher {
 		}
 
 		String requestBody = null;
+		if (httpMethod.equalsIgnoreCase("POST")) {
+			requestBody = buildJsonBody(actualMarker, actualSession, rawPayloadHex, nfcContent, uid, timestamp, jwtToken, libraryData);
+			headers.put("Content-Type", "application/json; charset=utf-8");
+		}
+
+		if (fullUrl == null || fullUrl.trim().isEmpty()) {
+			return WebserviceResponse.failure(
+					0,
+					"Target URL is empty or invalid",
+					targetUrlTemplate != null ? targetUrlTemplate : "",
+					0,
+					jwtKey,
+					headers,
+					requestBody,
+					"Target URL is empty"
+			);
+		}
+
 		HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
 				.uri(URI.create(fullUrl))
 				.timeout(Duration.ofSeconds(10));
@@ -142,9 +147,6 @@ public class WebserviceDispatcher {
 		}
 
 		if (httpMethod.equalsIgnoreCase("POST")) {
-			requestBody = buildJsonBody(actualMarker, actualSession, rawPayloadHex, nfcContent, uid, timestamp, jwtToken, libraryData);
-			headers.put("Content-Type", "application/json; charset=utf-8");
-			reqBuilder.header("Content-Type", "application/json; charset=utf-8");
 			reqBuilder.POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8));
 		} else {
 			reqBuilder.GET();

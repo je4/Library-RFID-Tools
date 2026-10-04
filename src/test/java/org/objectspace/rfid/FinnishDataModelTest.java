@@ -163,7 +163,7 @@ public class FinnishDataModelTest {
     }
 
     @Test
-    @DisplayName("Test InventoryItemEntry data mapping")
+    @DisplayName("Test InventoryItemEntry data mapping and status defaults")
     public void testInventoryItemEntry() {
         org.objectspace.rfid.library.inventory.InventoryDialog.InventoryItemEntry item =
             new org.objectspace.rfid.library.inventory.InventoryDialog.InventoryItemEntry();
@@ -172,11 +172,17 @@ public class FinnishDataModelTest {
         item.signature = "SIG-99";
         item.uid = "E004010001234567";
         item.crcStatus = "OK";
+        item.statusOk = true;
+        item.statusSymbol = "\u2714";
+        item.statusDetails = "DB: OK, Webservice: OK";
 
         assertEquals(1, item.index);
         assertEquals("12345678", item.primaryItemId);
         assertEquals("SIG-99", item.signature);
         assertEquals("E004010001234567", item.uid);
         assertEquals("OK", item.crcStatus);
+        assertTrue(item.statusOk);
+        assertEquals("\u2714", item.statusSymbol);
+        assertEquals("DB: OK, Webservice: OK", item.statusDetails);
     }
 }
