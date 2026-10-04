@@ -48,6 +48,9 @@ import java.util.TreeSet;
 import org.apache.commons.configuration2.AbstractConfiguration;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.TagCallback;
+import org.objectspace.rfid.webservice.WebserviceConfig;
+import org.objectspace.rfid.webservice.WebserviceDispatcher;
+import org.objectspace.rfid.webservice.WebserviceResponse;
 
 import de.feig.FeHexConvert;
 
@@ -93,6 +96,11 @@ public class InventoryCallback implements TagCallback {
 
 		uidList = new TreeSet<String>();
 
+		webserviceConfig = WebserviceConfig.fromConfiguration(config);
+		if (webserviceConfig != null && webserviceConfig.isActive()) {
+			webserviceDispatcher = new WebserviceDispatcher(webserviceConfig);
+		}
+
 		if (conn != null) {
 			String insertSQL = "REPLACE INTO `rfid`.`inventory` "
 					+ "(`uid`, `version`, `usagetype`, `parts`, `partno`, `itemid`, `country`, `isil`, `inventorytime`"
@@ -105,7 +113,7 @@ public class InventoryCallback implements TagCallback {
 	}
 
 	protected void print(String txt, int c1, int c2) {
-		if (!dlg.isDisposed())
+		if (dlg != null && !dlg.isDisposed())
 			dlg.getDisplay().syncExec(new Runnable() {
 				public void run() {
 					dlg.print(txt, c1, c2);
@@ -116,13 +124,13 @@ public class InventoryCallback implements TagCallback {
 	private String tagInfo;
 
 	protected String getTagInfo() {
-		if (!dlg.isDisposed())
+		if (dlg != null && !dlg.isDisposed())
 			dlg.getDisplay().syncExec(new Runnable() {
 				public void run() {
 					tagInfo = dlg.tInventoryTag.getText().trim();
 				}
 			});
-		return tagInfo;
+		return tagInfo != null ? tagInfo : "";
 	}
 
 	protected void println(String txt, int c1, int c2) {
@@ -195,7 +203,7 @@ public class InventoryCallback implements TagCallback {
 
 			String currentMarker = getTagInfo();
 			String finalSig = sig.trim();
-			if (!dlg.isDisposed()) {
+			if (dlg != null && !dlg.isDisposed()) {
 				dlg.addInventoryItem(UID, metadata, finalSig, currentMarker, manufacturerName, tagName, c1, c2);
 			}
 
@@ -213,14 +221,36 @@ public class InventoryCallback implements TagCallback {
 				stmt.setBytes(11, metadata.getData());
 				try {
 					int numRows = stmt.executeUpdate();
-					uidList.add(UID);
 				} catch (SQLException e) {
 					e.printStackTrace();
 					println("Error: " + e.getMessage(), c1, c2);
 				}
-			} else {
-				uidList.add(UID);
 			}
+
+			if (webserviceDispatcher != null) {
+				try {
+					String rawHex = (metadata.getData() != null) ? FeHexConvert.byteArrayToHexString(metadata.getData()) : "";
+					WebserviceResponse wsResp = webserviceDispatcher.dispatchScan(
+							currentMarker,
+							currentMarker,
+							metadata.isEmpty() ? "empty" : metadata.getPrimaryItemId(),
+							rawHex,
+							UID,
+							metadata,
+							sessionName,
+							null
+					);
+					if (webserviceConfig.isDebugMode()) {
+						println("[Webservice] " + wsResp.getHttpStatus() + " (" + wsResp.getDurationMs() + "ms): " + wsResp.getResponseBody(), c1, c2);
+					} else if (!wsResp.isSuccess()) {
+						println("[Webservice Error] " + (wsResp.getErrorMessage() != null ? wsResp.getErrorMessage() : "HTTP " + wsResp.getHttpStatus()), c1, c2);
+					}
+				} catch (Exception e) {
+					println("[Webservice Error] " + e.getMessage(), c1, c2);
+				}
+			}
+
+			uidList.add(UID);
 
 		} catch (Exception ex) {
 			// empty tag
@@ -281,7 +311,21 @@ public class InventoryCallback implements TagCallback {
 		}
 	}
 
+	public WebserviceConfig getWebserviceConfig() {
+		return webserviceConfig;
+	}
+
+	public WebserviceDispatcher getWebserviceDispatcher() {
+		return webserviceDispatcher;
+	}
+
+	public void setWebserviceDispatcher(WebserviceDispatcher webserviceDispatcher) {
+		this.webserviceDispatcher = webserviceDispatcher;
+	}
+
 	protected AbstractConfiguration config;
+	protected WebserviceConfig webserviceConfig = null;
+	protected WebserviceDispatcher webserviceDispatcher = null;
 	protected String sessionName;
 	protected TreeSet<String> uidList = null;
 	protected PreparedStatement stmt = null;
