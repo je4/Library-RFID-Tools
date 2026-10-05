@@ -475,6 +475,52 @@ public class WebserviceTest {
         assertTrue(logOutput.contains("Authorization: Bearer eyJhbGciOi..."));
         assertTrue(logOutput.contains("Content-Type: application/json; charset=utf-8"));
         assertTrue(logOutput.contains("Body: " + body));
+        assertTrue(logOutput.contains("R\u00FCckgabe (HTTP): 404"));
+        assertTrue(logOutput.contains("R\u00FCckgabe (Body): (kein Response-Body)"));
+    }
+
+    @Test
+    @DisplayName("Test WebserviceResponse formatScanLogDetails with non-empty response body")
+    public void testWebserviceResponseFormatScanLogDetailsWithResponseBody() {
+        String respBody = "{\"error\":\"Item not found in catalog\",\"code\":404}";
+        WebserviceResponse resp = WebserviceResponse.failure(
+                404,
+                respBody,
+                "HTTP error 404: " + respBody,
+                "https://api.library.org/rfid/scan",
+                50,
+                "mysecret",
+                Map.of("Content-Type", "application/json"),
+                "{\"itemId\":\"12345\"}",
+                "debug"
+        );
+
+        String logOutput = resp.formatScanLogDetails();
+        assertTrue(logOutput.contains("[Webservice Fehler] HTTP Status: 404"));
+        assertTrue(logOutput.contains("R\u00FCckgabe (HTTP): 404"));
+        assertTrue(logOutput.contains("R\u00FCckgabe (Body): " + respBody));
+        assertEquals(respBody, resp.getResponseBody());
+    }
+
+    @Test
+    @DisplayName("Test InventoryCallback logs config file path on startup")
+    public void testInventoryCallbackLogsConfigFileOnStartup() throws Exception {
+        java.util.List<String> logMessages = new java.util.ArrayList<>();
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("config.file.path", "C:\\test\\custom_inventory.xml");
+
+        org.objectspace.rfid.library.inventory.InventoryCallback callback =
+                new org.objectspace.rfid.library.inventory.InventoryCallback(null, cfg, "C:\\test\\custom_inventory.xml") {
+                    @Override
+                    protected void print(String txt, int c1, int c2) {
+                        logMessages.add(txt);
+                    }
+                };
+
+        assertEquals("C:\\test\\custom_inventory.xml", callback.getConfigFilePath());
+        boolean hasConfigLog = logMessages.stream()
+                .anyMatch(msg -> msg.contains("Konfigurationsdatei: C:\\test\\custom_inventory.xml"));
+        assertTrue(hasConfigLog, "Expected configuration file path in scan log: " + logMessages);
     }
 
     @Test

@@ -29,5 +29,5 @@ The Inventory Tool is used to mass-read RFIDs, verify media signatures, and writ
 
 * **Development Start**: `run-inventory.bat` compiles and starts the Inventory application directly from the source repository.
 * **Windows Installer Build**: `build-installer.ps1` (or `build-installer.bat`) packages all dependencies, creates a self-contained runtime with embedded Java (via `jpackage`), and compiles the single-file setup installer:
-  * Setup-Datei: `dist\RFID-Inventory-Setup-1.0.0.exe`
+  * Setup-Datei: `dist\RFID-Inventory-Setup-1.0.1.exe`
   * Portable Distribution: `target\dist\RFID-Inventory\`

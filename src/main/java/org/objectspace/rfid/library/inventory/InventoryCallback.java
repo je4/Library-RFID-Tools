@@ -71,8 +71,21 @@ public class InventoryCallback implements TagCallback {
 	 */
 	public InventoryCallback(InventoryDialog dlg, AbstractConfiguration config)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+		this(dlg, config, config != null ? config.getString("config.file.path", null) : null);
+	}
+
+	public InventoryCallback(InventoryDialog dlg, AbstractConfiguration config, String configFilePath)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
 		this.config = config;
 		this.dlg = dlg;
+		if (configFilePath == null || configFilePath.trim().isEmpty()) {
+			configFilePath = (config != null) ? config.getString("config.file.path", null) : null;
+		}
+		if (configFilePath == null || configFilePath.trim().isEmpty()) {
+			configFilePath = new java.io.File("inventory.xml").getAbsolutePath();
+		}
+		this.configFilePath = configFilePath;
+		println("Konfigurationsdatei: " + this.configFilePath, c1, c2);
 		sessionName = LocalDateTime.now().toString();
 
 		if (conn == null) {
@@ -373,6 +386,10 @@ public class InventoryCallback implements TagCallback {
 		this.webserviceDispatcher = webserviceDispatcher;
 	}
 
+	public String getConfigFilePath() {
+		return configFilePath;
+	}
+
 	/**
 	 * Triggers an asynchronous mock/test RFID tag scan analogous to the Android NFC Reader application (triggerTestScan).
 	 * Generates a mock FinnishDataModel tag (Version 1, UsageType 1, Parts 1, PartNo 1, ItemId 3011xxxx, CH, ISIL-123)
@@ -435,6 +452,7 @@ public class InventoryCallback implements TagCallback {
 	}
 
 	protected AbstractConfiguration config;
+	protected String configFilePath = null;
 	protected WebserviceConfig webserviceConfig = null;
 	protected WebserviceDispatcher webserviceDispatcher = null;
 	protected String sessionName;

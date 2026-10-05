@@ -3,6 +3,10 @@
 #   info-age GmbH, Basel
 # ========================================================
 
+param(
+    [string]$AppVersion = "1.0.1"
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================================" -ForegroundColor Cyan
@@ -29,6 +33,72 @@ if (Test-Path $distDir) { Remove-Item -Force -Recurse $distDir }
 New-Item -ItemType Directory -Force -Path $classesDir | Out-Null
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+# 1b. Ensure Windows Icon (app.ico and app.png)
+$iconIco = Join-Path $projectRoot "app.ico"
+$iconPng = Join-Path $projectRoot "app.png"
+$fallbackSrcPng = "C:\Users\micro\StudioProjects\nfcreader\libraryinventory_icon.png"
+
+$srcImageToUse = if (Test-Path $iconPng) { $iconPng } elseif (Test-Path $fallbackSrcPng) { $fallbackSrcPng } else { $null }
+
+if ($srcImageToUse -and (-not (Test-Path $iconIco) -or (Get-Item $srcImageToUse).LastWriteTime -gt (Get-Item $iconIco).LastWriteTime)) {
+    Write-Host "Erstelle app.ico aus $srcImageToUse..." -ForegroundColor Cyan
+    Add-Type -AssemblyName System.Drawing
+    $srcImg = [System.Drawing.Bitmap]::FromFile($srcImageToUse)
+
+    $sizes = @(16, 24, 32, 48, 64, 128, 256)
+    $pngStreams = @()
+    foreach ($sz in $sizes) {
+        $bmp = New-Object System.Drawing.Bitmap($sz, $sz, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+        $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+        $g.DrawImage($srcImg, (New-Object System.Drawing.Rectangle(0, 0, $sz, $sz)), (New-Object System.Drawing.Rectangle(0, 0, $srcImg.Width, $srcImg.Height)), [System.Drawing.GraphicsUnit]::Pixel)
+        $g.Dispose()
+
+        $ms = New-Object System.IO.MemoryStream
+        $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+        $pngStreams += $ms
+    }
+
+    $srcImg.Dispose()
+
+    $fs = New-Object System.IO.FileStream($iconIco, [System.IO.FileMode]::Create)
+    $bw = New-Object System.IO.BinaryWriter($fs)
+    $bw.Write([UInt16]0)
+    $bw.Write([UInt16]1)
+    $bw.Write([UInt16]$sizes.Length)
+
+    $offset = 6 + ($sizes.Length * 16)
+    for ($i = 0; $i -lt $sizes.Length; $i++) {
+        $sz = $sizes[$i]
+        $w = if ($sz -ge 256) { 0 } else { $sz }
+        $h = if ($sz -ge 256) { 0 } else { $sz }
+        $len = $pngStreams[$i].Length
+
+        $bw.Write([byte]$w)
+        $bw.Write([byte]$h)
+        $bw.Write([byte]0)
+        $bw.Write([byte]0)
+        $bw.Write([UInt16]1)
+        $bw.Write([UInt16]32)
+        $bw.Write([UInt32]$len)
+        $bw.Write([UInt32]$offset)
+        $offset += $len
+    }
+
+    for ($i = 0; $i -lt $sizes.Length; $i++) {
+        $bytes = $pngStreams[$i].ToArray()
+        $bw.Write($bytes)
+        $pngStreams[$i].Dispose()
+    }
+
+    $bw.Close()
+    $fs.Close()
+}
 
 # 2. Compile Java sources
 Write-Host "[2/5] Kompiliere Java-Quellcodedateien..." -ForegroundColor Yellow
@@ -80,32 +150,50 @@ if (-not (Get-Command "jpackage" -ErrorAction SilentlyContinue)) {
     }
 }
 
-& $jpackage --type app-image `
-    --name "RFID-Inventory" `
-    --app-version "1.0.0" `
-    --vendor "info-age GmbH, Basel" `
-    --description "RFID Inventory - info-age GmbH, Basel" `
-    --input $stagingDir `
-    --main-jar "rfid-inventory.jar" `
-    --main-class "org.objectspace.rfid.library.inventory.Inventory" `
-    --add-modules "java.base,java.desktop,java.sql,java.net.http,java.logging,java.management,java.naming,java.xml,jdk.unsupported" `
-    --dest $distDir
+$jpackageArgs = @(
+    "--type", "app-image",
+    "--name", "RFID-Inventory",
+    "--app-version", $AppVersion,
+    "--vendor", "info-age GmbH, Basel",
+    "--description", "RFID Inventory - info-age GmbH, Basel",
+    "--input", $stagingDir,
+    "--main-jar", "rfid-inventory.jar",
+    "--main-class", "org.objectspace.rfid.library.inventory.Inventory",
+    "--add-modules", "java.base,java.desktop,java.sql,java.net.http,java.logging,java.management,java.naming,java.xml,jdk.unsupported,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.security.auth",
+    "--dest", $distDir
+)
+
+if (Test-Path (Join-Path $projectRoot "app.ico")) {
+    $jpackageArgs += @("--icon", (Join-Path $projectRoot "app.ico"))
+}
+
+& $jpackage @jpackageArgs
 
 if ($LASTEXITCODE -ne 0) {
     throw "jpackage Ausführung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
 
-# Copy native FEIG DLLs and default configuration into distribution
+# Copy native FEIG DLLs, icon, background and clean template configuration into distribution
 $appFolder = Join-Path $distDir "RFID-Inventory"
 Copy-Item "$projectRoot\lib\native\x64\*.dll" $appFolder -Force
 Copy-Item "$projectRoot\lib\native\x64\*.dll" (Join-Path $appFolder "app") -Force
-Copy-Item "$projectRoot\inventory.xml" $appFolder -Force
+# Ensure secrets/passwords are never packaged by deploying the clean template as default configuration
+Copy-Item "$projectRoot\inventory.xml.template" (Join-Path $appFolder "inventory.xml") -Force
+if (Test-Path "$projectRoot\app.ico") {
+    Copy-Item "$projectRoot\app.ico" $appFolder -Force
+    Copy-Item "$projectRoot\app.ico" (Join-Path $appFolder "app") -Force
+}
+if (Test-Path "$projectRoot\app.png") {
+    Copy-Item "$projectRoot\app.png" $appFolder -Force
+    Copy-Item "$projectRoot\app.png" (Join-Path $appFolder "app") -Force
+}
 if (Test-Path "$projectRoot\background.jpg") {
     Copy-Item "$projectRoot\background.jpg" $appFolder -Force
 }
 
 # 5. Compile Windows Installer using Inno Setup
 Write-Host "[5/5] Kompiliere Windows Setup Installer (.exe)..." -ForegroundColor Yellow
+
 $isccPaths = @(
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
@@ -133,12 +221,12 @@ if (-not $iscc) {
     exit 0
 }
 
-& $iscc /Q "$projectRoot\installer.iss"
+& $iscc "/DMyAppVersion=$AppVersion" /Q "$projectRoot\installer.iss"
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
 
-$installerExe = Join-Path $outputDir "RFID-Inventory-Setup-1.0.0.exe"
+$installerExe = Join-Path $outputDir "RFID-Inventory-Setup-$AppVersion.exe"
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "  ERFOLG!" -ForegroundColor Green

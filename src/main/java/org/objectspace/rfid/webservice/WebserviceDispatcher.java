@@ -182,6 +182,7 @@ public class WebserviceDispatcher {
 			} else {
 				return WebserviceResponse.failure(
 						statusCode,
+						responseBody,
 						"HTTP error " + statusCode + ": " + responseBody,
 						fullUrl,
 						durationMs,

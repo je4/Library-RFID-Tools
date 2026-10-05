@@ -85,7 +85,21 @@ public class WebserviceResponse {
 			String requestBody,
 			String httpRequestDebug
 	) {
-		return new WebserviceResponse(httpStatus, "", requestUrl, durationMs, false, errorMessage, jwtKey, requestHeaders, requestBody, httpRequestDebug);
+		return failure(httpStatus, "", errorMessage, requestUrl, durationMs, jwtKey, requestHeaders, requestBody, httpRequestDebug);
+	}
+
+	public static WebserviceResponse failure(
+			int httpStatus,
+			String responseBody,
+			String errorMessage,
+			String requestUrl,
+			long durationMs,
+			String jwtKey,
+			Map<String, String> requestHeaders,
+			String requestBody,
+			String httpRequestDebug
+	) {
+		return new WebserviceResponse(httpStatus, responseBody, requestUrl, durationMs, false, errorMessage, jwtKey, requestHeaders, requestBody, httpRequestDebug);
 	}
 
 	public int getHttpStatus() {
@@ -163,6 +177,14 @@ public class WebserviceResponse {
 			sb.append(requestBody);
 		} else {
 			sb.append("(kein Body / GET-Aufruf)");
+		}
+
+		sb.append("\n  R\u00FCckgabe (HTTP): ").append(httpStatus);
+		sb.append("\n  R\u00FCckgabe (Body): ");
+		if (responseBody != null && !responseBody.isEmpty()) {
+			sb.append(responseBody);
+		} else {
+			sb.append("(kein Response-Body)");
 		}
 		return sb.toString();
 	}

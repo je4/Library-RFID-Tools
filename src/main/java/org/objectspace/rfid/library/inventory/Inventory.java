@@ -78,11 +78,15 @@ public class Inventory {
 			configfilename = args[0];
 		}
 
+		java.io.File configFile = new java.io.File(configfilename);
+		String configAbsolutePath = configFile.getAbsolutePath();
+
 		Parameters params = new Parameters();
 		FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<XMLConfiguration>(
-				XMLConfiguration.class).configure(params.xml().setFileName(configfilename));
+				XMLConfiguration.class).configure(params.xml().setFile(configFile));
 
 		XMLConfiguration config = builder.getConfiguration();
+		config.setProperty("config.file.path", configAbsolutePath);
 
 		ISO15693Reader reader = null;
 		try {
@@ -96,6 +100,19 @@ public class Inventory {
 		Display display = new Display();
 		Shell shell = new Shell(display);
 		shell.setText("RFID Inventory - info-age GmbH, Basel");
+
+		// Set application window and taskbar icon
+		try {
+			java.io.File iconPng = new java.io.File("app.png");
+			java.io.File iconIco = new java.io.File("app.ico");
+			if (iconPng.exists()) {
+				shell.setImage(new Image(display, iconPng.getAbsolutePath()));
+			} else if (iconIco.exists()) {
+				shell.setImage(new Image(display, iconIco.getAbsolutePath()));
+			}
+		} catch (Exception e) {
+			// Ignore icon loading errors
+		}
 
 		FillLayout layout = new FillLayout();
 		shell.setLayout(layout);
@@ -116,7 +133,7 @@ public class Inventory {
 		shell.setSize(config.getInt("inventory.window.width", 1150), config.getInt("inventory.window.height", 700));
 		shell.open();
 		
-		InventoryCallback callback = new InventoryCallback(md, config);
+		InventoryCallback callback = new InventoryCallback(md, config, configAbsolutePath);
 		md.setCallback(callback);
 		InventoryThread inventoryThread = new InventoryThread(reader, callback, md, config);
 		md.setThread(inventoryThread);
