@@ -74,31 +74,10 @@ import org.objectspace.rfid.FinnishDataModel;
  * Modernized, responsive user interface for RFID library inventory.
  * Features live data table, KPI metrics banner, live search, tag inspector, and CSV export.
  */
-public class InventoryDialog extends Composite {
+public class InventoryDialog extends Composite implements InventoryView {
 
-	// Data model for inventory items
-	public static class InventoryItemEntry {
-		public boolean statusOk = true;
-		public String statusSymbol = "\u2714";
-		public String statusDetails = "OK";
-		public int index;
-		public String time;
-		public String primaryItemId;
-		public String signature;
-		public String partInfo;
-		public String isilAndCountry;
-		public int usageType;
-		public String marker;
-		public String uid;
-		public String crcStatus;
-		public String manufacturer;
-		public String tagName;
-		public byte[] rawData;
-		public int version;
-		public int partNumber;
-		public int partsInItem;
-		public String country;
-		public String isil;
+	// Data model for inventory items (backwards compatibility alias)
+	public static class InventoryItemEntry extends org.objectspace.rfid.library.inventory.InventoryItemEntry {
 	}
 
 	// UI Controls
@@ -918,10 +897,14 @@ public class InventoryDialog extends Composite {
 			StringBuilder sb = new StringBuilder();
 			for (int i = 0; i < item.rawData.length; i += 4) {
 				sb.append(String.format("Block %02d:  ", i / 4));
-				for (int j = 0; j < 4 && (i + j) < item.rawData.length; j++) {
-					sb.append(String.format("%02X ", item.rawData[i + j]));
+				for (int j = 0; j < 4; j++) {
+					if (i + j < item.rawData.length) {
+						sb.append(String.format("%02X ", item.rawData[i + j]));
+					} else {
+						sb.append("   ");
+					}
 				}
-				sb.append("   |");
+				sb.append("  |");
 				for (int j = 0; j < 4 && (i + j) < item.rawData.length; j++) {
 					byte b = item.rawData[i + j];
 					sb.append((b >= 32 && b <= 126) ? (char) b : '.');
@@ -1084,6 +1067,13 @@ public class InventoryDialog extends Composite {
 
 	public void println(String t, int c1, int c2) {
 		print(t + "\n", c1, c2);
+	}
+
+	public String getTagInfo() {
+		if (tInventoryTag != null && !tInventoryTag.isDisposed()) {
+			return tInventoryTag.getText().trim();
+		}
+		return "";
 	}
 
 	public boolean isRunning() {

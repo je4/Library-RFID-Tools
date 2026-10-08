@@ -13,12 +13,14 @@ The following libraries/SDKs are used under the Windows Operating System:
 * Apache Commons (configuration2 2.10.1, collections4 4.4, lang3 3.17.0)
 * SLF4J (2.0.16) / Logback (1.5.12)
 * SWT: Standard Widget Toolkit (Windows x64)
+* FlatLaf (3.5.4): Modern Look and Feel für Swing (Dark/Light/System Theme, High-DPI Skalierung)
 * MySQL Connector/J (8.4.0 LTS JDBC driver)
 
 ## Build and Modernization
 * Maven build system configured with Java 25 compatibility (`--release 25`).
 * FEIG SDK Gen3 (v7.1.0) integration (x64 native support).
-* High-performance responsive GUI with real-time hardware status detection, visual scan feedback, and keyboard shortcuts (`F5`, `Strg+F`, `Strg+E`, `Strg+T`, `Strg+L`, `Esc`).
+* Parallele moderne Swing/FlatLaf- und SWT-Oberfläche, wählbar über `inventory.xml` (`<ui>modern</ui>` oder `<ui>swt</ui>`).
+* High-performance responsive GUI with real-time hardware status detection, visual scan feedback, KPI metrics cards, and live search.
 * ISO 28560 / Finnish Data Model unit tests.
 
 ## Tools & Installation

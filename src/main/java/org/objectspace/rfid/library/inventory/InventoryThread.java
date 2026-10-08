@@ -52,7 +52,7 @@ public class InventoryThread implements Runnable {
 	/**
 	 * 
 	 */
-	public InventoryThread(ISO15693Reader reader, InventoryCallback inventoryCallback, InventoryDialog id,
+	public InventoryThread(ISO15693Reader reader, InventoryCallback inventoryCallback, InventoryView id,
 			AbstractConfiguration config) {
 		this.reader = reader;
 		this.inventoryCallback = inventoryCallback;
@@ -63,17 +63,10 @@ public class InventoryThread implements Runnable {
 	}
 
 	protected boolean inventoryRunning() {
-		inventoryRunning = false;
 		if (id != null && !id.isDisposed()) {
-			id.getDisplay().syncExec(new Runnable() {
-				public void run() {
-					inventoryRunning = id.isRunning();
-				}
-			});
-		} else {
-			running = false;
+			return id.isRunning();
 		}
-		return inventoryRunning;
+		return false;
 	}
 
 	/*
@@ -169,7 +162,7 @@ public class InventoryThread implements Runnable {
 	protected InventoryCallback inventoryCallback;
 	private AbstractConfiguration config;
 	protected int numBlocks = 0;
-	protected InventoryDialog id = null;
+	protected InventoryView id = null;
 	protected int sleep = 500;
 	private volatile boolean pause = true;
 

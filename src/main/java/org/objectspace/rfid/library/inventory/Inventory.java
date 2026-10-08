@@ -97,6 +97,34 @@ public class Inventory {
 			System.out.println("Notice: RFID reader not connected (" + e.getMessage() + "). Application starting anyway.");
 		}
 		
+		String ui = config.getString("inventory.ui", "modern").trim().toLowerCase();
+		if ("swt".equals(ui)) {
+			launchSwt(config, configAbsolutePath, reader);
+		} else {
+			launchModern(config, configAbsolutePath, reader);
+		}
+	}
+
+	private static void launchModern(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader) {
+		InventoryModernFrame.setupTheme(config);
+		final ISO15693Reader finalReader = reader;
+		javax.swing.SwingUtilities.invokeLater(() -> {
+			try {
+				InventoryModernFrame frame = new InventoryModernFrame(config, finalReader);
+				InventoryCallback callback = new InventoryCallback(frame, config, configAbsolutePath);
+				frame.setCallback(callback);
+				InventoryThread inventoryThread = new InventoryThread(finalReader, callback, frame, config);
+				frame.setThread(inventoryThread);
+				Thread runner = new Thread(inventoryThread, "Inventory-Scanner");
+				runner.start();
+				frame.setVisible(true);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+	}
+
+	private static void launchSwt(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader) throws Exception {
 		Display display = new Display();
 		Shell shell = new Shell(display);
 		shell.setText("RFID Inventory - info-age GmbH, Basel");

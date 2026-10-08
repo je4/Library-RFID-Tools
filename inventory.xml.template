@@ -61,6 +61,15 @@
 
 	<!-- Configuration for the Inventory application -->
 	<inventory>
+		<!-- Selection of user interface: "modern" (FlatLaf Swing) or "swt" (Classic SWT) -->
+		<ui>modern</ui>
+
+		<!-- Theme for modern UI: "system" (default), "dark", or "light" -->
+		<theme>system</theme>
+
+		<!-- Optional initial location/marker -->
+		<!-- <marker>EG-Sachbuecher</marker> -->
+
 		<!-- Configuration of main window -->
 		<window>
 			<!-- Optional logo image -->

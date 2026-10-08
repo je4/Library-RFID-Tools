@@ -1,5 +1,13 @@
 [CustomMessages]
 german.CreateStartMenuIcon=Startmenü-Eintrag erstellen
+german.UiChoicePageTitle=Benutzeroberfläche
+german.UiChoicePageSubTitle=Wählen Sie das Design und die Oberfläche der Anwendung aus.
+german.UiChoicePageDesc=Wählen Sie die gewünschte Benutzeroberfläche für RFID Inventory aus:
+german.UiModernRadio=Moderne Benutzeroberfläche (FlatLaf Swing - Empfohlen)
+german.UiModernHelp=Modernes Design mit KPI-Karten, Live-Suche, Tag-Inspector, Hexdump-Analyse und automatischer Dark/Light-Mode Unterstützung.
+german.UiSwtRadio=Klassische Benutzeroberfläche (SWT)
+german.UiSwtHelp=Klassische, native Windows-Standardoberfläche.
+
 german.ServiceChoicePageTitle=Schnittstellen und Anbindungen
 german.ServiceChoicePageSubTitle=Wählen Sie die zu aktivierenden Schnittstellen aus.
 german.ServiceChoicePageDesc=Hier können Sie festlegen, welche externen Schnittstellen und Dienste für die Inventarisierung aktiviert werden sollen:
@@ -42,6 +50,14 @@ german.UninstallError=Das Deinstallationsprogramm konnte nicht ausgeführt werde
 german.UninstallNotFound=Das Deinstallationsprogramm wurde nicht gefunden:%n%1%n%nDas Setup wird regulär fortgesetzt.
 
 english.CreateStartMenuIcon=Create a Start Menu shortcut
+english.UiChoicePageTitle=User Interface
+english.UiChoicePageSubTitle=Choose the application interface and design.
+english.UiChoicePageDesc=Select the preferred user interface for RFID Inventory:
+english.UiModernRadio=Modern User Interface (FlatLaf Swing - Recommended)
+english.UiModernHelp=Modern UI with KPI metrics cards, live search, tag inspector, hex dump analysis, and automatic dark/light mode support.
+english.UiSwtRadio=Classic User Interface (SWT)
+english.UiSwtHelp=Classic, native Windows standard interface.
+
 english.ServiceChoicePageTitle=Interfaces & Integrations
 english.ServiceChoicePageSubTitle=Select the interfaces and integrations to enable.
 english.ServiceChoicePageDesc=Specify which external services and interfaces should be enabled for inventory processing:

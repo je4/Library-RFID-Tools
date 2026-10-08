@@ -4,6 +4,13 @@
   ======================================================== }
 
 var
+  UiChoicePage: TWizardPage;
+  UiChoiceDescLabel: TLabel;
+  UiModernRadio: TNewRadioButton;
+  UiModernHelpLabel: TLabel;
+  UiSwtRadio: TNewRadioButton;
+  UiSwtHelpLabel: TLabel;
+
   ServiceChoicePage: TWizardPage;
   ServiceChoiceDescLabel: TLabel;
   DbEnableCheckBox: TNewCheckBox;
@@ -34,8 +41,61 @@ procedure CreateCustomConfigPages;
 begin
   ConfigLoaded := False;
 
-  { Schritt 1: Gemeinsame Auswahlseite fuer Schnittstellen (Datenbank & Webservice) }
-  ServiceChoicePage := CreateCustomPage(wpSelectTasks, CustomMessage('ServiceChoicePageTitle'), CustomMessage('ServiceChoicePageSubTitle'));
+  { Schritt 1: Benutzeroberflaeche auswaehlen (Modern FlatLaf vs. Klassisch SWT) }
+  UiChoicePage := CreateCustomPage(wpSelectTasks, CustomMessage('UiChoicePageTitle'), CustomMessage('UiChoicePageSubTitle'));
+
+  UiChoiceDescLabel := TLabel.Create(WizardForm);
+  UiChoiceDescLabel.Parent := UiChoicePage.Surface;
+  UiChoiceDescLabel.AutoSize := False;
+  UiChoiceDescLabel.Left := ScaleX(0);
+  UiChoiceDescLabel.Top := ScaleY(5);
+  UiChoiceDescLabel.Width := UiChoicePage.SurfaceWidth;
+  UiChoiceDescLabel.Height := ScaleY(35);
+  UiChoiceDescLabel.WordWrap := True;
+  UiChoiceDescLabel.Caption := CustomMessage('UiChoicePageDesc');
+
+  UiModernRadio := TNewRadioButton.Create(WizardForm);
+  UiModernRadio.Parent := UiChoicePage.Surface;
+  UiModernRadio.Left := ScaleX(0);
+  UiModernRadio.Top := ScaleY(45);
+  UiModernRadio.Width := UiChoicePage.SurfaceWidth;
+  UiModernRadio.Height := ScaleY(22);
+  UiModernRadio.Caption := CustomMessage('UiModernRadio');
+  UiModernRadio.Checked := True;
+
+  UiModernHelpLabel := TLabel.Create(WizardForm);
+  UiModernHelpLabel.Parent := UiChoicePage.Surface;
+  UiModernHelpLabel.AutoSize := False;
+  UiModernHelpLabel.Left := ScaleX(20);
+  UiModernHelpLabel.Top := ScaleY(68);
+  UiModernHelpLabel.Width := UiChoicePage.SurfaceWidth - ScaleX(20);
+  UiModernHelpLabel.Height := ScaleY(30);
+  UiModernHelpLabel.WordWrap := True;
+  UiModernHelpLabel.Font.Color := clGrayText;
+  UiModernHelpLabel.Caption := CustomMessage('UiModernHelp');
+
+  UiSwtRadio := TNewRadioButton.Create(WizardForm);
+  UiSwtRadio.Parent := UiChoicePage.Surface;
+  UiSwtRadio.Left := ScaleX(0);
+  UiSwtRadio.Top := ScaleY(105);
+  UiSwtRadio.Width := UiChoicePage.SurfaceWidth;
+  UiSwtRadio.Height := ScaleY(22);
+  UiSwtRadio.Caption := CustomMessage('UiSwtRadio');
+  UiSwtRadio.Checked := False;
+
+  UiSwtHelpLabel := TLabel.Create(WizardForm);
+  UiSwtHelpLabel.Parent := UiChoicePage.Surface;
+  UiSwtHelpLabel.AutoSize := False;
+  UiSwtHelpLabel.Left := ScaleX(20);
+  UiSwtHelpLabel.Top := ScaleY(128);
+  UiSwtHelpLabel.Width := UiChoicePage.SurfaceWidth - ScaleX(20);
+  UiSwtHelpLabel.Height := ScaleY(30);
+  UiSwtHelpLabel.WordWrap := True;
+  UiSwtHelpLabel.Font.Color := clGrayText;
+  UiSwtHelpLabel.Caption := CustomMessage('UiSwtHelp');
+
+  { Schritt 2: Gemeinsame Auswahlseite fuer Schnittstellen (Datenbank & Webservice) }
+  ServiceChoicePage := CreateCustomPage(UiChoicePage.ID, CustomMessage('ServiceChoicePageTitle'), CustomMessage('ServiceChoicePageSubTitle'));
 
   ServiceChoiceDescLabel := TLabel.Create(WizardForm);
   ServiceChoiceDescLabel.Parent := ServiceChoicePage.Surface;

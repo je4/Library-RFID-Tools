@@ -46,7 +46,8 @@ public class TestRunner {
         int failed = 0;
         Class<?>[] testClasses = new Class<?>[] {
             FinnishDataModelTest.class,
-            org.objectspace.rfid.webservice.WebserviceTest.class
+            org.objectspace.rfid.webservice.WebserviceTest.class,
+            org.objectspace.rfid.library.inventory.InventoryViewTest.class
         };
 
         System.out.println("=== Starting Test Runner ===");

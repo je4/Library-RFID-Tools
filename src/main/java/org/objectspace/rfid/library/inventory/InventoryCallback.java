@@ -69,12 +69,12 @@ public class InventoryCallback implements TagCallback {
 	 * @throws SQLException
 	 * 
 	 */
-	public InventoryCallback(InventoryDialog dlg, AbstractConfiguration config)
+	public InventoryCallback(InventoryView dlg, AbstractConfiguration config)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
 		this(dlg, config, config != null ? config.getString("config.file.path", null) : null);
 	}
 
-	public InventoryCallback(InventoryDialog dlg, AbstractConfiguration config, String configFilePath)
+	public InventoryCallback(InventoryView dlg, AbstractConfiguration config, String configFilePath)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
 		this.config = config;
 		this.dlg = dlg;
@@ -126,24 +126,18 @@ public class InventoryCallback implements TagCallback {
 	}
 
 	protected void print(String txt, int c1, int c2) {
-		if (dlg != null && !dlg.isDisposed())
-			dlg.getDisplay().syncExec(new Runnable() {
-				public void run() {
-					dlg.print(txt, c1, c2);
-				}
-			});
+		if (dlg != null && !dlg.isDisposed()) {
+			dlg.print(txt, c1, c2);
+		}
 	}
 
 	private String tagInfo;
 
 	protected String getTagInfo() {
-		if (dlg != null && !dlg.isDisposed())
-			dlg.getDisplay().syncExec(new Runnable() {
-				public void run() {
-					tagInfo = dlg.tInventoryTag.getText().trim();
-				}
-			});
-		return tagInfo != null ? tagInfo : "";
+		if (dlg != null && !dlg.isDisposed()) {
+			return dlg.getTagInfo();
+		}
+		return "";
 	}
 
 	protected void println(String txt, int c1, int c2) {
@@ -460,7 +454,7 @@ public class InventoryCallback implements TagCallback {
 	protected PreparedStatement stmt = null;
 	protected PreparedStatement stmt2 = null;
 	protected String marker = null;
-	protected InventoryDialog dlg = null;
+	protected InventoryView dlg = null;
 	protected int c1 = 0;
 	protected int c2 = 0;
 

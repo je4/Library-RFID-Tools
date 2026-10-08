@@ -8,7 +8,7 @@ var
   ConfigFile: String;
   Lines: TArrayOfString;
   I, P1, P2: Integer;
-  InDbBlock, InWsBlock: Boolean;
+  InDbBlock, InWsBlock, InInventoryBlock: Boolean;
   LineStr: String;
 begin
   if ConfigLoaded then Exit;
@@ -17,8 +17,14 @@ begin
   begin
     InDbBlock := False;
     InWsBlock := False;
+    InInventoryBlock := False;
     for I := 0 to GetArrayLength(Lines) - 1 do
     begin
+      if Pos('<inventory>', Lines[I]) > 0 then
+        InInventoryBlock := True
+      else if Pos('</inventory>', Lines[I]) > 0 then
+        InInventoryBlock := False;
+
       if Pos('<database>', Lines[I]) > 0 then
         InDbBlock := True
       else if Pos('</database>', Lines[I]) > 0 then
@@ -28,6 +34,20 @@ begin
         InWsBlock := True
       else if Pos('</webservice>', Lines[I]) > 0 then
         InWsBlock := False;
+
+      if InInventoryBlock then
+      begin
+        if (Pos('<ui>swt</ui>', LowerCase(Lines[I])) > 0) and (UiSwtRadio <> nil) then
+        begin
+          UiSwtRadio.Checked := True;
+          UiModernRadio.Checked := False;
+        end
+        else if (Pos('<ui>modern</ui>', LowerCase(Lines[I])) > 0) and (UiModernRadio <> nil) then
+        begin
+          UiModernRadio.Checked := True;
+          UiSwtRadio.Checked := False;
+        end;
+      end;
 
       if InDbBlock then
       begin
@@ -114,15 +134,21 @@ var
   ConfigFile: String;
   Lines: TArrayOfString;
   I: Integer;
+  UiVal: String;
   DbActiveVal: String;
   WsActiveVal: String;
   DsnVal: String;
   TargetUrlVal: String;
   JwtKeyVal: String;
-  InDbBlock, InWsBlock: Boolean;
+  InDbBlock, InWsBlock, InInventoryBlock: Boolean;
 begin
   ConfigFile := ExpandConstant('{app}\inventory.xml');
   if not FileExists(ConfigFile) then Exit;
+
+  if (UiSwtRadio <> nil) and UiSwtRadio.Checked then
+    UiVal := 'swt'
+  else
+    UiVal := 'modern';
 
   if DbEnableCheckBox.Checked then
     DbActiveVal := 'true'
@@ -142,8 +168,14 @@ begin
   begin
     InDbBlock := False;
     InWsBlock := False;
+    InInventoryBlock := False;
     for I := 0 to GetArrayLength(Lines) - 1 do
     begin
+      if Pos('<inventory>', Lines[I]) > 0 then
+        InInventoryBlock := True
+      else if Pos('</inventory>', Lines[I]) > 0 then
+        InInventoryBlock := False;
+
       if Pos('<database>', Lines[I]) > 0 then
         InDbBlock := True
       else if Pos('</database>', Lines[I]) > 0 then
@@ -153,6 +185,12 @@ begin
         InWsBlock := True
       else if Pos('</webservice>', Lines[I]) > 0 then
         InWsBlock := False;
+
+      if InInventoryBlock then
+      begin
+        if Pos('<ui>', Lines[I]) > 0 then
+          Lines[I] := #9#9'<ui>' + UiVal + '</ui>';
+      end;
 
       if InDbBlock then
       begin

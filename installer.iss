@@ -77,7 +77,8 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if ((ServiceChoicePage <> nil) and (CurPageID = ServiceChoicePage.ID)) or
+  if ((UiChoicePage <> nil) and (CurPageID = UiChoicePage.ID)) or
+     ((ServiceChoicePage <> nil) and (CurPageID = ServiceChoicePage.ID)) or
      ((DbDsnPage <> nil) and (CurPageID = DbDsnPage.ID)) or
      ((WsPage <> nil) and (CurPageID = WsPage.ID)) then
   begin
