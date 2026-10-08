@@ -18,7 +18,7 @@ The following libraries/SDKs are used under the Windows Operating System:
 * MySQL Connector/J (JDBC driver)
 
 ## Build and Modernization
-* Maven build system configured with Java 17/21 compatibility.
+* Maven build system configured with Java 25 compatibility.
 * FEIG SDK v5.6.3 integration (x64 native support).
 * High-performance responsive GUI with real-time hardware status detection.
 * ISO 28560 / Finnish Data Model unit tests.
@@ -27,7 +27,7 @@ The following libraries/SDKs are used under the Windows Operating System:
 ### Inventory
 The Inventory Tool is used to mass-read RFIDs, verify media signatures, and write contents into a SQL database system or export to CSV.
 
-* **Development Start**: `run-inventory.bat` compiles and starts the Inventory application directly from the source repository.
+* **Development Start**: `run-inventory.ps1` (or `run-inventory.bat`) compiles and starts the Inventory application directly from the source repository.
 * **Windows Installer Build**: `build-installer.ps1` (or `build-installer.bat`) packages all dependencies, creates a self-contained runtime with embedded Java (via `jpackage`), and compiles the single-file setup installer:
   * Setup-Datei: `dist\RFID-Inventory-Setup-1.0.1.exe`
   * Portable Distribution: `target\dist\RFID-Inventory\`

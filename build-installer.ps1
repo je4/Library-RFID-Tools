@@ -101,11 +101,12 @@ if ($srcImageToUse -and (-not (Test-Path $iconIco) -or (Get-Item $srcImageToUse)
 }
 
 # 2. Compile Java sources
-Write-Host "[2/5] Kompiliere Java-Quellcodedateien..." -ForegroundColor Yellow
+Write-Host "[2/5] Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
 $javaSources = (Get-ChildItem -Recurse -Path "$projectRoot\src\main\java\*.java").FullName
 $classpath = "lib\*;lib\ext\*"
 
-& javac -encoding UTF-8 -cp $classpath -d $classesDir $javaSources
+$javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
+& $javacCmd --release 25 -encoding UTF-8 -cp $classpath -d $classesDir $javaSources
 if ($LASTEXITCODE -ne 0) {
     throw "Java-Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
@@ -113,7 +114,8 @@ if ($LASTEXITCODE -ne 0) {
 # 3. Package application JAR
 Write-Host "[3/5] Erstelle rfid-inventory.jar..." -ForegroundColor Yellow
 $appJar = Join-Path $projectRoot "target\rfid-inventory.jar"
-& jar cfe $appJar "org.objectspace.rfid.library.inventory.Inventory" -C $classesDir .
+$jarCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\jar.exe")) { "$env:JAVA_HOME\bin\jar.exe" } else { "jar" }
+& $jarCmd cfe $appJar "org.objectspace.rfid.library.inventory.Inventory" -C $classesDir .
 if ($LASTEXITCODE -ne 0) {
     throw "Erstellung der JAR-Datei fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
@@ -143,10 +145,12 @@ $jpackage = "jpackage"
 if (-not (Get-Command "jpackage" -ErrorAction SilentlyContinue)) {
     if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\jpackage.exe")) {
         $jpackage = "$env:JAVA_HOME\bin\jpackage.exe"
+    } elseif (Test-Path "C:\Program Files\Microsoft\jdk-25.0.4.101-hotspot\bin\jpackage.exe") {
+        $jpackage = "C:\Program Files\Microsoft\jdk-25.0.4.101-hotspot\bin\jpackage.exe"
     } elseif (Test-Path "C:\Program Files\Microsoft\jdk-17.0.5.8-hotspot\bin\jpackage.exe") {
         $jpackage = "C:\Program Files\Microsoft\jdk-17.0.5.8-hotspot\bin\jpackage.exe"
     } else {
-        throw "jpackage.exe wurde nicht gefunden! Bitte JAVA_HOME auf eine JDK 17+ Installation setzen."
+        throw "jpackage.exe wurde nicht gefunden! Bitte JAVA_HOME auf eine JDK 25+ Installation setzen."
     }
 }
 
@@ -159,6 +163,7 @@ $jpackageArgs = @(
     "--input", $stagingDir,
     "--main-jar", "rfid-inventory.jar",
     "--main-class", "org.objectspace.rfid.library.inventory.Inventory",
+    "--java-options", "--enable-native-access=ALL-UNNAMED",
     "--add-modules", "java.base,java.desktop,java.sql,java.net.http,java.logging,java.management,java.naming,java.xml,jdk.unsupported,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.security.auth",
     "--dest", $distDir
 )
