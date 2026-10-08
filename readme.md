@@ -9,18 +9,16 @@ This application supports ISO 15693 compatible RFID tags written according to IS
 
 ## Libraries & SDKs
 The following libraries/SDKs are used under the Windows Operating System:
-* FEIG SDK for JAVA (v5.6.3, located in `ID_ISC.SDK.Java.Win-V5.6.3`, for FEIG ISC.MR102-USB support) 
-  * fecom.dll, fefu.dll, feisc.dll, fetcl.dll, fetcp.dll, feusb.dll, OBIDISC4J.dll
-  * OBIDISC4J.jar, OBIDISC4J_API.jar
-* Apache Commons (configuration2, collections4, lang3)
-* SLF4J / Logback (Logging)
+* FEIG SDK Gen3 for Java (v7.1.0, located in `lib/fedm-*.jar` and `lib/native/x64/` with Gen3 architecture support)
+* Apache Commons (configuration2 2.10.1, collections4 4.4, lang3 3.17.0)
+* SLF4J (2.0.16) / Logback (1.5.12)
 * SWT: Standard Widget Toolkit (Windows x64)
-* MySQL Connector/J (JDBC driver)
+* MySQL Connector/J (8.4.0 LTS JDBC driver)
 
 ## Build and Modernization
-* Maven build system configured with Java 25 compatibility.
-* FEIG SDK v5.6.3 integration (x64 native support).
-* High-performance responsive GUI with real-time hardware status detection.
+* Maven build system configured with Java 25 compatibility (`--release 25`).
+* FEIG SDK Gen3 (v7.1.0) integration (x64 native support).
+* High-performance responsive GUI with real-time hardware status detection, visual scan feedback, and keyboard shortcuts (`F5`, `Strg+F`, `Strg+E`, `Strg+T`, `Strg+L`, `Esc`).
 * ISO 28560 / Finnish Data Model unit tests.
 
 ## Tools & Installation

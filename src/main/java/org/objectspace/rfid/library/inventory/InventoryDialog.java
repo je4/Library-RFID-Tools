@@ -58,6 +58,7 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Canvas;
 import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
@@ -159,6 +160,7 @@ public class InventoryDialog extends Composite {
 		createToolbar();
 		createMainContent();
 		createStatusBar();
+		setupKeyboardShortcuts();
 
 		updateStatusBadge(false);
 	}
@@ -210,7 +212,7 @@ public class InventoryDialog extends Composite {
 		lblTitle.setBackground(SWTResourceManager.getColor(26, 36, 56));
 
 		Label lblSubtitle = new Label(titleComp, SWT.NONE);
-		lblSubtitle.setText("RFID Inventarisierung & Medienpr\u00FCfung \u2013 ISO 28560 / FEIG SDK v5.6.3");
+		lblSubtitle.setText("RFID Inventarisierung & Medienpr\u00FCfung \u2013 ISO 28560 / FEIG SDK Gen3 (v7.1.0)");
 		lblSubtitle.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
 		lblSubtitle.setForeground(SWTResourceManager.getColor(148, 163, 184));
 		lblSubtitle.setBackground(SWTResourceManager.getColor(26, 36, 56));
@@ -319,7 +321,7 @@ public class InventoryDialog extends Composite {
 		GridLayout tl = new GridLayout(7, false);
 		tl.marginWidth = 0;
 		tl.marginHeight = 0;
-		tl.horizontalSpacing = 10;
+		tl.horizontalSpacing = 8;
 		toolbar.setLayout(tl);
 
 		// Marker Label & Field
@@ -332,7 +334,7 @@ public class InventoryDialog extends Composite {
 		tInventoryTag.setFont(SWTResourceManager.getFont("Segoe UI", 10, SWT.NORMAL));
 		tInventoryTag.setMessage("z. B. Regal 12 / Fach B");
 		GridData tgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
-		tgd.widthHint = 220;
+		tgd.widthHint = 160;
 		tgd.heightHint = 22;
 		tInventoryTag.setLayoutData(tgd);
 		tInventoryTag.addModifyListener(e -> {
@@ -347,9 +349,9 @@ public class InventoryDialog extends Composite {
 		bStartStop.setEnabled(false);
 		bStartStop.setBackground(SWTResourceManager.getColor(156, 163, 175)); // Inactive Gray
 		bStartStop.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
-		bStartStop.setToolTipText("Kein Leseger\u00E4t verbunden. Bitte FEIG USB-Kabel anschlie\u00DFen.");
+		bStartStop.setToolTipText("Inventarisierung starten / anhalten [F5]. Kein Leseger\u00E4t verbunden.");
 		GridData bgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
-		bgd.widthHint = 140;
+		bgd.widthHint = 125;
 		bgd.heightHint = 32;
 		bStartStop.setLayoutData(bgd);
 		bStartStop.addSelectionListener(new SelectionAdapter() {
@@ -361,11 +363,11 @@ public class InventoryDialog extends Composite {
 
 		// Test Scan Button (analogous to Android App)
 		btnTestScan = new Button(toolbar, SWT.PUSH);
-		btnTestScan.setText("Test-Eintrag");
+		btnTestScan.setText("Test-Scan");
 		btnTestScan.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
-		btnTestScan.setToolTipText("Generiert einen simulierten RFID-Scan (Test-Eintrag analog zur Android-App)");
+		btnTestScan.setToolTipText("Simulierten RFID-Scan einf\u00FCgen [Strg+T] (Test-Eintrag)");
 		GridData tbgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
-		tbgd.widthHint = 110;
+		tbgd.widthHint = 90;
 		tbgd.heightHint = 32;
 		btnTestScan.setLayoutData(tbgd);
 		btnTestScan.addSelectionListener(new SelectionAdapter() {
@@ -377,10 +379,11 @@ public class InventoryDialog extends Composite {
 
 		// Clear Button
 		btnClear = new Button(toolbar, SWT.PUSH);
-		btnClear.setText("Liste leeren");
+		btnClear.setText("Leeren");
 		btnClear.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
+		btnClear.setToolTipText("Alle Eintr\u00E4ge aus der Tabelle l\u00F6schen [Strg+L]");
 		GridData cgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
-		cgd.widthHint = 110;
+		cgd.widthHint = 80;
 		cgd.heightHint = 32;
 		btnClear.setLayoutData(cgd);
 		btnClear.addSelectionListener(new SelectionAdapter() {
@@ -394,8 +397,9 @@ public class InventoryDialog extends Composite {
 		btnExport = new Button(toolbar, SWT.PUSH);
 		btnExport.setText("CSV Export");
 		btnExport.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
+		btnExport.setToolTipText("Erfasste Medien in eine UTF-8 CSV-Datei exportieren [Strg+E]");
 		GridData egd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
-		egd.widthHint = 110;
+		egd.widthHint = 95;
 		egd.heightHint = 32;
 		btnExport.setLayoutData(egd);
 		btnExport.addSelectionListener(new SelectionAdapter() {
@@ -407,9 +411,11 @@ public class InventoryDialog extends Composite {
 
 		// Search / Filter
 		txtSearch = new Text(toolbar, SWT.BORDER | SWT.SEARCH | SWT.ICON_SEARCH);
-		txtSearch.setMessage("Tabelle durchsuchen (Barcode, Signatur, UID)...");
+		txtSearch.setMessage("Suchen (Strg+F)...");
 		txtSearch.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.NORMAL));
+		txtSearch.setToolTipText("Tabelle filtern nach Barcode, Signatur, UID [Strg+F, Esc zum Zur\u00FCcksetzen]");
 		GridData sgd = new GridData(SWT.FILL, SWT.CENTER, true, false);
+		sgd.minimumWidth = 130;
 		sgd.heightHint = 22;
 		txtSearch.setLayoutData(sgd);
 		txtSearch.addModifyListener(e -> filterTable(txtSearch.getText().trim()));
@@ -457,7 +463,7 @@ public class InventoryDialog extends Composite {
 		String[] colTitles = {
 			"Status", "#", "Uhrzeit", "Barcode / Medien-ID", "Signatur", "Teil", "ISIL / Land", "Nutzung", "Standort-Marker", "UID", "CRC-Pr\u00FCfung"
 		};
-		int[] colWidths = { 55, 45, 75, 170, 180, 65, 110, 80, 140, 180, 95 };
+		int[] colWidths = { 50, 40, 75, 140, 140, 50, 95, 65, 110, 150, 85 };
 		int[] colAligns = { SWT.CENTER, SWT.CENTER, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.CENTER, SWT.LEFT, SWT.LEFT, SWT.CENTER };
 
 		for (int i = 0; i < colTitles.length; i++) {
@@ -594,7 +600,7 @@ public class InventoryDialog extends Composite {
 			isRunning = true;
 			bStartStop.setText("\u25A0  Scan anhalten");
 			bStartStop.setBackground(SWTResourceManager.getColor(220, 38, 38)); // Red
-			bStartStop.setToolTipText("Klicken, um den Scan zu pausieren");
+			bStartStop.setToolTipText("Inventarisierung pausieren [F5]");
 			updateStatusBadge(true);
 			lblStatusBar.setText("RFID-Scanner aktiv. Suche nach Transpondern im Antennenfeld...");
 			if (thread != null) {
@@ -604,7 +610,7 @@ public class InventoryDialog extends Composite {
 			isRunning = false;
 			bStartStop.setText("\u25B6  Scan starten");
 			bStartStop.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
-			bStartStop.setToolTipText("Klicken, um die Inventarisierung zu starten");
+			bStartStop.setToolTipText("Inventarisierung starten [F5]");
 			updateStatusBadge(false);
 			lblStatusBar.setText("Scan pausiert. Bisher " + itemList.size() + " Medien erfasst.");
 			if (thread != null) {
@@ -622,6 +628,89 @@ public class InventoryDialog extends Composite {
 			lblStatusBadge.setText("  \u23F8 BEREIT (PAUSIERT)  ");
 			lblStatusBadge.setBackground(SWTResourceManager.getColor(71, 85, 105)); // Slate
 		}
+	}
+
+	private void flashScanFeedback(boolean success) {
+		if (lblStatusBadge == null || lblStatusBadge.isDisposed()) return;
+		org.eclipse.swt.graphics.Color originalColor = isRunning ?
+				SWTResourceManager.getColor(5, 150, 105) : SWTResourceManager.getColor(71, 85, 105);
+		org.eclipse.swt.graphics.Color flashColor = success ?
+				SWTResourceManager.getColor(37, 99, 235) : SWTResourceManager.getColor(220, 38, 38);
+
+		lblStatusBadge.setBackground(flashColor);
+		getDisplay().timerExec(160, () -> {
+			if (!lblStatusBadge.isDisposed()) {
+				lblStatusBadge.setBackground(originalColor);
+			}
+		});
+	}
+
+	/**
+	 * Configures global and keyboard shortcut filters for the application.
+	 * Supports:
+	 * - F5: Start / Stop Scan toggle
+	 * - Ctrl+F: Focus search field and select text
+	 * - Ctrl+E: Export to CSV
+	 * - Ctrl+T: Simulated RFID test scan
+	 * - Ctrl+L: Clear table list
+	 * - Esc: Clear search and return focus to table
+	 */
+	private void setupKeyboardShortcuts() {
+		Display display = getDisplay();
+		if (display == null) return;
+
+		display.addFilter(SWT.KeyDown, event -> {
+			if (isDisposed()) return;
+
+			// F5: Start / Stop Scan
+			if (event.keyCode == SWT.F5) {
+				event.doit = false;
+				toggleScan();
+				return;
+			}
+
+			// Ctrl + F: Focus Search
+			if ((event.stateMask & SWT.MOD1) != 0 && (event.keyCode == 'f' || event.keyCode == 'F')) {
+				if (txtSearch != null && !txtSearch.isDisposed()) {
+					event.doit = false;
+					txtSearch.setFocus();
+					txtSearch.selectAll();
+				}
+				return;
+			}
+
+			// Ctrl + E: CSV Export
+			if ((event.stateMask & SWT.MOD1) != 0 && (event.keyCode == 'e' || event.keyCode == 'E')) {
+				event.doit = false;
+				exportToCSV();
+				return;
+			}
+
+			// Ctrl + T: Test Scan
+			if ((event.stateMask & SWT.MOD1) != 0 && (event.keyCode == 't' || event.keyCode == 'T')) {
+				event.doit = false;
+				triggerTestScan();
+				return;
+			}
+
+			// Ctrl + L: Clear items
+			if ((event.stateMask & SWT.MOD1) != 0 && (event.keyCode == 'l' || event.keyCode == 'L')) {
+				event.doit = false;
+				clearItems();
+				return;
+			}
+
+			// Esc: Clear search
+			if (event.keyCode == SWT.ESC) {
+				if (txtSearch != null && !txtSearch.isDisposed() && !txtSearch.getText().isEmpty()) {
+					event.doit = false;
+					txtSearch.setText("");
+					if (table != null && !table.isDisposed()) {
+						table.setFocus();
+					}
+				}
+			}
+		});
 	}
 
 	/**
@@ -647,11 +736,11 @@ public class InventoryDialog extends Composite {
 					if (isRunning) {
 						bStartStop.setText("\u25A0  Scan anhalten");
 						bStartStop.setBackground(SWTResourceManager.getColor(220, 38, 38)); // Red
-						bStartStop.setToolTipText("Klicken, um den Scan zu pausieren");
+						bStartStop.setToolTipText("Inventarisierung pausieren [F5]");
 					} else {
 						bStartStop.setText("\u25B6  Scan starten");
 						bStartStop.setBackground(SWTResourceManager.getColor(5, 150, 105)); // Green
-						bStartStop.setToolTipText("Klicken, um die Inventarisierung zu starten");
+						bStartStop.setToolTipText("Inventarisierung starten [F5]");
 					}
 				}
 				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
@@ -677,7 +766,7 @@ public class InventoryDialog extends Composite {
 					bStartStop.setEnabled(false);
 					bStartStop.setText("\u25B6  Scan starten");
 					bStartStop.setBackground(SWTResourceManager.getColor(156, 163, 175)); // Inactive Gray
-					bStartStop.setToolTipText("Kein Leseger\u00E4t verbunden. Bitte FEIG USB-Kabel anschlie\u00DFen.");
+					bStartStop.setToolTipText("Inventarisierung starten [F5]. Kein Leseger\u00E4t verbunden.");
 				}
 				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
 					lblStatusBar.setText("FEIG Leseger\u00E4t nicht verbunden. Bitte USB-Kabel anschlie\u00DFen.");
@@ -796,6 +885,10 @@ public class InventoryDialog extends Composite {
 			}
 
 			lblStatusBar.setText("Zuletzt erfasst: " + item.primaryItemId + " [UID: " + item.uid + "] um " + item.time);
+
+			// Trigger visual scan feedback
+			boolean isSuccess = item.statusOk && !"FEHLER".equals(item.crcStatus);
+			flashScanFeedback(isSuccess);
 
 			// Update Inspector
 			updateInspector(item);
