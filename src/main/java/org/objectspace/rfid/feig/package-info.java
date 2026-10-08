@@ -36,8 +36,8 @@
  * Programm erhalten haben. Wenn nicht, siehe <http://www.gnu.org/licenses/>.
  *******************************************************************************/
 /**
- * this package contains methods which are dependent on the "OBID Software Development Kit" by FEIG ELECTRONIC GmbH
- * @see de.feig
+ * this package contains methods which are dependent on the FEIG IDENTIFICATION SDK Gen3 (FEDM Java API) by FEIG ELECTRONIC GmbH
+ * @see de.feig.fedm
  * @author Juergen Enge
  *
  */

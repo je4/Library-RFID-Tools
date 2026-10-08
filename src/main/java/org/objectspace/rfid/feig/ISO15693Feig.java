@@ -39,15 +39,15 @@ package org.objectspace.rfid.feig;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.commons.configuration2.AbstractConfiguration;
 import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.library.ISO15693Reader;
 
-import de.feig.TagHandler.FedmIscTagHandler;
-import de.feig.TagHandler.FedmIscTagHandler_ISO15693;
-import de.feig.TagHandler.FedmIscTagHandler_Result;
+import de.feig.fedm.taghandler.ThBase;
+import de.feig.fedm.taghandler.ThIso15693;
+import de.feig.fedm.types.DataBuffer;
+import de.feig.fedm.types.LongRef;
 
 /**
  * ISO15693 compliant tag reader for feig hardware devices
@@ -133,51 +133,68 @@ public class ISO15693Feig implements ISO15693Reader {
 
 	
 	/**
-	 * @see org.objectspace.rfid.library.ISO156893Reader#inventory(org.objectspace.rfid.TagCallback, int)
+	 * @see org.objectspace.rfid.library.ISO15693Reader#inventory(org.objectspace.rfid.TagCallback, int)
 	 */
 	@Override
 	public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {
 		if (!isConnected()) {
 			return;
 		}
-		HashMap<String, FedmIscTagHandler> mapTH = null;
-		FedmIscTagHandler tagHandler = null;
-		FedmIscTagHandler_Result res = new FedmIscTagHandler_Result();
 
-		// Inventory with standard options
-		mapTH = feig.tagInventory(true, (byte) 0, (byte) 1);
-		int counter = 0;
-		if (mapTH.size() == 0) {
+		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 1);
+		int totalTags = tagHandlers != null ? tagHandlers.size() : 0;
+		if (totalTags == 0) {
 			inventoryCallback.empty();
+			return;
 		}
-		for (Map.Entry<String, FedmIscTagHandler> e : mapTH.entrySet()) {
-			tagHandler = e.getValue(); // TagHandler from HashMap
 
-			if (tagHandler instanceof FedmIscTagHandler_ISO15693) {
-				FedmIscTagHandler_ISO15693 th = (FedmIscTagHandler_ISO15693) tagHandler;
+		int counter = 0;
+		for (ThBase tagHandler : tagHandlers) {
+			try {
+				if (tagHandler instanceof ThIso15693) {
+					ThIso15693 th = (ThIso15693) tagHandler;
 
-				// get size of tag from configuration or guess something
-				String tagName = tagHandler.getTagName();
-				Integer maxBlocks = maxBlocksMap.get(tagName);
-				// tagName not in configuration
-				if (maxBlocks == null) {
-					maxBlocks = numBlocks;
-					maxBlocksMap.put(tagName, maxBlocks);
+					// get size of tag from configuration or guess something
+					String tagName = th.transponderName();
+					Integer maxBlocks = maxBlocksMap.get(tagName);
+					// tagName not in configuration
+					if (maxBlocks == null) {
+						maxBlocks = numBlocks;
+						maxBlocksMap.put(tagName, maxBlocks);
+					}
+
+					// paranoia don't read too much
+					int blocksToRead = Math.min(numBlocks, maxBlocks);
+
+					// read data blocks
+					LongRef blockSizeRef = new LongRef();
+					DataBuffer dataBuffer = new DataBuffer();
+					int back = th.readMultipleBlocks(0, blocksToRead, blockSizeRef, dataBuffer);
+					byte[] data = dataBuffer.data();
+					if (data == null || data.length == 0) {
+						continue;
+					}
+
+					byte[] newBlock = inventoryCallback.doIt(
+						counter,
+						totalTags,
+						th.manufacturerName(),
+						tagName,
+						th.iddToHexString(),
+						data,
+						blocksToRead
+					);
+					if (newBlock != null) {
+					}
+				} else {
+					System.out.println("Tag not supported: " + tagHandler.getClass().getName());
 				}
-
-				// paranoia don't read too much
-				numBlocks = Math.min(numBlocks, maxBlocks);
-
-				// read data blocks
-				int back = th.readMultipleBlocks(0, numBlocks, res);
-				if (res.data == null)
-					continue;
-				byte[] newBlock = inventoryCallback.doIt(counter, mapTH.size(), th.getManufacturerName(), tagName,
-						th.getUid(), res.data, numBlocks);
-				if (newBlock != null) {
+			} finally {
+				try {
+					tagHandler.close();
+				} catch (Throwable t) {
+					// Ignore
 				}
-			} else {
-				System.out.println("Tag not supported: " + tagHandler.getClass().getName());
 			}
 			counter++;
 		}

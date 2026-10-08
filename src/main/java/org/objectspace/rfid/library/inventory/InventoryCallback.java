@@ -52,7 +52,7 @@ import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
 
-import de.feig.FeHexConvert;
+import de.feig.fedm.utility.HexConvert;
 
 /**
  * @author Juergen Enge
@@ -188,7 +188,7 @@ public class InventoryCallback implements TagCallback {
 				txt += "Parts in item: " + metadata.getPartsInItem() + "\n";
 				txt += "Part number: " + metadata.getPartNumber() + "\n";
 				txt += "Primary item ID: " + metadata.getPrimaryItemId() + "\n";
-				txt += "CRC (lsb): " + FeHexConvert.byteArrayToHexString(metadata.getCRCBytes())
+				txt += "CRC (lsb): " + HexConvert.toHexString(metadata.getCRCBytes())
 						+ (metadata.getCRCError() ? " Error" : " OK") + "\n";
 				txt += "Country of owner library: " + metadata.getCountryOfOwnerLib() + "\n";
 				txt += "ISIL: " + metadata.getISIL() + "\n";
@@ -256,7 +256,7 @@ public class InventoryCallback implements TagCallback {
 			if (isWsConfigured) {
 				if (webserviceDispatcher != null) {
 					try {
-						String rawHex = (metadata.getData() != null) ? FeHexConvert.byteArrayToHexString(metadata.getData()) : "";
+						String rawHex = (metadata.getData() != null) ? HexConvert.toHexString(metadata.getData()) : "";
 						WebserviceResponse wsResp = webserviceDispatcher.dispatchScan(
 								currentMarker,
 								currentMarker,

@@ -39,22 +39,23 @@ package org.objectspace.rfid.feig;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.commons.configuration2.AbstractConfiguration;
-import de.feig.FeHexConvert;
-import de.feig.FePortDriverException;
-import de.feig.FeReaderDriverException;
-import de.feig.FeUsb;
-import de.feig.FeUsbScanSearch;
-import de.feig.FedmBrmTableItem;
-import de.feig.FedmException;
-import de.feig.FedmIscReader;
-import de.feig.FedmIscReaderConst;
-import de.feig.FedmIscReaderInfo;
-import de.feig.TagHandler.FedmIscTagHandler;
+import de.feig.fedm.Connector;
+import de.feig.fedm.ErrorCode;
+import de.feig.fedm.InventoryParam;
+import de.feig.fedm.ReaderInfo;
+import de.feig.fedm.ReaderModule;
+import de.feig.fedm.RequestMode;
+import de.feig.fedm.TagItem;
+import de.feig.fedm.UsbManager;
+import de.feig.fedm.UsbScanInfo;
+import de.feig.fedm.taghandler.ThBase;
 
 /**
- * class representing a feig reader actually supported: ISC.MR102-USB
+ * Class representing a FEIG reader using FEIG SDK Gen3 (FEDM Java API).
+ * Actually supported: FEIG USB readers (such as ISC.MR102-USB).
  * 
  * @author Juergen Enge
  *
@@ -62,71 +63,83 @@ import de.feig.TagHandler.FedmIscTagHandler;
 public class FeigRFID {
 
 	/**
-	 * constructor with abstract configuration
+	 * Constructor with abstract configuration
 	 * 
 	 * @param config
 	 *            abstract configuration
 	 */
 	public FeigRFID(AbstractConfiguration config) {
 		this.config = config;
-		// build RFID feature map
 	}
 
 	/**
-	 * connects to the feig rfid reader needs optional configuration values: *
-	 * device.feig.id (to bind to a specific hardware) * device.feig.type (must
-	 * be "usb")
+	 * Connects to the FEIG RFID reader.
+	 * Reads optional configuration values:
+	 * - device.feig.id (to bind to a specific hardware device ID in hex)
+	 * - device.feig.type (must be "usb")
 	 * 
-	 * @throws Exception
-	 * @throws FedmException
-	 * 
+	 * @throws Exception if connection fails
 	 */
-	public void connect() throws FedmException, Exception {
+	public void connect() throws Exception {
 		connected = false;
-		usbHelper = new FeUsb();
-		reader = new FedmIscReader();
+		reader = new ReaderModule(RequestMode.UniDirectional);
 		String configDeviceID = null;
 		String configDeviceType = null;
 		if (config != null) {
 			configDeviceID = config.getString("device.feig.id");
-			configDeviceType = config.getString("device.feig.type").toLowerCase();
+			String devType = config.getString("device.feig.type");
+			configDeviceType = (devType != null) ? devType.toLowerCase() : null;
 		}
-		// actually i have only USB to test...
-		if (configDeviceType != null && !configDeviceType.equals("usb"))
+		if (configDeviceType != null && !configDeviceType.equals("usb")) {
 			throw new Exception("Device Type " + configDeviceType + " not supported.");
-
-		FeUsbScanSearch scanSearch = null;
-		int back = usbHelper.scan(FeUsbScanSearch.SCAN_ALL, scanSearch);
-		if (back != 0) {
-			throw new Exception("usb scan failed");
 		}
-		int scanListSize = usbHelper.getScanListSize();
-		for (int i = 0; i < scanListSize; i++) {
-			String scanListPara = usbHelper.getScanListPara(i, "Device-ID");
-			long deviceID = FeHexConvert.hexStringToLong(scanListPara);
-			System.out.println("Device found: " + scanListPara);
-			if (configDeviceID == null || configDeviceID.equals(scanListPara)) {
-				currentDeviceID = deviceID;
+
+		int scanRes = UsbManager.startDiscover();
+		if (scanRes != ErrorCode.Ok && scanRes != 0) {
+			throw new Exception("usb scan failed: " + ErrorCode.toString(scanRes));
+		}
+
+		long foundDeviceID = 0;
+		UsbScanInfo scanInfo;
+		while ((scanInfo = UsbManager.popDiscover()) != null && scanInfo.isValid()) {
+			String devIdHex = scanInfo.deviceIdToHexString();
+			long devId = scanInfo.deviceId();
+			System.out.println("Device found: " + devIdHex);
+			if (configDeviceID == null || configDeviceID.equalsIgnoreCase(devIdHex)) {
+				foundDeviceID = devId;
 			}
 		}
-		if (currentDeviceID == 0)
+		UsbManager.stopDiscover();
+
+		if (foundDeviceID == 0) {
 			throw new Exception("no device found");
-		System.out.println("Connecting to: " + FeHexConvert.longToHexString(currentDeviceID));
-		reader.connectUSB(currentDeviceID);
-		FedmIscReaderInfo info = reader.getReaderInfo();
-		if (info != null) {
+		}
+
+		currentDeviceID = foundDeviceID;
+		String hexId = String.format("%08X", currentDeviceID);
+		System.out.println("Connecting to: " + hexId);
+
+		Connector connector = Connector.createUsbConnector(currentDeviceID);
+		int connRes = reader.connect(connector);
+		if (connRes != ErrorCode.Ok) {
+			throw new Exception("connect failed: " + ErrorCode.toString(connRes));
+		}
+
+		int infoRes = reader.readReaderInfo();
+		ReaderInfo info = reader.info();
+		if (infoRes == ErrorCode.Ok && info != null) {
 			System.out.println(info.getReport());
 		}
-		deviceInfo = "FEIG ISC.MR102-USB (" + FeHexConvert.longToHexString(currentDeviceID) + ")";
+		deviceInfo = "FEIG " + (info != null && info.readerTypeToString() != null ? info.readerTypeToString() : "ISC.MR102-USB") + " (" + hexId + ")";
 		connected = true;
 	}
 
 	/**
-	 * returns connection state
+	 * Returns connection state
 	 * @return true if connected
 	 */
 	public boolean isConnected() {
-		return connected;
+		return connected && reader != null && reader.isConnected();
 	}
 
 	/**
@@ -139,28 +152,25 @@ public class FeigRFID {
 			return false;
 		}
 		try {
-			FeUsb checkUsb = new FeUsb();
-			int back = checkUsb.scan(FeUsbScanSearch.SCAN_ALL, null);
-			if (back != 0 || checkUsb.getScanListSize() == 0) {
+			int scanRes = UsbManager.startDiscover();
+			if (scanRes != ErrorCode.Ok && scanRes != 0) {
 				disconnectInternal();
 				return false;
 			}
 			boolean found = false;
-			for (int i = 0; i < checkUsb.getScanListSize(); i++) {
-				String para = checkUsb.getScanListPara(i, "Device-ID");
-				if (para != null) {
-					long devId = FeHexConvert.hexStringToLong(para);
-					if (devId == currentDeviceID || currentDeviceID == 0) {
-						found = true;
-						break;
-					}
+			UsbScanInfo scanInfo;
+			while ((scanInfo = UsbManager.popDiscover()) != null && scanInfo.isValid()) {
+				if (scanInfo.deviceId() == currentDeviceID || currentDeviceID == 0) {
+					found = true;
+					break;
 				}
 			}
+			UsbManager.stopDiscover();
 			if (!found) {
 				disconnectInternal();
 				return false;
 			}
-			return true;
+			return reader.isConnected();
 		} catch (Throwable t) {
 			disconnectInternal();
 			return false;
@@ -182,7 +192,7 @@ public class FeigRFID {
 		connected = false;
 		if (reader != null) {
 			try {
-				reader.disConnect();
+				reader.disconnect();
 			} catch (Throwable t) {
 				// Ignore
 			}
@@ -190,50 +200,52 @@ public class FeigRFID {
 	}
 
 	/**
-	 * initializes the reader to deal with BRM or ISO tags needs optional
-	 * configuration value * device.feig.storeconfigfile *
-	 * device.feig.configfile (name of firmware configuration)
+	 * Initializes the reader.
+	 * Reads optional configuration values:
+	 * - device.feig.storeconfigfile
+	 * - device.feig.configfile (name of firmware configuration)
 	 * 
-	 * @throws Exception
+	 * @throws Exception if initialization fails
 	 */
 	public void init() throws Exception {
-		String storeConfigFile = config.getString("device.feig.storeconfigfile", null);
-		if (storeConfigFile != null) {
-			if (Files.isRegularFile(Paths.get(storeConfigFile))) {
-				Files.delete(Paths.get(storeConfigFile));
+		if (config != null) {
+			String storeConfigFile = config.getString("device.feig.storeconfigfile", null);
+			if (storeConfigFile != null) {
+				if (Files.isRegularFile(Paths.get(storeConfigFile))) {
+					Files.delete(Paths.get(storeConfigFile));
+				}
+				System.out.println("Storing actual configuration to " + storeConfigFile);
+				copyConfigToFile(storeConfigFile);
 			}
-			System.out.println("Storing actual configuration to " + storeConfigFile);
-			copyConfigToFile( storeConfigFile );
-		}
-		String readerConfigFile = config.getString("device.feig.configfile", null);
-		if (readerConfigFile != null) {
-			if (!Files.isRegularFile(Paths.get(readerConfigFile))) {
-				throw new Exception("configfile " + readerConfigFile + " not a regular file");
+			String readerConfigFile = config.getString("device.feig.configfile", null);
+			if (readerConfigFile != null) {
+				if (!Files.isRegularFile(Paths.get(readerConfigFile))) {
+					throw new Exception("configfile " + readerConfigFile + " not a regular file");
+				}
+				System.out.println("Loading configuration file: " + readerConfigFile);
+				copyFileToConfig(readerConfigFile);
 			}
-			System.out.println("Loading configuration file: " + readerConfigFile);
-			copyFileToConfig(readerConfigFile);
 		}
-
-		reader.setTableSize(FedmIscReaderConst.ISO_TABLE, 17496);
-		reader.setTableSize(FedmIscReaderConst.BRM_TABLE, 1104);
 	}
 
 	/**
-	 * closes the connections and restores configuration (optional)
-	 * @throws Exception 
+	 * Closes the connections and restores configuration (optional).
+	 * @throws Exception if restore fails
 	 */
 	public void close() throws Exception {
-		String restoreconfig = config.getString("device.feig.restoreconfig", null);
-		if (restoreconfig != null) {
-			if (!Files.isRegularFile(Paths.get(restoreconfig))) {
-				throw new Exception("restoreconfigfile " + restoreconfig + " not a regular file");
+		if (config != null) {
+			String restoreconfig = config.getString("device.feig.restoreconfig", null);
+			if (restoreconfig != null) {
+				if (!Files.isRegularFile(Paths.get(restoreconfig))) {
+					throw new Exception("restoreconfigfile " + restoreconfig + " not a regular file");
+				}
+				System.out.println("restoring configuration from " + restoreconfig);
+				copyFileToConfig(restoreconfig);
 			}
-			System.out.println("restoring configuration from " + restoreconfig);
-			copyFileToConfig(restoreconfig);
 		}
 		if (reader != null && connected) {
 			try {
-				reader.disConnect();
+				reader.disconnect();
 			} catch (Exception e) {
 				// Ignore
 			}
@@ -242,77 +254,109 @@ public class FeigRFID {
 	}
 
 	/**
-	 * stores firmware configuration in xml-file
+	 * Stores firmware configuration in xml-file.
 	 * 
 	 * @param fileName xml-filename
-	 * @throws FedmException
-	 * @throws FeReaderDriverException
-	 * @throws FePortDriverException
+	 * @throws Exception if read or transfer fails
 	 */
-	public void copyConfigToFile(String fileName) throws FedmException, FePortDriverException, FeReaderDriverException {
-		reader.readCompleteConfiguration(false);
-		reader.transferReaderCfgToXmlFile(fileName);
+	public void copyConfigToFile(String fileName) throws Exception {
+		if (reader == null) {
+			throw new Exception("Reader not initialized");
+		}
+		int res = reader.config().readCompleteConfiguration(false);
+		if (res != ErrorCode.Ok) {
+			throw new Exception("readCompleteConfiguration failed: " + ErrorCode.toString(res));
+		}
+		res = reader.config().transferReaderCfgToXmlFile(fileName);
+		if (res != ErrorCode.Ok) {
+			throw new Exception("transferReaderCfgToXmlFile failed: " + ErrorCode.toString(res));
+		}
 	}
 
 	/**
-	 * writes firmware configuration to connected hardware device
+	 * Writes firmware configuration to connected hardware device.
 	 * 
-	 * @param fileName
-	 *            xml-filename
-	 * @throws FedmException
+	 * @param fileName xml-filename
+	 * @throws Exception if transfer fails
 	 */
-	public void copyFileToConfig(String fileName) throws FedmException {
-		reader.transferXmlFileToReaderCfg(fileName);
+	public void copyFileToConfig(String fileName) throws Exception {
+		if (reader == null) {
+			throw new Exception("Reader not initialized");
+		}
+		int res = reader.config().transferXmlFileToReaderCfg(fileName);
+		if (res != ErrorCode.Ok) {
+			throw new Exception("transferXmlFileToReaderCfg failed: " + ErrorCode.toString(res));
+		}
 	}
 
 	/**
-	 * get last reader error
+	 * Get last reader error.
 	 * 
 	 * @return last error of reader
 	 */
 	public int getLastError() {
-		return reader.getLastError();
+		return reader != null ? reader.lastError() : 0;
 	}
 
 	/**
-	 * executes an inventory of tags
+	 * Executes an inventory of tags.
 	 * 
-	 * @param all
-	 *            automatic mode (should be true)
-	 * @param mode
-	 *            manual control (should be 0)
-	 * @param antennas
-	 *            flag field with antennas (should be 1)
-	 * @return map of transponders
-	 * @throws FedmException
-	 * @throws FePortDriverException
-	 * @throws FeReaderDriverException
+	 * @param all automatic mode (should be true)
+	 * @param mode manual control
+	 * @param antennas flag field with antennas
+	 * @return list of transponder tag handlers
+	 * @throws Exception if inventory fails
 	 */
-	HashMap<String, FedmIscTagHandler> tagInventory(boolean all, byte mode, byte antennas)
-			throws FedmException, FePortDriverException, FeReaderDriverException {
+	public List<ThBase> tagInventory(boolean all, byte mode, byte antennas) throws Exception {
 		if (!connected || reader == null) {
-			return new HashMap<>();
+			return new ArrayList<>();
 		}
 		try {
-			return reader.tagInventory(all, mode, antennas);
-		} catch (FePortDriverException e) {
-			disconnectInternal();
-			throw e;
-		} catch (FeReaderDriverException e) {
-			disconnectInternal();
-			throw e;
-		} catch (FedmException e) {
-			disconnectInternal();
-			throw e;
+			InventoryParam param = new InventoryParam();
+			if (antennas != 0) {
+				param.setAntennas(antennas);
+			}
+			int back = reader.hm().inventory(all, param);
+			if (back != ErrorCode.Ok && back != ErrorCode.NoData) {
+				disconnectInternal();
+				throw new Exception("tag inventory error: " + ErrorCode.toString(back));
+			}
+			List<ThBase> list = new ArrayList<>();
+			TagItem item;
+			while ((item = reader.hm().popItem()) != null && item.isValid()) {
+				ThBase th = reader.hm().createTagHandler(item);
+				if (th != null) {
+					list.add(th);
+				}
+			}
+			return list;
 		} catch (Throwable t) {
 			disconnectInternal();
-			throw new FedmException(t.getMessage() != null ? t.getMessage() : "tag inventory error", -1);
+			throw (t instanceof Exception) ? (Exception) t : new Exception("tag inventory error", t);
 		}
 	}
 
+	/**
+	 * Executes an inventory of tags with default parameters.
+	 * 
+	 * @param all automatic mode
+	 * @return list of transponder tag handlers
+	 * @throws Exception if inventory fails
+	 */
+	public List<ThBase> tagInventory(boolean all) throws Exception {
+		return tagInventory(all, (byte) 0, (byte) 1);
+	}
+
+	public ReaderModule getReader() {
+		return reader;
+	}
+
+	public long getCurrentDeviceID() {
+		return currentDeviceID;
+	}
+
 	protected AbstractConfiguration config;
-	protected FeUsb usbHelper = null;
-	protected FedmIscReader reader = null;
+	protected ReaderModule reader = null;
 	protected long currentDeviceID = 0;
 	protected String deviceInfo = null;
 	private volatile boolean connected = false;

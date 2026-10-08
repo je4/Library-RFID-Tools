@@ -40,7 +40,7 @@ package org.objectspace.rfid;
 import java.util.ArrayList;
 import java.util.Arrays;
 
-import de.feig.FeHexConvert;
+import de.feig.fedm.utility.HexConvert;
 
 /**
  * Representing the first record of the "Finnish Data Model"
@@ -118,7 +118,7 @@ public class FinnishDataModel {
 			System.out.println("Parts in item: " + partsInItem);
 			System.out.println("Part number: " + partNumber);
 			System.out.println("Primary item ID: " + primaryItemId);
-			System.out.println("CRC (lsb): " + FeHexConvert.byteArrayToHexString(crcbytes));
+			System.out.println("CRC (lsb): " + HexConvert.toHexString(crcbytes));
 			System.out.println("Country of owner library: " + countryOfOwnerLib);
 			System.out.println("ISIL: " + ISIL);
 		}
