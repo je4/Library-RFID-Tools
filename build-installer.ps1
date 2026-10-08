@@ -111,6 +111,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Java-Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
 
+$resourcesDir = Join-Path $projectRoot "src\main\resources"
+if (Test-Path $resourcesDir) {
+    Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
+}
+
 # 3. Package application JAR
 Write-Host "[3/5] Erstelle rfid-inventory.jar..." -ForegroundColor Yellow
 $appJar = Join-Path $projectRoot "target\rfid-inventory.jar"

@@ -75,6 +75,16 @@ if ($Rebuild -or (-not (Test-Path $mainClass))) {
     } else {
         Write-Warning "Keine Java-Quelldateien in 'src\main\java' gefunden."
     }
+
+    $resourcesDir = Join-Path $projectRoot "src\main\resources"
+    if (Test-Path $resourcesDir) {
+        Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
+    }
+} else {
+    $resourcesDir = Join-Path $projectRoot "src\main\resources"
+    if ((Test-Path $resourcesDir) -and (Test-Path $classesDir)) {
+        Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
+    }
 }
 
 # 4. Launch Application
