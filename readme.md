@@ -17,7 +17,7 @@ The following libraries/SDKs are used under the Windows Operating System:
 * MySQL Connector/J (8.4.0 LTS JDBC driver)
 
 ## Build and Modernization
-* Maven build system configured with Java 25 compatibility (`--release 25`).
+* Maven Multi-Module build system (`rfid-inventory` Submodul) configured with Java 25 compatibility (`--release 25`).
 * FEIG SDK Gen3 (v7.1.0) integration (x64 native support).
 * Parallele moderne Swing/FlatLaf- und SWT-Oberfläche, wählbar über `inventory.xml` (`<ui>modern</ui>` oder `<ui>swt</ui>`).
 * High-performance responsive GUI with real-time hardware status detection, visual scan feedback, KPI metrics cards, and live search.

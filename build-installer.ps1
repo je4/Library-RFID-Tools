@@ -102,7 +102,8 @@ if ($srcImageToUse -and (-not (Test-Path $iconIco) -or (Get-Item $srcImageToUse)
 
 # 2. Compile Java sources
 Write-Host "[2/5] Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
-$javaSources = (Get-ChildItem -Recurse -Path "$projectRoot\src\main\java\*.java").FullName
+$srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
+$javaSources = (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
 $classpath = "lib\*;lib\ext\*"
 
 $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
@@ -111,7 +112,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Java-Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
 
-$resourcesDir = Join-Path $projectRoot "src\main\resources"
+$resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
 if (Test-Path $resourcesDir) {
     Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
 }

@@ -56,7 +56,8 @@ $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) 
 
 $shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass))
 if (-not $shouldRebuild) {
-    $latestSource = Get-ChildItem -Recurse -Path "$projectRoot\src\main\java\*.java" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
+    $latestSource = Get-ChildItem -Recurse -Path "$srcDir\*.java" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $mainClassItem = Get-Item $mainClass -ErrorAction SilentlyContinue
     if ($latestSource -and $mainClassItem -and ($latestSource.LastWriteTime -gt $mainClassItem.LastWriteTime)) {
         $shouldRebuild = $true
@@ -70,7 +71,8 @@ if ($shouldRebuild) {
     }
     New-Item -ItemType Directory -Force -Path $classesDir | Out-Null
     
-    $javaSources = (Get-ChildItem -Recurse -Path "$projectRoot\src\main\java\*.java").FullName
+    $srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
+    $javaSources = (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
     if ($javaSources) {
         & $javacCmd --release 25 -encoding UTF-8 -cp $buildClasspath -d $classesDir $javaSources
         if ($LASTEXITCODE -ne 0) {
@@ -82,15 +84,15 @@ if ($shouldRebuild) {
             exit $LASTEXITCODE
         }
     } else {
-        Write-Warning "Keine Java-Quelldateien in 'src\main\java' gefunden."
+        Write-Warning "Keine Java-Quelldateien in '$srcDir' gefunden."
     }
 
-    $resourcesDir = Join-Path $projectRoot "src\main\resources"
+    $resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
     if (Test-Path $resourcesDir) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
     }
 } else {
-    $resourcesDir = Join-Path $projectRoot "src\main\resources"
+    $resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
     if ((Test-Path $resourcesDir) -and (Test-Path $classesDir)) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
     }
