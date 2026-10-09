@@ -46,6 +46,8 @@ Source: "target\dist\RFID-Inventory\*"; DestDir: "{app}"; Excludes: "inventory.x
 Source: "inventory.xml.template"; DestDir: "{app}"; DestName: "inventory.xml"; Flags: onlyifdoesntexist
 ; Application icon
 Source: "app.ico"; DestDir: "{app}"; Flags: ignoreversion
+; Host-mode configuration for FEIG MR102
+Source: "reader_host_mode_config.xml"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon

@@ -49,7 +49,8 @@ public class TestRunner {
             org.objectspace.rfid.webservice.WebserviceTest.class,
             org.objectspace.rfid.library.inventory.InventoryViewTest.class,
             org.objectspace.rfid.library.inventory.InventorySplashScreenTest.class,
-            org.objectspace.rfid.library.inventory.InventoryCsvExportTest.class
+            org.objectspace.rfid.library.inventory.InventoryCsvExportTest.class,
+            org.objectspace.rfid.feig.saveconfig.SaveConfigTest.class
         };
 
         System.out.println("=== Starting Test Runner ===");

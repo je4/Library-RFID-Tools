@@ -174,7 +174,7 @@ public class Inventory {
 			background = new Image(display, bgImgName);
 		}
 
-		InventoryDialog md = new InventoryDialog(shell, SWT.NONE, logo, background);
+		InventoryDialog md = new InventoryDialog(shell, SWT.NONE, logo, background, reader, config);
 		shell.setLocation(config.getInt("inventory.window.posx", 100), config.getInt("inventory.window.posy", 100));
 		shell.setSize(config.getInt("inventory.window.width", 1150), config.getInt("inventory.window.height", 700));
 		shell.open();

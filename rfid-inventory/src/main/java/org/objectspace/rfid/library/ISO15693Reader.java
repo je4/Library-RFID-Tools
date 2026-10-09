@@ -100,6 +100,73 @@ public interface ISO15693Reader {
 	}
 
 	/**
+	 * check if the connected/detected reader is a FEIG MR102 reader
+	 * @return true if MR102 detected
+	 */
+	public default boolean isMR102() {
+		return false;
+	}
+
+	/**
+	 * check if the reader has encountered a communication or initialization error
+	 * @return true if error detected
+	 */
+	public default boolean hasError() {
+		return false;
+	}
+
+	/**
+	 * get the last error details / description if available
+	 * @return error description or null
+	 */
+	public default String getLastErrorDetails() {
+		return null;
+	}
+
+	/**
+	 * backup reader configuration to an XML file
+	 * @param targetFile destination XML file
+	 * @throws Exception if backup fails
+	 */
+	public default void backupConfig(java.io.File targetFile) throws Exception {
+		throw new UnsupportedOperationException("Backup not supported on this reader");
+	}
+
+	/**
+	 * restore reader configuration from an XML file
+	 * @param sourceFile source XML file
+	 * @throws Exception if restore fails
+	 */
+	public default void restoreConfig(java.io.File sourceFile) throws Exception {
+		throw new UnsupportedOperationException("Restore not supported on this reader");
+	}
+
+	/**
+	 * performs a system reset on the connected reader
+	 * @throws Exception if reset fails
+	 */
+	public default void systemReset() throws Exception {
+		// default no-op for readers that do not support hardware reset
+	}
+
+	/**
+	 * restore reader configuration from an XML file (e.g. host-mode config)
+	 * @param configFile XML configuration file to apply
+	 * @throws Exception if restore fails
+	 */
+	public default void restoreHostModeConfig(java.io.File configFile) throws Exception {
+		throw new UnsupportedOperationException("Restore host mode not supported on this reader");
+	}
+
+	/**
+	 * resolve the host mode configuration XML file
+	 * @return resolved File or null if not found
+	 */
+	public default java.io.File resolveHostModeConfigFile() {
+		return null;
+	}
+
+	/**
 	 * cleanup
 	 * @throws Exception
 	 */

@@ -1,7 +1,7 @@
 #*.png
 *.xcf
 *.ndef
-*.xml
+# *.xml
 *.log
 *.ser
 bin/
@@ -81,3 +81,8 @@ dist/
 /ID_ISC.SDK.Java.Win-V5.6.3/
 /FEIG.ID.SDK.Gen3.Java-v7.1.0/
 /FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/
+/rfid-inventory/inventory.xml
+/rfid-inventory/reader_backup_config-20261009.xml
+/rfid-inventory/reader_host_mode_config.xml
+.build/
+.idea/

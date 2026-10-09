@@ -15,16 +15,30 @@ Write-Host "  info-age GmbH, Basel" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$projectRoot = $PSScriptRoot
-if (-not $projectRoot) { $projectRoot = Get-Location }
-Set-Location $projectRoot
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Get-Location }
+
+if (Test-Path "$scriptDir\src\main\java") {
+    $moduleRoot = $scriptDir
+    $repoRoot = (Get-Item "$scriptDir\..").FullName
+} elseif (Test-Path "$scriptDir\rfid-inventory\src\main\java") {
+    $moduleRoot = (Get-Item "$scriptDir\rfid-inventory").FullName
+    $repoRoot = $scriptDir
+} else {
+    $moduleRoot = $scriptDir
+    $repoRoot = $scriptDir
+}
+
+Set-Location $moduleRoot
 
 # 1. Clean & Prepare Directories
 Write-Host "[1/5] Vorbereitung der Build-Verzeichnisse..." -ForegroundColor Yellow
-$classesDir = Join-Path $projectRoot "target\classes"
-$stagingDir = Join-Path $projectRoot "target\installer-input"
-$distDir = Join-Path $projectRoot "target\dist"
-$outputDir = Join-Path $projectRoot "dist"
+$classesDir = Join-Path $moduleRoot "target\classes"
+$stagingDir = Join-Path $moduleRoot "target\installer-input"
+$distDir = Join-Path $moduleRoot "target\dist"
+$outputDir = Join-Path $moduleRoot "dist"
+
+$libDir = if (Test-Path "$moduleRoot\lib") { "$moduleRoot\lib" } else { "$repoRoot\lib" }
 
 if (Test-Path $classesDir) { Remove-Item -Force -Recurse $classesDir }
 if (Test-Path $stagingDir) { Remove-Item -Force -Recurse $stagingDir }
@@ -35,8 +49,8 @@ New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 # 1b. Ensure Windows Icon (app.ico and app.png)
-$iconIco = Join-Path $projectRoot "app.ico"
-$iconPng = Join-Path $projectRoot "app.png"
+$iconIco = Join-Path $moduleRoot "app.ico"
+$iconPng = Join-Path $moduleRoot "app.png"
 $fallbackSrcPng = "C:\Users\micro\StudioProjects\nfcreader\libraryinventory_icon.png"
 
 $srcImageToUse = if (Test-Path $iconPng) { $iconPng } elseif (Test-Path $fallbackSrcPng) { $fallbackSrcPng } else { $null }
@@ -102,9 +116,9 @@ if ($srcImageToUse -and (-not (Test-Path $iconIco) -or (Get-Item $srcImageToUse)
 
 # 2. Compile Java sources
 Write-Host "[2/5] Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
-$srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
+$srcDir = Join-Path $moduleRoot "src\main\java"
 $javaSources = (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
-$classpath = "lib\*;lib\ext\*"
+$classpath = "$libDir\*;$libDir\ext\*"
 
 $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
 & $javacCmd --release 25 -encoding UTF-8 -cp $classpath -d $classesDir $javaSources
@@ -112,14 +126,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "Java-Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }
 
-$resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
+$resourcesDir = Join-Path $moduleRoot "src\main\resources"
 if (Test-Path $resourcesDir) {
     Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
 }
 
 # 3. Package application JAR
 Write-Host "[3/5] Erstelle rfid-inventory.jar..." -ForegroundColor Yellow
-$appJar = Join-Path $projectRoot "target\rfid-inventory.jar"
+$appJar = Join-Path $moduleRoot "target\rfid-inventory.jar"
 $jarCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\jar.exe")) { "$env:JAVA_HOME\bin\jar.exe" } else { "jar" }
 & $jarCmd cfe $appJar "org.objectspace.rfid.library.inventory.Inventory" -C $classesDir .
 if ($LASTEXITCODE -ne 0) {
@@ -128,10 +142,10 @@ if ($LASTEXITCODE -ne 0) {
 
 # Stage production JARs
 Copy-Item $appJar $stagingDir -Force
-Copy-Item "$projectRoot\lib\*.jar" $stagingDir -Force
+Copy-Item "$libDir\*.jar" $stagingDir -Force
 
 $testJarPatterns = @("junit*", "assertj*", "byte-buddy*", "opentest*", "apiguardian*")
-$extJars = Get-ChildItem "$projectRoot\lib\ext\*.jar"
+$extJars = Get-ChildItem "$libDir\ext\*.jar"
 foreach ($jar in $extJars) {
     $isTest = $false
     foreach ($pattern in $testJarPatterns) {
@@ -174,8 +188,8 @@ $jpackageArgs = @(
     "--dest", $distDir
 )
 
-if (Test-Path (Join-Path $projectRoot "app.ico")) {
-    $jpackageArgs += @("--icon", (Join-Path $projectRoot "app.ico"))
+if (Test-Path (Join-Path $moduleRoot "app.ico")) {
+    $jpackageArgs += @("--icon", (Join-Path $moduleRoot "app.ico"))
 }
 
 & $jpackage @jpackageArgs
@@ -186,20 +200,24 @@ if ($LASTEXITCODE -ne 0) {
 
 # Copy native FEIG DLLs, icon, background and clean template configuration into distribution
 $appFolder = Join-Path $distDir "RFID-Inventory"
-Copy-Item "$projectRoot\lib\native\x64\*.dll" $appFolder -Force
-Copy-Item "$projectRoot\lib\native\x64\*.dll" (Join-Path $appFolder "app") -Force
+Copy-Item "$libDir\native\x64\*.dll" $appFolder -Force
+Copy-Item "$libDir\native\x64\*.dll" (Join-Path $appFolder "app") -Force
 # Ensure secrets/passwords are never packaged by deploying the clean template as default configuration
-Copy-Item "$projectRoot\inventory.xml.template" (Join-Path $appFolder "inventory.xml") -Force
-if (Test-Path "$projectRoot\app.ico") {
-    Copy-Item "$projectRoot\app.ico" $appFolder -Force
-    Copy-Item "$projectRoot\app.ico" (Join-Path $appFolder "app") -Force
+Copy-Item "$moduleRoot\inventory.xml.template" (Join-Path $appFolder "inventory.xml") -Force
+if (Test-Path "$moduleRoot\reader_host_mode_config.xml") {
+    Copy-Item "$moduleRoot\reader_host_mode_config.xml" $appFolder -Force
+    Copy-Item "$moduleRoot\reader_host_mode_config.xml" (Join-Path $appFolder "app") -Force
 }
-if (Test-Path "$projectRoot\app.png") {
-    Copy-Item "$projectRoot\app.png" $appFolder -Force
-    Copy-Item "$projectRoot\app.png" (Join-Path $appFolder "app") -Force
+if (Test-Path "$moduleRoot\app.ico") {
+    Copy-Item "$moduleRoot\app.ico" $appFolder -Force
+    Copy-Item "$moduleRoot\app.ico" (Join-Path $appFolder "app") -Force
 }
-if (Test-Path "$projectRoot\background.jpg") {
-    Copy-Item "$projectRoot\background.jpg" $appFolder -Force
+if (Test-Path "$moduleRoot\app.png") {
+    Copy-Item "$moduleRoot\app.png" $appFolder -Force
+    Copy-Item "$moduleRoot\app.png" (Join-Path $appFolder "app") -Force
+}
+if (Test-Path "$moduleRoot\background.jpg") {
+    Copy-Item "$moduleRoot\background.jpg" $appFolder -Force
 }
 
 # 5. Compile Windows Installer using Inno Setup
@@ -232,7 +250,7 @@ if (-not $iscc) {
     exit 0
 }
 
-& $iscc "/DMyAppVersion=$AppVersion" /Q "$projectRoot\installer.iss"
+& $iscc "/DMyAppVersion=$AppVersion" /Q "$moduleRoot\installer.iss"
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup Kompilierung fehlgeschlagen mit Exit-Code $LASTEXITCODE"
 }

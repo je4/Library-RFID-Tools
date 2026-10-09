@@ -13,22 +13,35 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = $PSScriptRoot
-if (-not $projectRoot) { $projectRoot = Get-Location }
-Set-Location $projectRoot
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Get-Location }
 
-# 1. Native Library Path Setup
-$nativeDir = Join-Path $projectRoot "lib\native\x64"
+if (Test-Path "$scriptDir\src\main\java") {
+    $moduleRoot = $scriptDir
+    $repoRoot = (Get-Item "$scriptDir\..").FullName
+} elseif (Test-Path "$scriptDir\rfid-inventory\src\main\java") {
+    $moduleRoot = (Get-Item "$scriptDir\rfid-inventory").FullName
+    $repoRoot = $scriptDir
+} else {
+    $moduleRoot = $scriptDir
+    $repoRoot = $scriptDir
+}
+
+Set-Location $moduleRoot
+
+# 1. Library and Native Paths Setup
+$libDir = if (Test-Path "$moduleRoot\lib") { "$moduleRoot\lib" } else { "$repoRoot\lib" }
+$nativeDir = Join-Path $libDir "native\x64"
 if (Test-Path $nativeDir) {
     $env:PATH = "$nativeDir;$env:PATH"
 }
 
 # 2. Dependency Staging (lib\ext)
-$extDir = Join-Path $projectRoot "lib\ext"
+$extDir = Join-Path $libDir "ext"
 $needsDependencies = (-not (Test-Path $extDir)) -or ((Get-ChildItem -Path $extDir -Filter "*.jar" -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)
 
 if ($needsDependencies) {
-    Write-Host "Kopiere externe Maven-Abhängigkeiten nach lib\ext..." -ForegroundColor Cyan
+    Write-Host "Kopiere externe Maven-Abhängigkeiten nach $extDir..." -ForegroundColor Cyan
     New-Item -ItemType Directory -Force -Path $extDir | Out-Null
     
     $m2Repo = Join-Path $HOME ".m2\repository"
@@ -46,17 +59,19 @@ if ($needsDependencies) {
 }
 
 # 3. Compilation
-$classesDir = Join-Path $projectRoot "target\classes"
+$classesDir = Join-Path $moduleRoot "target\classes"
 $mainClass = Join-Path $classesDir "org\objectspace\rfid\library\inventory\Inventory.class"
-$classpath = "target\classes;lib\*;lib\ext\*"
-$buildClasspath = "lib\*;lib\ext\*"
+$classpath = "$classesDir;$libDir\*;$extDir\*"
+$buildClasspath = "$libDir\*;$extDir\*"
 
 $javaCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) { "$env:JAVA_HOME\bin\java.exe" } else { "java" }
 $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
 
+$srcDir = Join-Path $moduleRoot "src\main\java"
+$resourcesDir = Join-Path $moduleRoot "src\main\resources"
+
 $shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass))
 if (-not $shouldRebuild) {
-    $srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
     $latestSource = Get-ChildItem -Recurse -Path "$srcDir\*.java" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $mainClassItem = Get-Item $mainClass -ErrorAction SilentlyContinue
     if ($latestSource -and $mainClassItem -and ($latestSource.LastWriteTime -gt $mainClassItem.LastWriteTime)) {
@@ -71,7 +86,6 @@ if ($shouldRebuild) {
     }
     New-Item -ItemType Directory -Force -Path $classesDir | Out-Null
     
-    $srcDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\java") { "$projectRoot\rfid-inventory\src\main\java" } else { "$projectRoot\src\main\java" }
     $javaSources = (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
     if ($javaSources) {
         & $javacCmd --release 25 -encoding UTF-8 -cp $buildClasspath -d $classesDir $javaSources
@@ -87,12 +101,10 @@ if ($shouldRebuild) {
         Write-Warning "Keine Java-Quelldateien in '$srcDir' gefunden."
     }
 
-    $resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
     if (Test-Path $resourcesDir) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
     }
 } else {
-    $resourcesDir = if (Test-Path "$projectRoot\rfid-inventory\src\main\resources") { "$projectRoot\rfid-inventory\src\main\resources" } else { "$projectRoot\src\main\resources" }
     if ((Test-Path $resourcesDir) -and (Test-Path $classesDir)) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
     }
@@ -103,7 +115,7 @@ Write-Host "Starte RFID Inventory Anwendung..." -ForegroundColor Green
 
 $jvmOptions = @(
     "--enable-native-access=ALL-UNNAMED",
-    "-Djava.library.path=lib\native\x64"
+    "-Djava.library.path=$nativeDir"
 )
 if ($JavaArgs -and $JavaArgs.Length -gt 0) {
     $jvmOptions += $JavaArgs

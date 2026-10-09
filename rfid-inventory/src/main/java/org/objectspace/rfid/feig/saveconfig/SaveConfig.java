@@ -37,10 +37,16 @@
  *******************************************************************************/
 package org.objectspace.rfid.feig.saveconfig;
 
+import java.io.File;
+import org.apache.commons.configuration2.AbstractConfiguration;
+import org.apache.commons.configuration2.BaseConfiguration;
+import org.apache.commons.configuration2.XMLConfiguration;
+import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
+import org.apache.commons.configuration2.builder.fluent.Parameters;
 import org.objectspace.rfid.feig.FeigRFID;
 
 /**
- * this application reads and writes firmware configuration of feig rfid reader
+ * Utility application to backup and restore firmware and reader configuration of FEIG RFID readers.
  * 
  * @author Juergen Enge
  *
@@ -51,37 +57,105 @@ public class SaveConfig {
 	 * default constructor
 	 */
 	public SaveConfig() {
-		// TODO Auto-generated constructor stub
 	}
 
 	/**
-	 * @param args
-	 * @throws Exception
+	 * Main entry point.
+	 * 
+	 * @param args &lt;get|backup|set|restore&gt; &lt;filename.xml&gt; [inventory.xml|DeviceId]
+	 * @throws Exception on execution error
 	 */
 	public static void main(String[] args) throws Exception {
 		if (args.length < 2) {
-			System.out.println("Parameter: <set|get> <filename>");
+			System.out.println("Verwendung: SaveConfig <get|backup|set|restore> <Dateiname.xml> [inventory.xml|DeviceId]");
+			System.out.println("  get / backup:  Liest die Reader-/Firmware-Konfiguration aus und speichert sie als XML-Datei.");
+			System.out.println("  set / restore: Schreibt eine gespeicherte XML-Konfiguration in den RFID-Leser zurück.");
+			System.exit(1);
 			return;
 		}
 
-		String action = args[0];
-		String configfilename = args[1];
+		String action = args[0].trim().toLowerCase();
+		String configfilename = args[1].trim();
 
-		FeigRFID feig = new FeigRFID(null);
-		feig.connect();
-		switch (action) {
-		case "get":
-			System.out.println("writing config to: " + configfilename);
-			feig.copyConfigToFile(configfilename);
-			break;
-		case "set":
-			System.out.println("reading config from: " + configfilename);
-			feig.copyFileToConfig(configfilename);
-			break;
-		default:
-			System.out.println("unknown action: " + action);
+		AbstractConfiguration config = null;
 
+		if (args.length >= 3 && args[2] != null && !args[2].trim().isEmpty()) {
+			String extraParam = args[2].trim();
+			File customFile = new File(extraParam);
+			if (customFile.exists() && customFile.isFile()) {
+				try {
+					Parameters params = new Parameters();
+					FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<>(
+							XMLConfiguration.class).configure(params.xml().setFile(customFile));
+					config = builder.getConfiguration();
+				} catch (Exception e) {
+					System.err.println("Warnung: Konnte Konfigurationsdatei '" + extraParam + "' nicht laden: " + e.getMessage());
+				}
+			} else {
+				BaseConfiguration baseConfig = new BaseConfiguration();
+				baseConfig.setProperty("device.feig.id", extraParam);
+				baseConfig.setProperty("device.feig.type", "usb");
+				config = baseConfig;
+			}
+		} else {
+			File defaultInventory = new File("inventory.xml");
+			if (defaultInventory.exists() && defaultInventory.isFile()) {
+				try {
+					Parameters params = new Parameters();
+					FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<>(
+							XMLConfiguration.class).configure(params.xml().setFile(defaultInventory));
+					config = builder.getConfiguration();
+				} catch (Exception e) {
+					// Fallback to default discovery if inventory.xml not parseable
+				}
+			}
+		}
+
+		FeigRFID feig = new FeigRFID(config);
+		try {
+			feig.connect();
+			switch (action) {
+			case "get":
+			case "backup":
+				File outFile = new File(configfilename).getAbsoluteFile();
+				if (outFile.getParentFile() != null && !outFile.getParentFile().exists()) {
+					outFile.getParentFile().mkdirs();
+				}
+				System.out.println("Lese Konfiguration aus dem verbundenen RFID-Leser aus...");
+				feig.copyConfigToFile(outFile.getAbsolutePath());
+				System.out.println("Konfiguration erfolgreich gesichert in: " + outFile.getAbsolutePath());
+				break;
+			case "set":
+			case "restore":
+				File restoreFile = new File(configfilename).getAbsoluteFile();
+				if (!restoreFile.exists() || !restoreFile.isFile()) {
+					System.err.println("Fehler: Konfigurationsdatei '" + restoreFile.getAbsolutePath() + "' nicht gefunden!");
+					System.exit(2);
+					return;
+				}
+				System.out.println("Schreibe Konfiguration in den RFID-Leser aus: " + restoreFile.getAbsolutePath());
+				feig.copyFileToConfig(restoreFile.getAbsolutePath());
+				System.out.println("Warte, bis das EEPROM vollständig geschrieben ist...");
+				feig.waitForEepromWrite(1500);
+				System.out.println("Führe System-Reset (systemReset) auf dem RFID-Leser durch...");
+				try {
+					feig.systemReset();
+					System.out.println("System-Reset erfolgreich durchgeführt.");
+				} catch (Exception e) {
+					System.err.println("Warnung beim Ausführen von systemReset: " + e.getMessage());
+				}
+				System.out.println("Konfiguration erfolgreich auf dem RFID-Leser wiederhergestellt.");
+				break;
+			default:
+				System.err.println("Unbekannte Aktion: " + action + " (Erwartet: get/backup oder set/restore)");
+				System.exit(1);
+			}
+		} finally {
+			try {
+				feig.close();
+			} catch (Throwable t) {
+				// Ignore close errors
+			}
 		}
 	}
-
 }

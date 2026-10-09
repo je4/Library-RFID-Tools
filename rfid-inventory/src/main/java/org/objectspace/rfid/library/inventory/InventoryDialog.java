@@ -47,6 +47,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.configuration2.AbstractConfiguration;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CTabFolder;
 import org.eclipse.swt.custom.CTabItem;
@@ -70,6 +71,7 @@ import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.wb.swt.SWTResourceManager;
 import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.library.ISO15693Reader;
 
 /**
  * Modernized, responsive user interface for RFID library inventory.
@@ -87,6 +89,7 @@ public class InventoryDialog extends Composite implements InventoryView {
 	private Button btnTestScan;
 	private Button btnClear;
 	private Button btnExport;
+	private Button bConfigureHostMode;
 	private Text txtSearch;
 	private Table table;
 	private StyledText logText;
@@ -120,13 +123,21 @@ public class InventoryDialog extends Composite implements InventoryView {
 	protected boolean isReaderConnected = false;
 	protected InventoryThread thread = null;
 	protected InventoryCallback callback = null;
+	protected ISO15693Reader reader = null;
+	protected AbstractConfiguration config = null;
 	private final List<InventoryItemEntry> itemList = new ArrayList<>();
 	private final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
 	public InventoryDialog(Composite parent, int style, Image logo, Image bgImage) {
+		this(parent, style, logo, bgImage, null, null);
+	}
+
+	public InventoryDialog(Composite parent, int style, Image logo, Image bgImage, ISO15693Reader reader, AbstractConfiguration config) {
 		super(parent, style);
 		this.logo = logo;
 		this.bgImage = bgImage;
+		this.reader = reader;
+		this.config = config;
 
 		setBackground(SWTResourceManager.getColor(245, 247, 250));
 		GridLayout mainLayout = new GridLayout(1, false);
@@ -298,7 +309,7 @@ public class InventoryDialog extends Composite implements InventoryView {
 		gd.verticalIndent = 8;
 		toolbar.setLayoutData(gd);
 
-		GridLayout tl = new GridLayout(7, false);
+		GridLayout tl = new GridLayout(8, false);
 		tl.marginWidth = 0;
 		tl.marginHeight = 0;
 		tl.horizontalSpacing = 8;
@@ -392,6 +403,27 @@ public class InventoryDialog extends Composite implements InventoryView {
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				exportToCSV();
+			}
+		});
+
+		// Configure MR102 Host Mode Button
+		bConfigureHostMode = new Button(toolbar, SWT.PUSH);
+		bConfigureHostMode.setText("\u2699 MR102 Host-Mode");
+		bConfigureHostMode.setFont(SWTResourceManager.getFont("Segoe UI", 9, SWT.BOLD));
+		bConfigureHostMode.setToolTipText("FEIG ID ISC.MR102 Host-Mode konfigurieren (reader_host_mode_config.xml)");
+		bConfigureHostMode.setBackground(SWTResourceManager.getColor(217, 119, 6)); // Amber / Orange
+		bConfigureHostMode.setForeground(SWTResourceManager.getColor(SWT.COLOR_WHITE));
+		GridData hmgd = new GridData(SWT.LEFT, SWT.CENTER, false, false);
+		hmgd.widthHint = 150;
+		hmgd.heightHint = 32;
+		boolean showHostMode = reader != null && (reader.isMR102() || reader.hasError());
+		hmgd.exclude = !showHostMode;
+		bConfigureHostMode.setLayoutData(hmgd);
+		bConfigureHostMode.setVisible(showHostMode);
+		bConfigureHostMode.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				performConfigureHostMode();
 			}
 		});
 
@@ -725,6 +757,20 @@ public class InventoryDialog extends Composite implements InventoryView {
 		getDisplay().asyncExec(() -> {
 			if (isDisposed()) return;
 			this.isReaderConnected = connected;
+			boolean isMr102 = reader != null && reader.isMR102();
+			boolean hasErr = reader != null && reader.hasError();
+			boolean showButton = isMr102 || hasErr || (deviceInfo != null && deviceInfo.contains("MR102"));
+			if (bConfigureHostMode != null && !bConfigureHostMode.isDisposed()) {
+				bConfigureHostMode.setVisible(showButton);
+				if (bConfigureHostMode.getLayoutData() instanceof GridData) {
+					((GridData) bConfigureHostMode.getLayoutData()).exclude = !showButton;
+				}
+				bConfigureHostMode.setEnabled(true);
+				if (bConfigureHostMode.getParent() != null && !bConfigureHostMode.getParent().isDisposed()) {
+					bConfigureHostMode.getParent().layout(true, true);
+				}
+			}
+
 			if (connected) {
 				if (lblReaderBadge != null && !lblReaderBadge.isDisposed()) {
 					lblReaderBadge.setText("  \u25CF FEIG: Verbunden  ");
@@ -751,8 +797,9 @@ public class InventoryDialog extends Composite implements InventoryView {
 				addLogMessage("FEIG Leseger\u00E4t verbunden (" + (deviceInfo != null ? deviceInfo : "USB-Ger\u00E4t erkannt") + ")");
 			} else {
 				if (lblReaderBadge != null && !lblReaderBadge.isDisposed()) {
-					lblReaderBadge.setText("  \u25CB FEIG: Getrennt  ");
-					lblReaderBadge.setToolTipText("Kein FEIG Leseger\u00E4t angeschlossen. Bitte USB-Kabel verbinden.");
+					String errDetails = (reader != null && reader.getLastErrorDetails() != null) ? reader.getLastErrorDetails() : null;
+					lblReaderBadge.setText(errDetails != null ? ("  \u25CB FEIG: Fehler  ") : "  \u25CB FEIG: Getrennt  ");
+					lblReaderBadge.setToolTipText(errDetails != null ? ("Fehler: " + errDetails) : "Kein FEIG Leseger\u00E4t angeschlossen. Bitte USB-Kabel verbinden.");
 					lblReaderBadge.setBackground(SWTResourceManager.getColor(185, 28, 28)); // Vivid Red
 				}
 				if (isRunning) {
@@ -769,9 +816,9 @@ public class InventoryDialog extends Composite implements InventoryView {
 					bStartStop.setToolTipText("Inventarisierung starten [F5]. Kein Leseger\u00E4t verbunden.");
 				}
 				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
-					lblStatusBar.setText("FEIG Leseger\u00E4t nicht verbunden. Bitte USB-Kabel anschlie\u00DFen.");
+					lblStatusBar.setText("FEIG Leseger\u00E4t nicht verbunden oder Fehler aufgetreten. Bitte pr\u00FCfen.");
 				}
-				addLogMessage("WARNUNG: FEIG Leseger\u00E4t getrennt oder nicht erreichbar. Scan deaktiviert.");
+				addLogMessage("WARNUNG: FEIG Leseger\u00E4t getrennt oder Fehler erkannt. Scan deaktiviert.");
 			}
 			if (lblReaderBadge != null && lblReaderBadge.getParent() != null && !lblReaderBadge.getParent().isDisposed()) {
 				lblReaderBadge.getParent().layout(true, true);
@@ -1092,6 +1139,149 @@ public class InventoryDialog extends Composite implements InventoryView {
 
 	public void setCallback(InventoryCallback callback) {
 		this.callback = callback;
+		if (callback != null) {
+			if (this.reader == null) {
+				this.reader = callback.getReader();
+			}
+			if (this.config == null) {
+				this.config = callback.getConfig();
+			}
+		}
+	}
+
+	public void setReader(ISO15693Reader reader) {
+		this.reader = reader;
+	}
+
+	public void setConfig(AbstractConfiguration config) {
+		this.config = config;
+	}
+
+	public Button getBtnConfigureHostMode() {
+		return bConfigureHostMode;
+	}
+
+	/**
+	 * Interactive workflow for FEIG MR102 Host Mode configuration in SWT UI.
+	 */
+	public void performConfigureHostMode() {
+		if (reader == null) {
+			MessageBox mb = new MessageBox(getShell(), SWT.ICON_WARNING | SWT.OK);
+			mb.setText("Host-Mode Konfiguration");
+			mb.setMessage("Kein RFID-Leser konfiguriert.");
+			mb.open();
+			return;
+		}
+
+		MessageBox prompt = new MessageBox(getShell(), SWT.ICON_QUESTION | SWT.YES | SWT.NO | SWT.CANCEL);
+		prompt.setText("FEIG MR102 Host-Mode konfigurieren");
+		prompt.setMessage("M\u00F6chten Sie vor dem Konfigurieren des Host-Modes ein Backup der aktuellen Reader-Konfiguration erstellen?\n(Empfohlen, um bestehende Einstellungen zu sichern)");
+		int res = prompt.open();
+		if (res == SWT.CANCEL) {
+			return;
+		}
+
+		File backupTargetFile = null;
+		if (res == SWT.YES) {
+			FileDialog fd = new FileDialog(getShell(), SWT.SAVE);
+			fd.setText("Speicherort f\u00FCr Konfigurations-Backup ausw\u00E4hlen");
+			fd.setFilterExtensions(new String[] { "*.xml", "*.*" });
+			fd.setFilterNames(new String[] { "FEIG XML-Konfigurationsdatei (*.xml)", "Alle Dateien (*.*)" });
+			String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+			fd.setFileName("reader_backup_config-" + timestamp + ".xml");
+			String selectedPath = fd.open();
+			if (selectedPath == null || selectedPath.trim().isEmpty()) {
+				return;
+			}
+			backupTargetFile = new File(selectedPath);
+			if (!backupTargetFile.getName().toLowerCase().endsWith(".xml")) {
+				backupTargetFile = new File(backupTargetFile.getParentFile(), backupTargetFile.getName() + ".xml");
+			}
+		}
+
+		File hostConfigFile = reader.resolveHostModeConfigFile();
+		if (hostConfigFile == null || !hostConfigFile.exists()) {
+			MessageBox errMb = new MessageBox(getShell(), SWT.ICON_ERROR | SWT.OK);
+			errMb.setText("Fehler - Konfigurationsdatei fehlt");
+			errMb.setMessage("Die Datei 'reader_host_mode_config.xml' konnte nicht gefunden werden!\nBitte stellen Sie sicher, dass die Datei im Programmverzeichnis oder den Ressourcen verf\u00FCgbar ist.");
+			errMb.open();
+			return;
+		}
+
+		final File finalBackupFile = backupTargetFile;
+		final File finalHostFile = hostConfigFile;
+		final boolean wasRunning = isRunning;
+
+		if (thread != null) {
+			thread.pause(true);
+		}
+
+		if (bConfigureHostMode != null && !bConfigureHostMode.isDisposed()) {
+			bConfigureHostMode.setEnabled(false);
+		}
+		if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+			lblStatusBar.setText("Host-Mode Konfiguration wird durchgef\u00FChrt...");
+		}
+		addLogMessage("Starte FEIG MR102 Host-Mode-Konfigurationsprozess...");
+
+		new Thread(() -> {
+			try {
+				// Brief delay to allow any in-flight inventory poll to complete
+				Thread.sleep(400);
+
+				if (finalBackupFile != null) {
+					addLogMessage("Erstelle Konfigurations-Backup: " + finalBackupFile.getAbsolutePath());
+					reader.backupConfig(finalBackupFile);
+					addLogMessage("Backup erfolgreich gespeichert.");
+				}
+
+				addLogMessage("Schreibe Host-Mode-Parameter (" + finalHostFile.getName() + ") in EEPROM & RAM...");
+				reader.restoreHostModeConfig(finalHostFile);
+				addLogMessage("Host-Mode erfolgreich konfiguriert und Leser reinitialisiert.");
+
+				if (!isDisposed()) {
+					getDisplay().asyncExec(() -> {
+						if (isDisposed()) return;
+						if (bConfigureHostMode != null && !bConfigureHostMode.isDisposed()) {
+							bConfigureHostMode.setEnabled(true);
+						}
+						if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+							lblStatusBar.setText("MR102 Host-Mode erfolgreich konfiguriert.");
+						}
+						onReaderConnectionChanged(reader.isConnected(), reader.getDeviceInfo());
+						String msg = "Der FEIG MR102 wurde erfolgreich im Host-Mode konfiguriert und reinitialisiert!";
+						if (finalBackupFile != null) {
+							msg += "\nBackup gespeichert unter: " + finalBackupFile.getAbsolutePath();
+						}
+						MessageBox okBox = new MessageBox(getShell(), SWT.ICON_INFORMATION | SWT.OK);
+						okBox.setText("Erfolg");
+						okBox.setMessage(msg);
+						okBox.open();
+					});
+				}
+			} catch (Exception ex) {
+				addLogMessage("FEHLER bei Host-Mode Konfiguration: " + ex.getMessage());
+				if (!isDisposed()) {
+					getDisplay().asyncExec(() -> {
+						if (isDisposed()) return;
+						if (bConfigureHostMode != null && !bConfigureHostMode.isDisposed()) {
+							bConfigureHostMode.setEnabled(true);
+						}
+						if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+							lblStatusBar.setText("Fehler bei Host-Mode Konfiguration: " + ex.getMessage());
+						}
+						MessageBox errBox = new MessageBox(getShell(), SWT.ICON_ERROR | SWT.OK);
+						errBox.setText("Konfigurationsfehler");
+						errBox.setMessage("Fehler beim Konfigurieren des Host-Modes:\n" + ex.getMessage());
+						errBox.open();
+					});
+				}
+			} finally {
+				if (wasRunning && thread != null && isRunning) {
+					thread.pause(false);
+				}
+			}
+		}).start();
 	}
 
 	public InventoryCallback getCallback() {

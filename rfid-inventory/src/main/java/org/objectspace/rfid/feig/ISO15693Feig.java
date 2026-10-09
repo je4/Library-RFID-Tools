@@ -37,6 +37,7 @@
  *******************************************************************************/
 package org.objectspace.rfid.feig;
 
+import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 
@@ -222,6 +223,61 @@ public class ISO15693Feig implements ISO15693Reader {
 			counter++;
 		}
 	}
+	@Override
+	public boolean isMR102() {
+		return feig != null && feig.isMR102();
+	}
+
+	@Override
+	public boolean hasError() {
+		return feig != null && feig.hasError();
+	}
+
+	@Override
+	public String getLastErrorDetails() {
+		return feig != null ? feig.getLastErrorMessage() : null;
+	}
+
+	@Override
+	public void backupConfig(File targetFile) throws Exception {
+		if (feig == null) {
+			throw new Exception("FeigRFID instance not initialized");
+		}
+		feig.backupConfiguration(targetFile);
+	}
+
+	@Override
+	public void restoreConfig(File sourceFile) throws Exception {
+		if (feig == null) {
+			throw new Exception("FeigRFID instance not initialized");
+		}
+		feig.restoreConfiguration(sourceFile);
+	}
+
+	@Override
+	public void systemReset() throws Exception {
+		if (feig != null) {
+			feig.systemReset();
+		}
+	}
+
+	@Override
+	public void restoreHostModeConfig(File configFile) throws Exception {
+		if (feig == null) {
+			throw new Exception("FeigRFID instance not initialized");
+		}
+		feig.configureHostMode(configFile);
+	}
+
+	@Override
+	public File resolveHostModeConfigFile() {
+		return FeigRFID.resolveHostModeConfigFile(config);
+	}
+
+	public FeigRFID getFeigRFID() {
+		return feig;
+	}
+
 	private FeigRFID feig;
 	private AbstractConfiguration config;
 	protected HashMap<String, Integer> maxBlocksMap;

@@ -130,6 +130,7 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	private JButton btnTestScan;
 	private JButton btnExport;
 	private JButton btnClear;
+	private JButton btnConfigureHostMode;
 	private JTextField txtSearch;
 
 	// UI Components - Main Table
@@ -520,12 +521,24 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		btnClear.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btnClear.addActionListener(e -> confirmAndClear());
 
+		btnConfigureHostMode = new JButton("\u2699 MR102 Host-Mode");
+		btnConfigureHostMode.setFont(btnConfigureHostMode.getFont().deriveFont(Font.BOLD, 12f));
+		btnConfigureHostMode.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]background: #d97706; [dark]foreground: #ffffff; [dark]borderColor: #b45309; [dark]hoverBackground: #b45309; " +
+				"[light]background: #f59e0b; [light]foreground: #ffffff; [light]borderColor: #d97706; [light]hoverBackground: #d97706;");
+		btnConfigureHostMode.setToolTipText("FEIG ID ISC.MR102 Host-Mode konfigurieren (reader_host_mode_config.xml)");
+		btnConfigureHostMode.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		btnConfigureHostMode.addActionListener(e -> performConfigureHostMode());
+		boolean showHostMode = reader != null && (reader.isMR102() || reader.hasError());
+		btnConfigureHostMode.setVisible(showHostMode);
+
 		leftControls.add(lblMarker);
 		leftControls.add(tInventoryTag);
 		leftControls.add(btnStartStop);
 		leftControls.add(btnTestScan);
 		leftControls.add(btnExport);
 		leftControls.add(btnClear);
+		leftControls.add(btnConfigureHostMode);
 
 		// Right Controls: Quick Search Box
 		JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
@@ -986,12 +999,24 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	public void updateReaderStatus(boolean connected, String deviceInfo) {
 		boolean isDark = FlatSVGIcon.isDarkLaf();
 		SwingUtilities.invokeLater(() -> {
+			boolean isMr102 = reader != null && reader.isMR102();
+			boolean hasErr = reader != null && reader.hasError();
+			if (btnConfigureHostMode != null) {
+				btnConfigureHostMode.setVisible(isMr102 || hasErr || (deviceInfo != null && deviceInfo.contains("MR102")));
+				btnConfigureHostMode.setEnabled(true);
+			}
+
 			if (connected) {
 				String info = (deviceInfo != null && !deviceInfo.isEmpty()) ? deviceInfo : "FEIG USB";
 				lblReaderStatus.setText("\u25CF Verbunden: " + info);
 				lblReaderStatus.setBackground(isDark ? new Color(34, 197, 94) : new Color(22, 163, 74)); // Green
 			} else {
-				lblReaderStatus.setText("\u25CF Getrennt (Warte auf Leser...)");
+				String errDetails = (reader != null && reader.getLastErrorDetails() != null) ? reader.getLastErrorDetails() : null;
+				if (errDetails != null && !errDetails.isEmpty()) {
+					lblReaderStatus.setText("\u25CF Fehler: " + errDetails);
+				} else {
+					lblReaderStatus.setText("\u25CF Getrennt (Warte auf Leser...)");
+				}
 				lblReaderStatus.setBackground(isDark ? new Color(239, 68, 68) : new Color(220, 38, 38)); // Red
 			}
 			lblReaderStatus.repaint();
@@ -1366,6 +1391,136 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	@Override
 	public void setThread(InventoryThread thread) {
 		this.thread = thread;
+	}
+
+	public JButton getBtnConfigureHostMode() {
+		return btnConfigureHostMode;
+	}
+
+	/**
+	 * Executes the interactive FEIG MR102 Host-Mode configuration workflow.
+	 * Prompts the user for optional backup, selects output file if desired,
+	 * writes reader_host_mode_config.xml, waits for EEPROM write, and reconnects the hardware reader.
+	 */
+	public void performConfigureHostMode() {
+		if (reader == null) {
+			JOptionPane.showMessageDialog(this,
+					"Kein RFID-Leser konfiguriert.",
+					"Host-Mode Konfiguration",
+					JOptionPane.WARNING_MESSAGE);
+			return;
+		}
+
+		String[] options = { "Ja, Backup erstellen", "Nein, ohne Backup fortfahren", "Abbrechen" };
+		int choice = JOptionPane.showOptionDialog(
+				this,
+				"M\u00F6chten Sie vor dem Konfigurieren des Host-Modes ein Backup der aktuellen Reader-Konfiguration erstellen?\n" +
+				"(Empfohlen, um bestehende Hardware- und EEPROM-Einstellungen zu sichern)",
+				"FEIG MR102 Host-Mode konfigurieren",
+				JOptionPane.YES_NO_CANCEL_OPTION,
+				JOptionPane.QUESTION_MESSAGE,
+				null,
+				options,
+				options[0]
+		);
+
+		if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) {
+			return;
+		}
+
+		File backupTargetFile = null;
+		if (choice == 0) {
+			JFileChooser fileChooser = new JFileChooser();
+			fileChooser.setDialogTitle("Speicherort f\u00FCr Konfigurations-Backup ausw\u00E4hlen");
+			fileChooser.setFileFilter(new FileNameExtensionFilter("FEIG XML-Konfiguration (*.xml)", "xml"));
+			String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+			fileChooser.setSelectedFile(new File("reader_backup_config-" + timestamp + ".xml"));
+
+			int fcRes = fileChooser.showSaveDialog(this);
+			if (fcRes != JFileChooser.APPROVE_OPTION) {
+				return;
+			}
+			backupTargetFile = fileChooser.getSelectedFile();
+			if (!backupTargetFile.getName().toLowerCase().endsWith(".xml")) {
+				backupTargetFile = new File(backupTargetFile.getParentFile(), backupTargetFile.getName() + ".xml");
+			}
+		}
+
+		File hostConfigFile = reader.resolveHostModeConfigFile();
+		if (hostConfigFile == null || !hostConfigFile.exists()) {
+			JOptionPane.showMessageDialog(this,
+					"Die Datei 'reader_host_mode_config.xml' konnte nicht gefunden werden!\n" +
+					"Bitte stellen Sie sicher, dass die Datei im Programmverzeichnis oder den Ressourcen verf\u00FCgbar ist.",
+					"Fehler - Konfigurationsdatei fehlt",
+					JOptionPane.ERROR_MESSAGE);
+			return;
+		}
+
+		final File finalBackupFile = backupTargetFile;
+		final File finalHostFile = hostConfigFile;
+		final boolean wasRunning = isRunning;
+
+		if (thread != null) {
+			thread.pause(true);
+		}
+
+		if (btnConfigureHostMode != null) {
+			btnConfigureHostMode.setEnabled(false);
+		}
+		if (lblStatusBar != null) {
+			lblStatusBar.setText("Host-Mode Konfiguration wird durchgef\u00FChrt...");
+		}
+		print("[MR102] Starte Host-Mode-Konfigurationsprozess...", 1, 1);
+
+		new Thread(() -> {
+			try {
+				// Brief delay to allow any in-flight inventory poll to complete
+				Thread.sleep(400);
+
+				if (finalBackupFile != null) {
+					print("[MR102] Erstelle Konfigurations-Backup: " + finalBackupFile.getAbsolutePath(), 1, 1);
+					reader.backupConfig(finalBackupFile);
+					print("[MR102] Backup erfolgreich gespeichert.", 1, 1);
+				}
+
+				print("[MR102] Schreibe Host-Mode-Parameter (" + finalHostFile.getName() + ") in EEPROM & RAM...", 1, 1);
+				reader.restoreHostModeConfig(finalHostFile);
+				print("[MR102] Host-Mode erfolgreich konfiguriert und Leser reinitialisiert.", 1, 1);
+
+				SwingUtilities.invokeLater(() -> {
+					if (btnConfigureHostMode != null) {
+						btnConfigureHostMode.setEnabled(true);
+					}
+					if (lblStatusBar != null) {
+						lblStatusBar.setText("MR102 Host-Mode erfolgreich konfiguriert.");
+					}
+					updateReaderStatus(reader.isConnected(), reader.getDeviceInfo());
+					String msg = "Der FEIG MR102 wurde erfolgreich im Host-Mode konfiguriert und reinitialisiert!";
+					if (finalBackupFile != null) {
+						msg += "\nBackup gespeichert unter: " + finalBackupFile.getAbsolutePath();
+					}
+					JOptionPane.showMessageDialog(this, msg, "Erfolg", JOptionPane.INFORMATION_MESSAGE);
+				});
+			} catch (Exception ex) {
+				print("[MR102] FEHLER bei Host-Mode Konfiguration: " + ex.getMessage(), 1, 1);
+				SwingUtilities.invokeLater(() -> {
+					if (btnConfigureHostMode != null) {
+						btnConfigureHostMode.setEnabled(true);
+					}
+					if (lblStatusBar != null) {
+						lblStatusBar.setText("Fehler bei Host-Mode Konfiguration: " + ex.getMessage());
+					}
+					JOptionPane.showMessageDialog(this,
+							"Fehler beim Konfigurieren des Host-Modes:\n" + ex.getMessage(),
+							"Konfigurationsfehler",
+							JOptionPane.ERROR_MESSAGE);
+				});
+			} finally {
+				if (wasRunning && thread != null && isRunning) {
+					thread.pause(false);
+				}
+			}
+		}).start();
 	}
 
 	private void handleExit() {

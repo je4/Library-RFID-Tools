@@ -354,4 +354,60 @@ public class InventoryViewTest {
 		assertThat(mockView.logs).anyMatch(l -> l.contains("[Datenbank] Inaktiv"));
 		assertThat(mockView.logs).anyMatch(l -> l.contains("[Webservice] Aktiv: POST http://localhost:8080/api/inventory"));
 	}
+
+	@Test
+	@DisplayName("Test InventoryCallback reader and configuration getters")
+	public void testInventoryCallbackReaderAccess() throws Exception {
+		MockInventoryView mockView = new MockInventoryView();
+		BaseConfiguration config = new BaseConfiguration();
+		config.setProperty("config.file.path", "C:\\test\\inventory.xml");
+
+		class TestReader implements org.objectspace.rfid.library.ISO15693Reader {
+			@Override public void inventory(org.objectspace.rfid.TagCallback cb, int nb) {}
+			@Override public void connect() {}
+			@Override public void init() {}
+			@Override public boolean isConnected() { return true; }
+			@Override public boolean checkConnection() { return true; }
+			@Override public String getDeviceInfo() { return "FEIG Test"; }
+			@Override public boolean isMR102() { return true; }
+			@Override public boolean hasError() { return true; }
+			@Override public void close() {}
+		}
+
+		TestReader testReader = new TestReader();
+		InventoryCallback cb = new InventoryCallback(mockView, config, "C:\\test\\inventory.xml", testReader);
+
+		assertThat(cb.getReader()).isSameAs(testReader);
+		assertThat(cb.getConfig()).isSameAs(config);
+		assertThat(cb.getReader().isMR102()).isTrue();
+		assertThat(cb.getReader().hasError()).isTrue();
+	}
+
+	@Test
+	@DisplayName("Test InventoryModernFrame Host-Mode button presence and MR102 visibility")
+	public void testHostModeButtonInModernFrame() {
+		if (java.awt.GraphicsEnvironment.isHeadless()) {
+			return;
+		}
+		BaseConfiguration config = new BaseConfiguration();
+		class MockMR102Reader implements org.objectspace.rfid.library.ISO15693Reader {
+			@Override public void inventory(org.objectspace.rfid.TagCallback cb, int nb) {}
+			@Override public void connect() {}
+			@Override public void init() {}
+			@Override public boolean isConnected() { return true; }
+			@Override public boolean checkConnection() { return true; }
+			@Override public String getDeviceInfo() { return "FEIG ISC.MR102-USB"; }
+			@Override public boolean isMR102() { return true; }
+			@Override public void close() {}
+		}
+
+		MockMR102Reader reader = new MockMR102Reader();
+		InventoryModernFrame frame = new InventoryModernFrame(config, reader);
+		try {
+			assertThat(frame.getBtnConfigureHostMode()).isNotNull();
+			assertThat(frame.getBtnConfigureHostMode().isVisible()).isTrue();
+		} finally {
+			frame.dispose();
+		}
+	}
 }
