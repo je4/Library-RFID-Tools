@@ -128,6 +128,9 @@ public class InventoryViewTest {
 	@Test
 	@DisplayName("Test InventoryModernFrame creation and theme setup")
 	public void testModernFrame() throws Exception {
+		if (java.awt.GraphicsEnvironment.isHeadless()) {
+			return;
+		}
 		BaseConfiguration config = new BaseConfiguration();
 		config.setProperty("inventory.theme", "system");
 		config.setProperty("inventory.marker", "OG-Test");
@@ -180,6 +183,9 @@ public class InventoryViewTest {
 	@Test
 	@DisplayName("Test that starting scan requires a location/marker in InventoryModernFrame")
 	public void testScanRequiresMarkerInModernFrame() {
+		if (java.awt.GraphicsEnvironment.isHeadless()) {
+			return;
+		}
 		BaseConfiguration config = new BaseConfiguration();
 		config.setProperty("inventory.theme", "system");
 		config.setProperty("inventory.marker", "");
@@ -209,6 +215,70 @@ public class InventoryViewTest {
 			assertThat(frame.isRunning()).isFalse();
 		} finally {
 			frame.dispose();
+		}
+	}
+
+	@Test
+	@DisplayName("Test that InventoryModernFrame initializes cleanly in FlatLaf Dark and Light modes without styling exceptions")
+	public void testModernFrameStylingCompatibility() {
+		java.util.List<java.util.logging.LogRecord> capturedLogs = new java.util.ArrayList<>();
+		java.util.logging.Handler logHandler = new java.util.logging.Handler() {
+			@Override
+			public void publish(java.util.logging.LogRecord record) {
+				if (record.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue()) {
+					capturedLogs.add(record);
+				}
+			}
+			@Override
+			public void flush() {}
+			@Override
+			public void close() throws SecurityException {}
+		};
+
+		java.util.logging.Logger flatLafLogger = java.util.logging.Logger.getLogger("com.formdev.flatlaf");
+		flatLafLogger.addHandler(logHandler);
+
+		try {
+			// Test dark theme styling initialization
+			BaseConfiguration darkConfig = new BaseConfiguration();
+			darkConfig.setProperty("inventory.theme", "dark");
+			InventoryModernFrame.setupTheme(darkConfig);
+
+			// Test components directly (works in both headless and GUI environments)
+			javax.swing.JTable testTable = new javax.swing.JTable();
+			testTable.putClientProperty(com.formdev.flatlaf.FlatClientProperties.STYLE, "intercellSpacing: 0,1; " +
+					"[dark]background: #0f172a; [dark]foreground: #f8fafc; " +
+					"[dark]selectionBackground: #2563eb; [dark]selectionForeground: #ffffff; " +
+					"[dark]selectionInactiveBackground: #1d4ed8; [dark]selectionInactiveForeground: #ffffff; " +
+					"[light]background: #ffffff; [light]foreground: #0f172a; " +
+					"[light]selectionBackground: #3b82f6; [light]selectionForeground: #ffffff; " +
+					"[light]selectionInactiveBackground: #60a5fa; [light]selectionInactiveForeground: #ffffff;");
+
+			javax.swing.JTabbedPane testTabbedPane = new javax.swing.JTabbedPane();
+			testTabbedPane.putClientProperty(com.formdev.flatlaf.FlatClientProperties.STYLE, "tabArc: 8; " +
+					"[dark]selectedBackground: #1e293b; [dark]selectedForeground: #38bdf8; [dark]underlineColor: #38bdf8; " +
+					"[light]selectedBackground: #ffffff; [light]selectedForeground: #0284c7; [light]underlineColor: #0284c7;");
+
+			if (!java.awt.GraphicsEnvironment.isHeadless()) {
+				InventoryModernFrame darkFrame = new InventoryModernFrame(darkConfig, null);
+				darkFrame.dispose();
+			}
+
+			// Test light theme styling initialization
+			BaseConfiguration lightConfig = new BaseConfiguration();
+			lightConfig.setProperty("inventory.theme", "light");
+			InventoryModernFrame.setupTheme(lightConfig);
+
+			if (!java.awt.GraphicsEnvironment.isHeadless()) {
+				InventoryModernFrame lightFrame = new InventoryModernFrame(lightConfig, null);
+				lightFrame.dispose();
+			}
+
+			assertThat(capturedLogs)
+					.withFailMessage("Expected no FlatLaf warning/severe logs but got: %s", capturedLogs)
+					.isEmpty();
+		} finally {
+			flatLafLogger.removeHandler(logHandler);
 		}
 	}
 

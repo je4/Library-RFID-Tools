@@ -88,6 +88,12 @@ public class Inventory {
 		XMLConfiguration config = builder.getConfiguration();
 		config.setProperty("config.file.path", configAbsolutePath);
 
+		String ui = config.getString("inventory.ui", "modern").trim().toLowerCase();
+		InventorySplashScreen splash = null;
+		if (!"swt".equals(ui)) {
+			splash = InventorySplashScreen.showSplash(config);
+		}
+
 		ISO15693Reader reader = null;
 		String readerStartupNotice = null;
 		try {
@@ -99,15 +105,18 @@ public class Inventory {
 			System.out.println(readerStartupNotice);
 		}
 		
-		String ui = config.getString("inventory.ui", "modern").trim().toLowerCase();
 		if ("swt".equals(ui)) {
 			launchSwt(config, configAbsolutePath, reader, readerStartupNotice);
 		} else {
-			launchModern(config, configAbsolutePath, reader, readerStartupNotice);
+			launchModern(config, configAbsolutePath, reader, readerStartupNotice, splash);
 		}
 	}
 
 	private static void launchModern(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader, String readerStartupNotice) {
+		launchModern(config, configAbsolutePath, reader, readerStartupNotice, null);
+	}
+
+	private static void launchModern(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader, String readerStartupNotice, InventorySplashScreen splash) {
 		InventoryModernFrame.setupTheme(config);
 		final ISO15693Reader finalReader = reader;
 		final String finalNotice = readerStartupNotice;
@@ -121,8 +130,14 @@ public class Inventory {
 				Thread runner = new Thread(inventoryThread, "Inventory-Scanner");
 				runner.start();
 				frame.setVisible(true);
+				if (splash != null) {
+					splash.close();
+				}
 			} catch (Exception e) {
 				e.printStackTrace();
+				if (splash != null) {
+					splash.close();
+				}
 			}
 		});
 	}

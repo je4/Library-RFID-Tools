@@ -37,6 +37,7 @@
  *******************************************************************************/
 package org.objectspace.rfid.library.inventory;
 
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -994,42 +995,27 @@ public class InventoryDialog extends Composite implements InventoryView {
 		fd.setText("Inventarliste als CSV speichern");
 		fd.setFilterExtensions(new String[] { "*.csv", "*.*" });
 		fd.setFilterNames(new String[] { "CSV-Dateien (*.csv)", "Alle Dateien (*.*)" });
+		fd.setFilterPath(System.getProperty("user.dir", "."));
 		fd.setFileName("Inventar_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".csv");
 
 		String path = fd.open();
 		if (path != null) {
-			try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(path), StandardCharsets.UTF_8))) {
-				// UTF-8 BOM for Excel compatibility
-				pw.print('\ufeff');
-				pw.println("Status;Nr;Uhrzeit;Barcode_ID;Signatur;Teil_Nr;Teile_Gesamt;ISIL;Land;Nutzungsart;Standort_Marker;RFID_UID;CRC_Status;Hersteller;Transponder_Typ;Status_Details");
-				for (InventoryItemEntry item : itemList) {
-					pw.printf("\"%s\";%d;\"%s\";\"%s\";\"%s\";%d;%d;\"%s\";\"%s\";%d;\"%s\";\"%s\";\"%s\";\"%s\";\"%s\";\"%s\"%n",
-						item.statusSymbol,
-						item.index,
-						item.time,
-						item.primaryItemId.replace("\"", "\"\""),
-						item.signature.replace("\"", "\"\""),
-						item.partNumber,
-						item.partsInItem,
-						item.isil != null ? item.isil : "",
-						item.country != null ? item.country : "",
-						item.usageType,
-						item.marker.replace("\"", "\"\""),
-						item.uid,
-						item.crcStatus,
-						item.manufacturer,
-						item.tagName,
-						item.statusDetails != null ? item.statusDetails.replace("\"", "\"\"") : ""
-					);
-				}
+			File file = new File(path);
+			try {
+				InventoryModernFrame.writeCsv(file, new ArrayList<>(itemList));
 				MessageBox box = new MessageBox(getShell(), SWT.ICON_INFORMATION | SWT.OK);
 				box.setText("CSV Export erfolgreich");
 				box.setMessage("Die Inventarliste mit " + itemList.size() + " Datens\u00E4tzen wurde erfolgreich gespeichert:\n" + path);
 				box.open();
 			} catch (Exception ex) {
+				String hint = "";
+				String p = file.getAbsolutePath().toLowerCase();
+				if (p.contains("documents") || p.contains("dokumente") || p.contains("desktop")) {
+					hint = "\n\nHinweis: Auf Windows kann der \u00DCberwachte Ordnerzugriff (Ransomware-Schutz) oder fehlende Berechtigungen das Schreiben in gesch\u00FCtzte Benutzerordner blockieren. Bitte w\u00E4hlen Sie einen anderen Zielordner (z. B. das Anwendungsverzeichnis).";
+				}
 				MessageBox box = new MessageBox(getShell(), SWT.ICON_ERROR | SWT.OK);
 				box.setText("Fehler beim Exportieren");
-				box.setMessage("Konnte CSV-Datei nicht schreiben: " + ex.getMessage());
+				box.setMessage("Konnte CSV-Datei nicht schreiben:\n" + file.getAbsolutePath() + "\n\nDetails: " + ex.getMessage() + hint);
 				box.open();
 			}
 		}

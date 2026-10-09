@@ -47,7 +47,9 @@ public class TestRunner {
         Class<?>[] testClasses = new Class<?>[] {
             FinnishDataModelTest.class,
             org.objectspace.rfid.webservice.WebserviceTest.class,
-            org.objectspace.rfid.library.inventory.InventoryViewTest.class
+            org.objectspace.rfid.library.inventory.InventoryViewTest.class,
+            org.objectspace.rfid.library.inventory.InventorySplashScreenTest.class,
+            org.objectspace.rfid.library.inventory.InventoryCsvExportTest.class
         };
 
         System.out.println("=== Starting Test Runner ===");
@@ -65,7 +67,12 @@ public class TestRunner {
             for (Method method : clazz.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(Test.class)) {
                     try {
-                        method.invoke(instance);
+                        if (method.getParameterCount() == 1 && method.getParameterTypes()[0].equals(java.io.File.class)) {
+                            java.io.File tempDir = java.nio.file.Files.createTempDirectory("test-rfid").toFile();
+                            method.invoke(instance, tempDir);
+                        } else {
+                            method.invoke(instance);
+                        }
                         System.out.println("  [PASS] " + method.getName());
                         passed++;
                     } catch (Throwable t) {

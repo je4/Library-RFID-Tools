@@ -33,7 +33,7 @@ if ($needsDependencies) {
     
     $m2Repo = Join-Path $HOME ".m2\repository"
     if (Test-Path $m2Repo) {
-        $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*')
+        $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*', 'flatlaf*', 'jsvg*')
         Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
             $name = $_.Name
             $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
@@ -54,7 +54,16 @@ $buildClasspath = "lib\*;lib\ext\*"
 $javaCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) { "$env:JAVA_HOME\bin\java.exe" } else { "java" }
 $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
 
-if ($Rebuild -or (-not (Test-Path $mainClass))) {
+$shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass))
+if (-not $shouldRebuild) {
+    $latestSource = Get-ChildItem -Recurse -Path "$projectRoot\src\main\java\*.java" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $mainClassItem = Get-Item $mainClass -ErrorAction SilentlyContinue
+    if ($latestSource -and $mainClassItem -and ($latestSource.LastWriteTime -gt $mainClassItem.LastWriteTime)) {
+        $shouldRebuild = $true
+    }
+}
+
+if ($shouldRebuild) {
     Write-Host "Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
     if (Test-Path $classesDir) {
         Remove-Item -Force -Recurse $classesDir

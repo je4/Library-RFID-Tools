@@ -39,6 +39,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +52,7 @@ import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -88,6 +90,7 @@ import org.objectspace.rfid.library.ISO15693Reader;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLightLaf;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 import de.feig.fedm.utility.HexConvert;
 
@@ -179,6 +182,8 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 	/**
 	 * Setup FlatLaf Look and Feel based on configuration.
+	 * Supports explicit "dark", "light", and "system"/"auto" which automatically
+	 * detects Windows / OS dark mode setting.
 	 */
 	public static void setupTheme(AbstractConfiguration config) {
 		String theme = config != null ? config.getString("inventory.theme", "system").trim().toLowerCase() : "system";
@@ -188,12 +193,74 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 			} else if ("light".equals(theme)) {
 				FlatLightLaf.setup();
 			} else {
-				// System default / auto-detect
-				FlatLightLaf.setup();
+				// System default / auto-detect from OS
+				if (isSystemDarkMode()) {
+					FlatDarkLaf.setup();
+				} else {
+					FlatLightLaf.setup();
+				}
 			}
 		} catch (Exception e) {
 			System.err.println("Could not initialize FlatLaf theme: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Detects whether the host operating system (e.g. Windows or macOS) is currently configured in dark mode.
+	 */
+	public static boolean isSystemDarkMode() {
+		String os = System.getProperty("os.name", "").toLowerCase();
+		if (os.contains("win")) {
+			return isWindowsDarkMode();
+		} else if (os.contains("mac")) {
+			return isMacDarkMode();
+		}
+		return false;
+	}
+
+	private static boolean isWindowsDarkMode() {
+		try {
+			Process process = new ProcessBuilder("reg", "query",
+					"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+					"/v", "AppsUseLightTheme")
+					.redirectErrorStream(true)
+					.start();
+			try (java.io.BufferedReader reader = new java.io.BufferedReader(
+					new java.io.InputStreamReader(process.getInputStream()))) {
+				String line;
+				while ((line = reader.readLine()) != null) {
+					if (line.contains("AppsUseLightTheme")) {
+						line = line.trim();
+						if (line.endsWith("0x0") || line.endsWith("0")) {
+							return true; // 0 = Dark Mode
+						} else if (line.endsWith("0x1") || line.endsWith("1")) {
+							return false; // 1 = Light Mode
+						}
+					}
+				}
+			}
+			process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+		} catch (Throwable ignored) {
+		}
+		return false;
+	}
+
+	private static boolean isMacDarkMode() {
+		try {
+			Process process = new ProcessBuilder("defaults", "read", "-g", "AppleInterfaceStyle")
+					.redirectErrorStream(true)
+					.start();
+			try (java.io.BufferedReader reader = new java.io.BufferedReader(
+					new java.io.InputStreamReader(process.getInputStream()))) {
+				String line = reader.readLine();
+				if (line != null && line.trim().equalsIgnoreCase("Dark")) {
+					return true;
+				}
+			}
+			process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+		} catch (Throwable ignored) {
+		}
+		return false;
 	}
 
 	private void initWindowProperties() {
@@ -209,6 +276,12 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		// Set application icons
 		try {
 			List<Image> icons = new ArrayList<>();
+			Icon logoIcon = InventorySplashScreen.loadLogoIcon(config, 256, 256);
+			if (logoIcon instanceof com.formdev.flatlaf.extras.FlatSVGIcon) {
+				icons.add(((com.formdev.flatlaf.extras.FlatSVGIcon) logoIcon).getImage());
+			} else if (logoIcon instanceof ImageIcon) {
+				icons.add(((ImageIcon) logoIcon).getImage());
+			}
 			File pngFile = new File("app.png");
 			File icoFile = new File("app.ico");
 			if (pngFile.exists()) {
@@ -253,22 +326,21 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	 * Modern Header Bar with Title, Subtitle, optional Logo, and Status Pills.
 	 */
 	private JPanel createHeaderPanel() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JPanel header = new JPanel(new BorderLayout(16, 0));
-		header.setBackground(new Color(26, 36, 56)); // Dark slate blue
-		header.setBorder(new EmptyBorder(12, 16, 12, 16));
+		header.setBackground(isDark ? new Color(15, 23, 42) : new Color(241, 245, 249)); // Dark slate vs clean light banner
+		header.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(0, 0, 1, 0, isDark ? new Color(51, 65, 85) : new Color(226, 232, 240)),
+				new EmptyBorder(12, 16, 12, 16)
+		));
 
 		// Left: Optional Logo + Titles
 		JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
 		leftPanel.setOpaque(false);
 
-		String logoPath = config != null ? config.getString("inventory.window.logo", null) : null;
-		if (logoPath != null && new File(logoPath).exists()) {
-			try {
-				ImageIcon logoIcon = new ImageIcon(logoPath);
-				Image scaled = logoIcon.getImage().getScaledInstance(-1, 40, Image.SCALE_SMOOTH);
-				leftPanel.add(new JLabel(new ImageIcon(scaled)));
-			} catch (Exception ignored) {
-			}
+		Icon headerLogo = InventorySplashScreen.loadLogoIcon(config, 38, 38);
+		if (headerLogo != null) {
+			leftPanel.add(new JLabel(headerLogo));
 		}
 
 		JPanel titlePanel = new JPanel();
@@ -277,11 +349,11 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		lblHeaderTitle = new JLabel("RFID Library Inventory");
 		lblHeaderTitle.setFont(lblHeaderTitle.getFont().deriveFont(Font.BOLD, 18f));
-		lblHeaderTitle.setForeground(Color.WHITE);
+		lblHeaderTitle.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 
 		lblHeaderSubtitle = new JLabel("info-age GmbH, Basel  |  ISO 28560 & Finnish Data Model");
 		lblHeaderSubtitle.setFont(lblHeaderSubtitle.getFont().deriveFont(Font.PLAIN, 11f));
-		lblHeaderSubtitle.setForeground(new Color(160, 174, 192));
+		lblHeaderSubtitle.setForeground(isDark ? new Color(148, 163, 184) : new Color(100, 116, 139));
 
 		titlePanel.add(lblHeaderTitle);
 		titlePanel.add(Box.createVerticalStrut(2));
@@ -328,6 +400,7 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	 * KPI Metrics Banner with 4 sleek summary cards.
 	 */
 	private JPanel createMetricsBanner() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JPanel banner = new JPanel(new GridLayout(1, 4, 10, 0));
 		banner.setBorder(new EmptyBorder(10, 12, 4, 12));
 		banner.setOpaque(false);
@@ -337,17 +410,20 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		lblLastScannedVal = new JLabel("-", SwingConstants.CENTER);
 		lblCurrentMarkerVal = new JLabel("-", SwingConstants.CENTER);
 
-		banner.add(createMetricCard("Erfasste Medien", lblCountUniqueVal, new Color(37, 99, 235))); // Primary Blue
-		banner.add(createMetricCard("Scan-Vorg\u00E4nge", lblCountTotalVal, new Color(100, 116, 139))); // Slate
-		banner.add(createMetricCard("Zuletzt gescannt", lblLastScannedVal, new Color(16, 185, 129))); // Emerald Green
-		banner.add(createMetricCard("Aktueller Standort / Marker", lblCurrentMarkerVal, new Color(245, 158, 11))); // Amber
+		banner.add(createMetricCard("Erfasste Medien", lblCountUniqueVal, isDark ? new Color(96, 165, 250) : new Color(37, 99, 235))); // Primary Blue
+		banner.add(createMetricCard("Scan-Vorg\u00E4nge", lblCountTotalVal, isDark ? new Color(148, 163, 184) : new Color(100, 116, 139))); // Slate
+		banner.add(createMetricCard("Zuletzt gescannt", lblLastScannedVal, isDark ? new Color(52, 211, 153) : new Color(16, 185, 129))); // Emerald Green
+		banner.add(createMetricCard("Aktueller Standort / Marker", lblCurrentMarkerVal, isDark ? new Color(251, 191, 36) : new Color(245, 158, 11))); // Amber
 
 		return banner;
 	}
 
 	private JPanel createMetricCard(String title, JLabel valueLabel, Color accentColor) {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JPanel card = new JPanel(new BorderLayout(0, 4));
-		card.putClientProperty(FlatClientProperties.STYLE, "arc: 10; background: $Card.background;");
+		card.putClientProperty(FlatClientProperties.STYLE, "arc: 10; " +
+				"[dark]background: #1e293b; " +
+				"[light]background: #ffffff;");
 		card.setBorder(BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(0, 4, 0, 0, accentColor),
 				new EmptyBorder(8, 12, 8, 12)
@@ -355,10 +431,10 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		JLabel lblTitle = new JLabel(title);
 		lblTitle.setFont(lblTitle.getFont().deriveFont(Font.BOLD, 11f));
-		lblTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+		lblTitle.setForeground(isDark ? new Color(148, 163, 184) : new Color(100, 116, 139));
 
 		valueLabel.setFont(valueLabel.getFont().deriveFont(Font.BOLD, 18f));
-		valueLabel.setForeground(UIManager.getColor("Label.foreground"));
+		valueLabel.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 		valueLabel.setHorizontalAlignment(SwingConstants.LEFT);
 
 		card.add(lblTitle, BorderLayout.NORTH);
@@ -370,6 +446,7 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	 * Toolbar with Marker Input, Start/Pause, Test-Scan, CSV Export, Clear, and Search Filter.
 	 */
 	private JPanel createToolbarPanel() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JPanel toolbar = new JPanel(new BorderLayout(8, 0));
 		toolbar.setOpaque(false);
 
@@ -379,10 +456,13 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		JLabel lblMarker = new JLabel("Standort / Marker:");
 		lblMarker.setFont(lblMarker.getFont().deriveFont(Font.BOLD, 12f));
+		lblMarker.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 
 		tInventoryTag = new JTextField(12);
 		tInventoryTag.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "z.B. EG-Sachbuecher");
-		tInventoryTag.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		tInventoryTag.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #475569; " +
+				"[light]background: #ffffff; [light]foreground: #0f172a; [light]borderColor: #cbd5e1;");
 
 		// Initial marker from config if present
 		String initialMarker = config != null ? config.getString("inventory.marker", "") : "";
@@ -412,24 +492,31 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		btnStartStop = new JToggleButton("\u25B6  Scan Starten");
 		btnStartStop.setFont(btnStartStop.getFont().deriveFont(Font.BOLD, 12f));
-		btnStartStop.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		btnStartStop.putClientProperty(FlatClientProperties.STYLE, "arc: 8; background: #2563eb; foreground: #ffffff; hoverBackground: #1d4ed8;");
+		btnStartStop.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
 		btnStartStop.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btnStartStop.addActionListener(e -> toggleScanState());
 
 		btnTestScan = new JButton("\u26A1 Test-Scan");
-		btnTestScan.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		btnTestScan.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #334155; [dark]hoverBackground: #334155; " +
+				"[light]background: #f1f5f9; [light]foreground: #0f172a; [light]borderColor: #cbd5e1; [light]hoverBackground: #e2e8f0;");
 		btnTestScan.setToolTipText("Simuliert einen RFID-Scan ohne Hardware (z.B. f\u00FCr Funktionstests)");
 		btnTestScan.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btnTestScan.addActionListener(e -> triggerTestScan());
 
 		btnExport = new JButton("\u2913 CSV Export");
-		btnExport.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		btnExport.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #334155; [dark]hoverBackground: #334155; " +
+				"[light]background: #f1f5f9; [light]foreground: #0f172a; [light]borderColor: #cbd5e1; [light]hoverBackground: #e2e8f0;");
 		btnExport.setToolTipText("Inventarliste als Excel-kompatible CSV-Datei speichern");
 		btnExport.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btnExport.addActionListener(e -> exportToCsv());
 
 		btnClear = new JButton("\uD83D\uDDD1 Liste leeren");
-		btnClear.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		btnClear.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #334155; [dark]hoverBackground: #334155; " +
+				"[light]background: #f1f5f9; [light]foreground: #0f172a; [light]borderColor: #cbd5e1; [light]hoverBackground: #e2e8f0;");
 		btnClear.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		btnClear.addActionListener(e -> confirmAndClear());
 
@@ -446,7 +533,9 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		txtSearch = new JTextField(15);
 		txtSearch.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "\uD83D\uDD0D Live-Suche (Barcode, Signatur, UID)...");
-		txtSearch.putClientProperty(FlatClientProperties.STYLE, "arc: 8; showClearButton: true");
+		txtSearch.putClientProperty(FlatClientProperties.STYLE, "arc: 8; showClearButton: true; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #475569; " +
+				"[light]background: #ffffff; [light]foreground: #0f172a; [light]borderColor: #cbd5e1;");
 		txtSearch.getDocument().addDocumentListener(new DocumentListener() {
 			@Override
 			public void insertUpdate(DocumentEvent e) { applyFilter(); }
@@ -475,6 +564,8 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	 * Main SplitPane: Left/Center Data Table & Right Inspector/Log TabbedPane.
 	 */
 	private JSplitPane createMainSplitPane() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
+
 		// Table Setup
 		String[] columnNames = {
 			"Status", "Nr", "Uhrzeit", "Barcode / ID", "Signatur", "Teil", "ISIL / Land", "Typ", "Marker", "RFID UID", "CRC"
@@ -490,52 +581,175 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 		table = new JTable(tableModel);
 		table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-		table.setRowHeight(26);
+		table.setRowHeight(28);
 		table.setShowHorizontalLines(true);
 		table.setShowVerticalLines(false);
-		table.putClientProperty(FlatClientProperties.STYLE, "intercellSpacing: 0,1");
+		table.setGridColor(isDark ? new Color(51, 65, 85) : new Color(226, 232, 240));
+		table.putClientProperty(FlatClientProperties.STYLE, "intercellSpacing: 0,1; " +
+				"[dark]background: #0f172a; [dark]foreground: #f8fafc; " +
+				"[dark]selectionBackground: #2563eb; [dark]selectionForeground: #ffffff; " +
+				"[dark]selectionInactiveBackground: #1d4ed8; [dark]selectionInactiveForeground: #ffffff; " +
+				"[light]background: #ffffff; [light]foreground: #0f172a; " +
+				"[light]selectionBackground: #3b82f6; [light]selectionForeground: #ffffff; " +
+				"[light]selectionInactiveBackground: #60a5fa; [light]selectionInactiveForeground: #ffffff;");
 
 		tableSorter = new TableRowSorter<>(tableModel);
 		table.setRowSorter(tableSorter);
 
 		// Column widths
-		int[] colWidths = { 55, 45, 70, 120, 130, 60, 100, 45, 90, 140, 65 };
+		int[] colWidths = { 55, 45, 75, 125, 135, 60, 100, 45, 90, 140, 65 };
 		for (int i = 0; i < colWidths.length && i < table.getColumnCount(); i++) {
 			table.getColumnModel().getColumn(i).setPreferredWidth(colWidths[i]);
 		}
 
-		// Custom cell renderers for Status and CRC
+		table.getTableHeader().setFont(table.getTableHeader().getFont().deriveFont(Font.BOLD, 12f));
+		table.getTableHeader().putClientProperty(FlatClientProperties.STYLE,
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]bottomSeparatorColor: #334155; " +
+				"[light]background: #f1f5f9; [light]foreground: #0f172a; [light]bottomSeparatorColor: #cbd5e1;");
+
+		// Custom cell renderers with crisp high contrast and purpose-driven color coding
 		table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
 			private static final long serialVersionUID = 1L;
 			@Override
 			public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
 					boolean hasFocus, int row, int column) {
 				Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-				if (!isSelected) {
-					int modelRow = table.convertRowIndexToModel(row);
-					if (modelRow >= 0 && modelRow < itemList.size()) {
-						InventoryItemEntry item = itemList.get(modelRow);
-						if (!item.statusOk || "FEHLER".equalsIgnoreCase(item.crcStatus)) {
-							c.setBackground(new Color(254, 226, 226)); // Soft light red
-						} else {
-							c.setBackground(row % 2 == 0 ? UIManager.getColor("Table.background") : UIManager.getColor("Table.alternateRowColor"));
+				boolean dark = FlatSVGIcon.isDarkLaf();
+
+				int modelRow = -1;
+				try {
+					modelRow = table.convertRowIndexToModel(row);
+				} catch (Exception ignored) {
+				}
+				InventoryItemEntry item = (modelRow >= 0 && modelRow < itemList.size()) ? itemList.get(modelRow) : null;
+				boolean isError = item != null && (!item.statusOk || "FEHLER".equalsIgnoreCase(item.crcStatus));
+
+				if (isSelected) {
+					c.setBackground(dark ? new Color(37, 99, 235) : new Color(59, 130, 246));
+					c.setForeground(Color.WHITE);
+				} else {
+					if (isError) {
+						c.setBackground(dark ? new Color(77, 24, 24) : new Color(254, 226, 226));
+					} else {
+						c.setBackground(row % 2 == 0 ? (dark ? new Color(15, 23, 42) : Color.WHITE)
+								: (dark ? new Color(30, 41, 59) : new Color(248, 250, 252)));
+					}
+					c.setForeground(dark ? new Color(248, 250, 252) : new Color(15, 23, 42));
+				}
+
+				String strVal = value != null ? String.valueOf(value) : "";
+
+				switch (column) {
+				case 0: // Status icon
+					setHorizontalAlignment(SwingConstants.CENTER);
+					setFont(getFont().deriveFont(Font.BOLD, 13f));
+					if ("\u2714".equals(strVal)) {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(74, 222, 128) : new Color(22, 163, 74)));
+					} else if ("\u2716".equals(strVal)) {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(248, 113, 113) : new Color(220, 38, 38)));
+					} else {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(148, 163, 184) : new Color(100, 116, 139)));
+					}
+					break;
+
+				case 1: // Nr
+					setHorizontalAlignment(SwingConstants.CENTER);
+					setFont(getFont().deriveFont(Font.BOLD, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(148, 163, 184) : new Color(100, 116, 139));
+					}
+					break;
+
+				case 2: // Time
+					setHorizontalAlignment(SwingConstants.CENTER);
+					setFont(getFont().deriveFont(Font.PLAIN, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(203, 213, 225) : new Color(71, 85, 105));
+					}
+					break;
+
+				case 3: // Barcode / Primary Item ID
+					setHorizontalAlignment(SwingConstants.LEFT);
+					setFont(getFont().deriveFont(Font.BOLD, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(248, 250, 252) : new Color(15, 23, 42));
+					}
+					break;
+
+				case 4: // Signatur
+					setHorizontalAlignment(SwingConstants.LEFT);
+					if (strVal.toLowerCase().contains("not found")) {
+						setFont(getFont().deriveFont(Font.BOLD, 12f));
+						c.setForeground(isSelected ? new Color(254, 240, 138) : (dark ? new Color(251, 191, 36) : new Color(217, 119, 6)));
+					} else {
+						setFont(getFont().deriveFont(Font.PLAIN, 12f));
+						if (!isSelected) {
+							c.setForeground(dark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 						}
 					}
-				}
-				if (column == 0) {
+					break;
+
+				case 5: // Teil
 					setHorizontalAlignment(SwingConstants.CENTER);
-					if ("\u2714".equals(value)) {
-						setForeground(new Color(22, 163, 74)); // Green checkmark
-						setFont(getFont().deriveFont(Font.BOLD));
-					} else if ("\u2716".equals(value)) {
-						setForeground(new Color(220, 38, 38)); // Red cross
-						setFont(getFont().deriveFont(Font.BOLD));
+					setFont(getFont().deriveFont(Font.PLAIN, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(203, 213, 225) : new Color(51, 65, 85));
 					}
-				} else if (column == 1 || column == 5 || column == 7 || column == 10) {
-					setHorizontalAlignment(SwingConstants.CENTER);
-				} else {
+					break;
+
+				case 6: // ISIL / Land
 					setHorizontalAlignment(SwingConstants.LEFT);
+					setFont(getFont().deriveFont(Font.PLAIN, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(203, 213, 225) : new Color(51, 65, 85));
+					}
+					break;
+
+				case 7: // Typ
+					setHorizontalAlignment(SwingConstants.CENTER);
+					setFont(getFont().deriveFont(Font.PLAIN, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(148, 163, 184) : new Color(100, 116, 139));
+					}
+					break;
+
+				case 8: // Marker
+					setHorizontalAlignment(SwingConstants.LEFT);
+					setFont(getFont().deriveFont(Font.BOLD, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(56, 189, 248) : new Color(2, 132, 199));
+					}
+					break;
+
+				case 9: // RFID UID
+					setHorizontalAlignment(SwingConstants.LEFT);
+					setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(203, 213, 225) : new Color(71, 85, 105));
+					}
+					break;
+
+				case 10: // CRC Status
+					setHorizontalAlignment(SwingConstants.CENTER);
+					setFont(getFont().deriveFont(Font.BOLD, 12f));
+					if ("OK".equalsIgnoreCase(strVal)) {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(74, 222, 128) : new Color(22, 163, 74)));
+					} else if ("FEHLER".equalsIgnoreCase(strVal)) {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(248, 113, 113) : new Color(220, 38, 38)));
+					} else {
+						c.setForeground(isSelected ? Color.WHITE : (dark ? new Color(148, 163, 184) : new Color(100, 116, 139)));
+					}
+					break;
+
+				default:
+					setHorizontalAlignment(SwingConstants.LEFT);
+					setFont(getFont().deriveFont(Font.PLAIN, 12f));
+					if (!isSelected) {
+						c.setForeground(dark ? new Color(248, 250, 252) : new Color(15, 23, 42));
+					}
+					break;
 				}
+
 				return c;
 			}
 		});
@@ -553,11 +767,14 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		});
 
 		JScrollPane tableScroll = new JScrollPane(table);
-		tableScroll.putClientProperty(FlatClientProperties.STYLE, "arc: 8");
+		tableScroll.putClientProperty(FlatClientProperties.STYLE, "arc: 8; " +
+				"[dark]borderColor: #334155; [light]borderColor: #cbd5e1;");
 
 		// Right TabbedPane (Inspector + Live Log)
 		JTabbedPane tabbedPane = new JTabbedPane();
-		tabbedPane.putClientProperty(FlatClientProperties.STYLE, "tabArc: 8");
+		tabbedPane.putClientProperty(FlatClientProperties.STYLE, "tabArc: 8; " +
+				"[dark]selectedBackground: #1e293b; [dark]selectedForeground: #38bdf8; [dark]underlineColor: #38bdf8; " +
+				"[light]selectedBackground: #ffffff; [light]selectedForeground: #0284c7; [light]underlineColor: #0284c7;");
 		tabbedPane.addTab("Tag Inspector / Details", createInspectorPanel());
 		tabbedPane.addTab("Live Log / Konsole", createLogPanel());
 
@@ -604,12 +821,19 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		addFormRow(form, "Standort / Marker:", detMarker);
 
 		JPanel hexPanel = new JPanel(new BorderLayout(0, 4));
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JLabel lblHex = new JLabel("Rohdaten (Hex Dump):");
 		lblHex.setFont(lblHex.getFont().deriveFont(Font.BOLD, 11f));
+		lblHex.setForeground(isDark ? new Color(203, 213, 225) : new Color(71, 85, 105));
 		detHexDump = new JTextArea(4, 20);
 		detHexDump.setEditable(false);
-		detHexDump.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+		detHexDump.setFont(new Font(Font.MONOSPACED, Font.BOLD, 11));
+		detHexDump.putClientProperty(FlatClientProperties.STYLE, "" +
+				"[dark]background: #0f172a; [dark]foreground: #38bdf8; " +
+				"[light]background: #f8fafc; [light]foreground: #0284c7;");
+		detHexDump.setDisabledTextColor(isDark ? new Color(56, 189, 248) : new Color(2, 132, 199));
 		JScrollPane hexScroll = new JScrollPane(detHexDump);
+		hexScroll.putClientProperty(FlatClientProperties.STYLE, "arc: 6; [dark]borderColor: #334155; [light]borderColor: #cbd5e1;");
 
 		hexPanel.add(lblHex, BorderLayout.NORTH);
 		hexPanel.add(hexScroll, BorderLayout.CENTER);
@@ -620,17 +844,23 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	}
 
 	private void addFormRow(JPanel form, String labelText, JTextField field) {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JLabel label = new JLabel(labelText);
 		label.setFont(label.getFont().deriveFont(Font.BOLD, 11f));
-		label.setForeground(UIManager.getColor("Label.disabledForeground"));
+		label.setForeground(isDark ? new Color(148, 163, 184) : new Color(71, 85, 105));
 		form.add(label);
 		form.add(field);
 	}
 
 	private JTextField createReadOnlyField() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JTextField tf = new JTextField();
 		tf.setEditable(false);
-		tf.putClientProperty(FlatClientProperties.STYLE, "arc: 6");
+		tf.putClientProperty(FlatClientProperties.STYLE, "arc: 6; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #334155; " +
+				"[light]background: #ffffff; [light]foreground: #0f172a; [light]borderColor: #cbd5e1;");
+		tf.setDisabledTextColor(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
+		tf.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 		return tf;
 	}
 
@@ -644,13 +874,19 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		logArea = new JTextArea();
 		logArea.setEditable(false);
 		logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+		logArea.putClientProperty(FlatClientProperties.STYLE, "" +
+				"[dark]background: #0f172a; [dark]foreground: #f8fafc; " +
+				"[light]background: #ffffff; [light]foreground: #0f172a;");
 
 		JScrollPane scroll = new JScrollPane(logArea);
+		scroll.putClientProperty(FlatClientProperties.STYLE, "arc: 6; [dark]borderColor: #334155; [light]borderColor: #cbd5e1;");
 		panel.add(scroll, BorderLayout.CENTER);
 
 		JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
 		JButton btnClearLog = new JButton("Log l\u00F6schen");
-		btnClearLog.putClientProperty(FlatClientProperties.STYLE, "arc: 6");
+		btnClearLog.putClientProperty(FlatClientProperties.STYLE, "arc: 6; " +
+				"[dark]background: #1e293b; [dark]foreground: #f8fafc; [dark]borderColor: #334155; [dark]hoverBackground: #334155; " +
+				"[light]background: #f1f5f9; [light]foreground: #0f172a; [light]borderColor: #cbd5e1; [light]hoverBackground: #e2e8f0;");
 		btnClearLog.addActionListener(e -> logArea.setText(""));
 		btnPanel.add(btnClearLog);
 		panel.add(btnPanel, BorderLayout.SOUTH);
@@ -662,9 +898,15 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	 * Bottom status bar showing recent activity and scan feedback.
 	 */
 	private JPanel createStatusBarPanel() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		JPanel bar = new JPanel(new BorderLayout(8, 0));
-		bar.setBorder(new EmptyBorder(4, 12, 4, 12));
-		bar.setBackground(UIManager.getColor("Panel.background"));
+		bar.putClientProperty(FlatClientProperties.STYLE, "" +
+				"[dark]background: #0f172a; " +
+				"[light]background: #f1f5f9;");
+		bar.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(1, 0, 0, 0, isDark ? new Color(51, 65, 85) : new Color(226, 232, 240)),
+				new EmptyBorder(4, 12, 4, 12)
+		));
 
 		pnlFeedbackIndicator = new JPanel() {
 			private static final long serialVersionUID = 1L;
@@ -678,10 +920,11 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 			}
 		};
 		pnlFeedbackIndicator.setPreferredSize(new Dimension(14, 14));
-		pnlFeedbackIndicator.setBackground(new Color(156, 163, 175)); // Grey idle
+		pnlFeedbackIndicator.setBackground(isDark ? new Color(71, 85, 105) : new Color(156, 163, 175)); // Grey idle
 
 		lblStatusBar = new JLabel("Bereit. Warte auf RFID-Tags...");
 		lblStatusBar.setFont(lblStatusBar.getFont().deriveFont(Font.PLAIN, 11f));
+		lblStatusBar.setForeground(isDark ? new Color(148, 163, 184) : new Color(71, 85, 105));
 
 		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 		left.setOpaque(false);
@@ -696,7 +939,7 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		if (!isRunning) {
 			String marker = getTagInfo();
 			if (marker == null || marker.trim().isEmpty()) {
-				if (!java.awt.GraphicsEnvironment.isHeadless()) {
+				if (isShowing() && !java.awt.GraphicsEnvironment.isHeadless()) {
 					JOptionPane.showMessageDialog(this,
 							"Bitte geben Sie zuerst einen Standort / Marker ein, bevor Sie den Scan starten.",
 							"Standort / Marker erforderlich",
@@ -722,37 +965,43 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	}
 
 	private void updateScanStatus(boolean active) {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		this.isRunning = active;
 		if (active) {
 			btnStartStop.setText("\u23F8  Scan Anhalten");
 			btnStartStop.setSelected(true);
+			btnStartStop.putClientProperty(FlatClientProperties.STYLE, "arc: 8; background: #16a34a; foreground: #ffffff; hoverBackground: #15803d;");
 			lblScanStatus.setText("AKTIV (SCANNT)");
-			lblScanStatus.setBackground(new Color(22, 163, 74)); // Green
+			lblScanStatus.setBackground(isDark ? new Color(34, 197, 94) : new Color(22, 163, 74)); // Vibrant Green
 		} else {
 			btnStartStop.setText("\u25B6  Scan Starten");
 			btnStartStop.setSelected(false);
+			btnStartStop.putClientProperty(FlatClientProperties.STYLE, "arc: 8; background: #2563eb; foreground: #ffffff; hoverBackground: #1d4ed8;");
 			lblScanStatus.setText("PAUSIERT");
-			lblScanStatus.setBackground(new Color(100, 116, 139)); // Slate
+			lblScanStatus.setBackground(isDark ? new Color(71, 85, 105) : new Color(100, 116, 139)); // Slate
 		}
 		lblScanStatus.repaint();
 	}
 
 	public void updateReaderStatus(boolean connected, String deviceInfo) {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		SwingUtilities.invokeLater(() -> {
 			if (connected) {
 				String info = (deviceInfo != null && !deviceInfo.isEmpty()) ? deviceInfo : "FEIG USB";
 				lblReaderStatus.setText("\u25CF Verbunden: " + info);
-				lblReaderStatus.setBackground(new Color(22, 163, 74)); // Green
+				lblReaderStatus.setBackground(isDark ? new Color(34, 197, 94) : new Color(22, 163, 74)); // Green
 			} else {
 				lblReaderStatus.setText("\u25CF Getrennt (Warte auf Leser...)");
-				lblReaderStatus.setBackground(new Color(220, 38, 38)); // Red
+				lblReaderStatus.setBackground(isDark ? new Color(239, 68, 68) : new Color(220, 38, 38)); // Red
 			}
 			lblReaderStatus.repaint();
 		});
 	}
 
 	private void flashFeedback(boolean success) {
-		Color activeColor = success ? new Color(34, 197, 94) : new Color(239, 68, 68);
+		boolean isDark = FlatSVGIcon.isDarkLaf();
+		Color activeColor = success ? (isDark ? new Color(74, 222, 128) : new Color(34, 197, 94))
+				: (isDark ? new Color(248, 113, 113) : new Color(239, 68, 68));
 		pnlFeedbackIndicator.setBackground(activeColor);
 		pnlFeedbackIndicator.repaint();
 
@@ -760,7 +1009,7 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 			feedbackTimer.stop();
 		}
 		feedbackTimer = new Timer(500, e -> {
-			pnlFeedbackIndicator.setBackground(new Color(156, 163, 175));
+			pnlFeedbackIndicator.setBackground(isDark ? new Color(100, 116, 139) : new Color(156, 163, 175));
 			pnlFeedbackIndicator.repaint();
 		});
 		feedbackTimer.setRepeats(false);
@@ -769,9 +1018,23 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 
 	private void updateInspector(InventoryItemEntry item) {
 		if (item == null) return;
+		boolean isDark = FlatSVGIcon.isDarkLaf();
+
 		detSyncStatus.setText(item.statusDetails != null ? item.statusDetails : (item.statusOk ? "OK (\u2714)" : "Fehler (\u2716)"));
+		if (item.statusOk || (item.statusDetails != null && (item.statusDetails.contains("200") || item.statusDetails.equalsIgnoreCase("OK")))) {
+			detSyncStatus.setForeground(isDark ? new Color(74, 222, 128) : new Color(22, 163, 74));
+		} else {
+			detSyncStatus.setForeground(isDark ? new Color(248, 113, 113) : new Color(220, 38, 38));
+		}
+
 		detBarcode.setText(item.primaryItemId != null ? item.primaryItemId : "-");
 		detSignature.setText(item.signature != null ? item.signature : "-");
+		if (item.signature != null && item.signature.toLowerCase().contains("not found")) {
+			detSignature.setForeground(isDark ? new Color(251, 191, 36) : new Color(217, 119, 6)); // Amber
+		} else {
+			detSignature.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
+		}
+
 		detUID.setText(item.uid != null ? item.uid : "-");
 		detManufacturer.setText(item.manufacturer != null ? item.manufacturer : "-");
 		detModel.setText(item.tagName != null ? item.tagName : "-");
@@ -838,9 +1101,12 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	}
 
 	private void clearInspector() {
+		boolean isDark = FlatSVGIcon.isDarkLaf();
 		detSyncStatus.setText("");
+		detSyncStatus.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 		detBarcode.setText("");
 		detSignature.setText("");
+		detSignature.setForeground(isDark ? new Color(248, 250, 252) : new Color(15, 23, 42));
 		detUID.setText("");
 		detManufacturer.setText("");
 		detModel.setText("");
@@ -852,6 +1118,49 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		detHexDump.setText("");
 	}
 
+	private File lastExportDirectory = null;
+
+	/**
+	 * Writes the provided inventory items to a CSV file.
+	 *
+	 * @param file  the destination CSV file
+	 * @param items the inventory item entries to export
+	 * @throws IOException if writing to the file fails
+	 */
+	public static void writeCsv(File file, List<InventoryItemEntry> items) throws IOException {
+		if (file.getParentFile() != null && !file.getParentFile().exists()) {
+			file.getParentFile().mkdirs();
+		}
+
+		try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
+			// Write UTF-8 BOM for Microsoft Excel compatibility
+			pw.print('\ufeff');
+			pw.println("Status;Nr;Uhrzeit;Barcode_ID;Signatur;Teil_Nr;Teile_Gesamt;ISIL;Land;Nutzungsart;Standort_Marker;RFID_UID;CRC_Status;Hersteller;Transponder_Typ;Status_Details");
+
+			for (InventoryItemEntry item : items) {
+				pw.printf("\"%s\";%d;\"%s\";\"%s\";\"%s\";%d;%d;\"%s\";\"%s\";%d;\"%s\";\"%s\";\"%s\";\"%s\";\"%s\";\"%s\"%n",
+						item.statusSymbol != null ? item.statusSymbol : "",
+						item.index,
+						item.time != null ? item.time : "",
+						item.primaryItemId != null ? item.primaryItemId.replace("\"", "\"\"") : "",
+						item.signature != null ? item.signature.replace("\"", "\"\"") : "",
+						item.partNumber,
+						item.partsInItem,
+						item.isil != null ? item.isil.replace("\"", "\"\"") : "",
+						item.country != null ? item.country.replace("\"", "\"\"") : "",
+						item.usageType,
+						item.marker != null ? item.marker.replace("\"", "\"\"") : "",
+						item.uid != null ? item.uid.replace("\"", "\"\"") : "",
+						item.crcStatus != null ? item.crcStatus : "",
+						item.manufacturer != null ? item.manufacturer.replace("\"", "\"\"") : "",
+						item.tagName != null ? item.tagName.replace("\"", "\"\"") : "",
+						item.statusDetails != null ? item.statusDetails.replace("\"", "\"\"") : ""
+				);
+			}
+			pw.flush();
+		}
+	}
+
 	private void exportToCsv() {
 		if (itemList.isEmpty()) {
 			JOptionPane.showMessageDialog(this,
@@ -861,10 +1170,15 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 			return;
 		}
 
-		JFileChooser fc = new JFileChooser();
+		File defaultDir = lastExportDirectory;
+		if (defaultDir == null || !defaultDir.exists() || !defaultDir.isDirectory()) {
+			defaultDir = new File(System.getProperty("user.dir", "."));
+		}
+
+		JFileChooser fc = new JFileChooser(defaultDir);
 		fc.setDialogTitle("Inventarliste als CSV exportieren");
 		String defaultName = "RFID_Inventar_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".csv";
-		fc.setSelectedFile(new File(defaultName));
+		fc.setSelectedFile(new File(defaultDir, defaultName));
 		fc.setFileFilter(new FileNameExtensionFilter("CSV-Dateien (*.csv)", "csv"));
 
 		if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
@@ -875,39 +1189,22 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 				file = new File(path);
 			}
 
-			try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
-				// Write UTF-8 BOM for Microsoft Excel compatibility
-				pw.print('\ufeff');
-				pw.println("Status;Nr;Uhrzeit;Barcode_ID;Signatur;Teil_Nr;Teile_Gesamt;ISIL;Land;Nutzungsart;Standort_Marker;RFID_UID;CRC_Status;Hersteller;Transponder_Typ;Status_Details");
-
-				for (InventoryItemEntry item : itemList) {
-					pw.printf("\"%s\";%d;\"%s\";\"%s\";\"%s\";%d;%d;\"%s\";\"%s\";%d;\"%s\";\"%s\";\"%s\";\"%s\";\"%s\";\"%s\"%n",
-							item.statusSymbol,
-							item.index,
-							item.time != null ? item.time : "",
-							item.primaryItemId != null ? item.primaryItemId.replace("\"", "\"\"") : "",
-							item.signature != null ? item.signature.replace("\"", "\"\"") : "",
-							item.partNumber,
-							item.partsInItem,
-							item.isil != null ? item.isil.replace("\"", "\"\"") : "",
-							item.country != null ? item.country.replace("\"", "\"\"") : "",
-							item.usageType,
-							item.marker != null ? item.marker.replace("\"", "\"\"") : "",
-							item.uid != null ? item.uid.replace("\"", "\"\"") : "",
-							item.crcStatus != null ? item.crcStatus : "",
-							item.manufacturer != null ? item.manufacturer.replace("\"", "\"\"") : "",
-							item.tagName != null ? item.tagName.replace("\"", "\"\"") : "",
-							item.statusDetails != null ? item.statusDetails.replace("\"", "\"\"") : ""
-					);
-				}
+			try {
+				writeCsv(file, itemList);
+				lastExportDirectory = file.getParentFile();
 
 				JOptionPane.showMessageDialog(this,
 						"Die Inventarliste mit " + itemList.size() + " Datens\u00E4tzen wurde erfolgreich exportiert:\n" + file.getAbsolutePath(),
 						"Export erfolgreich",
 						JOptionPane.INFORMATION_MESSAGE);
 			} catch (Exception e) {
+				String hint = "";
+				String p = file.getAbsolutePath().toLowerCase();
+				if (p.contains("documents") || p.contains("dokumente") || p.contains("desktop")) {
+					hint = "\n\nHinweis: Auf Windows kann der \u00DCberwachte Ordnerzugriff (Ransomware-Schutz) oder fehlende Berechtigungen das Schreiben in gesch\u00FCtzte Benutzerordner blockieren. Bitte w\u00E4hlen Sie einen anderen Zielordner (z. B. das Anwendungsverzeichnis).";
+				}
 				JOptionPane.showMessageDialog(this,
-						"Fehler beim Speichern der CSV-Datei: " + e.getMessage(),
+						"Fehler beim Speichern der CSV-Datei in:\n" + file.getAbsolutePath() + "\n\nDetails: " + e.getMessage() + hint,
 						"Exportfehler",
 						JOptionPane.ERROR_MESSAGE);
 			}
