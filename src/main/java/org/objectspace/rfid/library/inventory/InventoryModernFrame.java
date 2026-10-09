@@ -391,12 +391,23 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 			lblCurrentMarkerVal.setText(initialMarker);
 		}
 
-		tInventoryTag.addKeyListener(new KeyAdapter() {
-			@Override
-			public void keyReleased(KeyEvent e) {
+		tInventoryTag.getDocument().addDocumentListener(new DocumentListener() {
+			private void updateMarker() {
 				String txt = tInventoryTag.getText().trim();
 				lblCurrentMarkerVal.setText(txt.isEmpty() ? "-" : txt);
+				if (isRunning && txt.isEmpty()) {
+					toggleScanState();
+					if (lblStatusBar != null) {
+						lblStatusBar.setText("Scan pausiert: Standort / Marker wurde entfernt.");
+					}
+				}
 			}
+			@Override
+			public void insertUpdate(DocumentEvent e) { updateMarker(); }
+			@Override
+			public void removeUpdate(DocumentEvent e) { updateMarker(); }
+			@Override
+			public void changedUpdate(DocumentEvent e) { updateMarker(); }
 		});
 
 		btnStartStop = new JToggleButton("\u25B6  Scan Starten");
@@ -681,7 +692,28 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 		return bar;
 	}
 
-	private void toggleScanState() {
+	public void toggleScanState() {
+		if (!isRunning) {
+			String marker = getTagInfo();
+			if (marker == null || marker.trim().isEmpty()) {
+				if (!java.awt.GraphicsEnvironment.isHeadless()) {
+					JOptionPane.showMessageDialog(this,
+							"Bitte geben Sie zuerst einen Standort / Marker ein, bevor Sie den Scan starten.",
+							"Standort / Marker erforderlich",
+							JOptionPane.WARNING_MESSAGE);
+				}
+				if (tInventoryTag != null) {
+					tInventoryTag.requestFocusInWindow();
+				}
+				if (btnStartStop != null) {
+					btnStartStop.setSelected(false);
+				}
+				if (lblStatusBar != null) {
+					lblStatusBar.setText("Scan kann nicht gestartet werden: Standort / Marker fehlt.");
+				}
+				return;
+			}
+		}
 		isRunning = !isRunning;
 		updateScanStatus(isRunning);
 		if (thread != null) {
@@ -1015,6 +1047,8 @@ public class InventoryModernFrame extends JFrame implements InventoryView {
 	@Override
 	public void onReaderConnectionChanged(boolean connected, String deviceInfo) {
 		updateReaderStatus(connected, deviceInfo);
+		String info = (deviceInfo != null && !deviceInfo.isEmpty()) ? deviceInfo : "FEIG USB";
+		print(connected ? ("[RFID-Reader] Verbunden: " + info + "\n") : "[RFID-Reader Fehler] Verbindung zum Reader getrennt!\n", itemList.size(), itemList.size());
 	}
 
 	@Override

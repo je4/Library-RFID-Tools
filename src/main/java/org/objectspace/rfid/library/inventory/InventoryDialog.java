@@ -319,6 +319,12 @@ public class InventoryDialog extends Composite implements InventoryView {
 		tInventoryTag.addModifyListener(e -> {
 			String m = tInventoryTag.getText().trim();
 			lblCurrentMarker.setText(m.isEmpty() ? "-" : m);
+			if (isRunning && m.isEmpty()) {
+				toggleScan();
+				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+					lblStatusBar.setText("Scan pausiert: Standort-Marker wurde entfernt.");
+				}
+			}
 		});
 
 		// Start / Stop Button
@@ -576,6 +582,20 @@ public class InventoryDialog extends Composite implements InventoryView {
 			return;
 		}
 		if (!isRunning) {
+			String marker = getTagInfo();
+			if (marker == null || marker.trim().isEmpty()) {
+				MessageBox mb = new MessageBox(getShell(), SWT.ICON_WARNING | SWT.OK);
+				mb.setText("Standort / Marker erforderlich");
+				mb.setMessage("Bitte geben Sie zuerst einen Standort-Marker ein, bevor Sie den Scan starten.");
+				mb.open();
+				if (tInventoryTag != null && !tInventoryTag.isDisposed()) {
+					tInventoryTag.setFocus();
+				}
+				if (lblStatusBar != null && !lblStatusBar.isDisposed()) {
+					lblStatusBar.setText("Scan kann nicht gestartet werden: Standort-Marker fehlt.");
+				}
+				return;
+			}
 			isRunning = true;
 			bStartStop.setText("\u25A0  Scan anhalten");
 			bStartStop.setBackground(SWTResourceManager.getColor(220, 38, 38)); // Red

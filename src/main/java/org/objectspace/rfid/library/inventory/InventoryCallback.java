@@ -48,6 +48,7 @@ import java.util.TreeSet;
 import org.apache.commons.configuration2.AbstractConfiguration;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.TagCallback;
+import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
@@ -71,10 +72,20 @@ public class InventoryCallback implements TagCallback {
 	 */
 	public InventoryCallback(InventoryView dlg, AbstractConfiguration config)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
-		this(dlg, config, config != null ? config.getString("config.file.path", null) : null);
+		this(dlg, config, config != null ? config.getString("config.file.path", null) : null, null, null);
 	}
 
 	public InventoryCallback(InventoryView dlg, AbstractConfiguration config, String configFilePath)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+		this(dlg, config, configFilePath, null, null);
+	}
+
+	public InventoryCallback(InventoryView dlg, AbstractConfiguration config, String configFilePath, ISO15693Reader reader)
+			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
+		this(dlg, config, configFilePath, reader, null);
+	}
+
+	public InventoryCallback(InventoryView dlg, AbstractConfiguration config, String configFilePath, ISO15693Reader reader, String readerStartupNotice)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, SQLException {
 		this.config = config;
 		this.dlg = dlg;
@@ -85,9 +96,33 @@ public class InventoryCallback implements TagCallback {
 			configFilePath = new java.io.File("inventory.xml").getAbsolutePath();
 		}
 		this.configFilePath = configFilePath;
+
+		// 1. Log configuration file
 		println("Konfigurationsdatei: " + this.configFilePath, c1, c2);
+
+		// 2. Log RFID Reader startup messages and connection status
+		if (reader != null) {
+			java.util.List<String> rdrLogs = reader.getStartupLogs();
+			if (rdrLogs != null && !rdrLogs.isEmpty()) {
+				for (String logMsg : rdrLogs) {
+					println(logMsg, c1, c2);
+				}
+			}
+			if (reader.isConnected()) {
+				String devInfo = reader.getDeviceInfo();
+				println("[RFID-Reader] Verbunden" + (devInfo != null ? ": " + devInfo : ""), c1, c2);
+			} else {
+				println("[RFID-Reader] Nicht verbunden", c1, c2);
+			}
+		}
+		if (readerStartupNotice != null && !readerStartupNotice.trim().isEmpty()) {
+			println("[RFID-Reader] " + readerStartupNotice.trim(), c1, c2);
+		}
+
 		sessionName = LocalDateTime.now().toString();
 
+		// 3. Database connection & logging
+		String dbError = null;
 		if (conn == null) {
 			if (config != null) {
 				if (config.getBoolean("database.active", false)) {
@@ -99,19 +134,32 @@ public class InventoryCallback implements TagCallback {
 							Class.forName(driver).newInstance();
 							conn = DriverManager.getConnection(dsn);
 							conn.setAutoCommit(true);
+							println("[Datenbank] Verbunden mit: " + dsn, c1, c2);
 						} catch (Exception e) {
-							System.err.println("Database connection failed: " + e.getMessage());
+							dbError = e.getMessage();
+							System.err.println("Database connection failed: " + dbError);
+							println("[Datenbank Fehler] Verbindung fehlgeschlagen: " + dbError, c1, c2);
 						}
 					}
+				} else {
+					println("[Datenbank] Inaktiv", c1, c2);
 				}
 			}
+		} else {
+			println("[Datenbank] Bereits verbunden", c1, c2);
 		}
 
 		uidList = new TreeSet<String>();
 
+		// 4. Webservice configuration & logging
 		webserviceConfig = WebserviceConfig.fromConfiguration(config);
 		if (webserviceConfig != null && webserviceConfig.isActive()) {
 			webserviceDispatcher = new WebserviceDispatcher(webserviceConfig);
+			int keyLen = (webserviceConfig.getJwtKey() != null) ? webserviceConfig.getJwtKey().length() : 0;
+			println("[Webservice] Aktiv: " + webserviceConfig.getHttpMethod() + " " + webserviceConfig.getTargetUrl()
+					+ " (JWT-Key-L\u00E4nge: " + keyLen + (keyLen > 0 ? " Zeichen" : " (kein Key konfiguriert)") + ")", c1, c2);
+		} else {
+			println("[Webservice] Inaktiv", c1, c2);
 		}
 
 		if (conn != null) {

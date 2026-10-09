@@ -112,15 +112,19 @@ public class InventoryThread implements Runnable {
 
 				// Perform inventory scan if active and reader is connected
 				if (!pause && currentlyConnected && reader != null) {
-					try {
-						reader.inventory(inventoryCallback, numBlocks);
-					} catch (Exception e) {
-						// Error during scan (e.g., cable pulled)
-						currentlyConnected = reader.isConnected();
-						if (lastReportedState == null || lastReportedState.booleanValue() != currentlyConnected) {
-							lastReportedState = Boolean.valueOf(currentlyConnected);
-							if (id != null && !id.isDisposed()) {
-								id.onReaderConnectionChanged(currentlyConnected, null);
+					String marker = (id != null && !id.isDisposed()) ? id.getTagInfo() : null;
+					if (marker != null && !marker.trim().isEmpty()) {
+						try {
+							reader.inventory(inventoryCallback, numBlocks);
+						} catch (Exception e) {
+							// Error during scan (e.g., cable pulled or scan issue)
+							System.err.println("Inventory scan error: " + e.getMessage());
+							currentlyConnected = reader.isConnected();
+							if (lastReportedState == null || lastReportedState.booleanValue() != currentlyConnected) {
+								lastReportedState = Boolean.valueOf(currentlyConnected);
+								if (id != null && !id.isDisposed()) {
+									id.onReaderConnectionChanged(currentlyConnected, null);
+								}
 							}
 						}
 					}
@@ -143,9 +147,20 @@ public class InventoryThread implements Runnable {
 	}
 
 	public void pause(boolean pause) {
+		if (!pause) {
+			String marker = (id != null && !id.isDisposed()) ? id.getTagInfo() : null;
+			if (marker == null || marker.trim().isEmpty()) {
+				this.pause = true;
+				return;
+			}
+		}
 		this.pause = pause;
 		if (pause == false && inventoryCallback != null)
 			inventoryCallback.clearUIDList();
+	}
+
+	public boolean isPaused() {
+		return pause;
 	}
 
 	public InventoryCallback getInventoryCallback() {

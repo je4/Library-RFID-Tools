@@ -62,6 +62,23 @@ import de.feig.fedm.taghandler.ThBase;
  */
 public class FeigRFID {
 
+	private final List<String> startupLogs = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+	private void log(String msg) {
+		System.out.println(msg);
+		if (msg != null) {
+			startupLogs.add(msg);
+		}
+	}
+
+	public List<String> getStartupLogs() {
+		return new ArrayList<>(startupLogs);
+	}
+
+	public String getStartupLog() {
+		return String.join("\n", startupLogs);
+	}
+
 	/**
 	 * Constructor with abstract configuration
 	 * 
@@ -95,7 +112,7 @@ public class FeigRFID {
 		}
 
 		int scanRes = UsbManager.startDiscover();
-		if (scanRes != ErrorCode.Ok && scanRes != 0) {
+		if (scanRes < 0) {
 			throw new Exception("usb scan failed: " + ErrorCode.toString(scanRes));
 		}
 
@@ -104,7 +121,7 @@ public class FeigRFID {
 		while ((scanInfo = UsbManager.popDiscover()) != null && scanInfo.isValid()) {
 			String devIdHex = scanInfo.deviceIdToHexString();
 			long devId = scanInfo.deviceId();
-			System.out.println("Device found: " + devIdHex);
+			log("Device found: " + devIdHex);
 			if (configDeviceID == null || configDeviceID.equalsIgnoreCase(devIdHex)) {
 				foundDeviceID = devId;
 			}
@@ -117,7 +134,7 @@ public class FeigRFID {
 
 		currentDeviceID = foundDeviceID;
 		String hexId = String.format("%08X", currentDeviceID);
-		System.out.println("Connecting to: " + hexId);
+		log("Connecting to: " + hexId);
 
 		Connector connector = Connector.createUsbConnector(currentDeviceID);
 		int connRes = reader.connect(connector);
@@ -128,7 +145,7 @@ public class FeigRFID {
 		int infoRes = reader.readReaderInfo();
 		ReaderInfo info = reader.info();
 		if (infoRes == ErrorCode.Ok && info != null) {
-			System.out.println(info.getReport());
+			log(info.getReport());
 		}
 		deviceInfo = "FEIG " + (info != null && info.readerTypeToString() != null ? info.readerTypeToString() : "ISC.MR102-USB") + " (" + hexId + ")";
 		connected = true;
@@ -153,7 +170,7 @@ public class FeigRFID {
 		}
 		try {
 			int scanRes = UsbManager.startDiscover();
-			if (scanRes != ErrorCode.Ok && scanRes != 0) {
+			if (scanRes < 0) {
 				disconnectInternal();
 				return false;
 			}
@@ -214,7 +231,7 @@ public class FeigRFID {
 				if (Files.isRegularFile(Paths.get(storeConfigFile))) {
 					Files.delete(Paths.get(storeConfigFile));
 				}
-				System.out.println("Storing actual configuration to " + storeConfigFile);
+				log("Storing actual configuration to " + storeConfigFile);
 				copyConfigToFile(storeConfigFile);
 			}
 			String readerConfigFile = config.getString("device.feig.configfile", null);
@@ -222,7 +239,7 @@ public class FeigRFID {
 				if (!Files.isRegularFile(Paths.get(readerConfigFile))) {
 					throw new Exception("configfile " + readerConfigFile + " not a regular file");
 				}
-				System.out.println("Loading configuration file: " + readerConfigFile);
+				log("Loading configuration file: " + readerConfigFile);
 				copyFileToConfig(readerConfigFile);
 			}
 		}
@@ -239,7 +256,7 @@ public class FeigRFID {
 				if (!Files.isRegularFile(Paths.get(restoreconfig))) {
 					throw new Exception("restoreconfigfile " + restoreconfig + " not a regular file");
 				}
-				System.out.println("restoring configuration from " + restoreconfig);
+				log("restoring configuration from " + restoreconfig);
 				copyFileToConfig(restoreconfig);
 			}
 		}
@@ -317,21 +334,44 @@ public class FeigRFID {
 				param.setAntennas(antennas);
 			}
 			int back = reader.hm().inventory(all, param);
-			if (back != ErrorCode.Ok && back != ErrorCode.NoData) {
-				disconnectInternal();
+			if (back == 1 || back == ErrorCode.NoData) {
+				return new ArrayList<>();
+			}
+			if (back != ErrorCode.Ok) {
+				if (reader == null || !reader.isConnected()) {
+					disconnectInternal();
+				}
 				throw new Exception("tag inventory error: " + ErrorCode.toString(back));
 			}
 			List<ThBase> list = new ArrayList<>();
-			TagItem item;
-			while ((item = reader.hm().popItem()) != null && item.isValid()) {
-				ThBase th = reader.hm().createTagHandler(item);
+			long itemCount = reader.hm().itemCount();
+			for (long i = 0; i < itemCount; i++) {
+				TagItem item = reader.hm().tagItem(i);
+				ThBase th = null;
+				if (item != null && item.isValid()) {
+					th = reader.hm().createTagHandler(item);
+				}
+				if (th == null) {
+					th = reader.hm().createTagHandler(i);
+				}
 				if (th != null) {
 					list.add(th);
 				}
 			}
+			if (list.isEmpty()) {
+				TagItem item;
+				while ((item = reader.hm().popItem()) != null && item.isValid()) {
+					ThBase th = reader.hm().createTagHandler(item);
+					if (th != null) {
+						list.add(th);
+					}
+				}
+			}
 			return list;
 		} catch (Throwable t) {
-			disconnectInternal();
+			if (reader == null || !reader.isConnected()) {
+				disconnectInternal();
+			}
 			throw (t instanceof Exception) ? (Exception) t : new Exception("tag inventory error", t);
 		}
 	}
@@ -344,7 +384,7 @@ public class FeigRFID {
 	 * @throws Exception if inventory fails
 	 */
 	public List<ThBase> tagInventory(boolean all) throws Exception {
-		return tagInventory(all, (byte) 0, (byte) 1);
+		return tagInventory(all, (byte) 0, (byte) 0);
 	}
 
 	public ReaderModule getReader() {

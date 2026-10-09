@@ -89,29 +89,32 @@ public class Inventory {
 		config.setProperty("config.file.path", configAbsolutePath);
 
 		ISO15693Reader reader = null;
+		String readerStartupNotice = null;
 		try {
 			reader = ISO15693ReaderFactory.createReader(config);
 			reader.connect();
 			reader.init();
 		} catch (Exception e) {
-			System.out.println("Notice: RFID reader not connected (" + e.getMessage() + "). Application starting anyway.");
+			readerStartupNotice = "Notice: RFID reader not connected (" + e.getMessage() + "). Application starting anyway.";
+			System.out.println(readerStartupNotice);
 		}
 		
 		String ui = config.getString("inventory.ui", "modern").trim().toLowerCase();
 		if ("swt".equals(ui)) {
-			launchSwt(config, configAbsolutePath, reader);
+			launchSwt(config, configAbsolutePath, reader, readerStartupNotice);
 		} else {
-			launchModern(config, configAbsolutePath, reader);
+			launchModern(config, configAbsolutePath, reader, readerStartupNotice);
 		}
 	}
 
-	private static void launchModern(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader) {
+	private static void launchModern(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader, String readerStartupNotice) {
 		InventoryModernFrame.setupTheme(config);
 		final ISO15693Reader finalReader = reader;
+		final String finalNotice = readerStartupNotice;
 		javax.swing.SwingUtilities.invokeLater(() -> {
 			try {
 				InventoryModernFrame frame = new InventoryModernFrame(config, finalReader);
-				InventoryCallback callback = new InventoryCallback(frame, config, configAbsolutePath);
+				InventoryCallback callback = new InventoryCallback(frame, config, configAbsolutePath, finalReader, finalNotice);
 				frame.setCallback(callback);
 				InventoryThread inventoryThread = new InventoryThread(finalReader, callback, frame, config);
 				frame.setThread(inventoryThread);
@@ -124,7 +127,7 @@ public class Inventory {
 		});
 	}
 
-	private static void launchSwt(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader) throws Exception {
+	private static void launchSwt(XMLConfiguration config, String configAbsolutePath, ISO15693Reader reader, String readerStartupNotice) throws Exception {
 		Display display = new Display();
 		Shell shell = new Shell(display);
 		shell.setText("RFID Inventory - info-age GmbH, Basel");
@@ -161,7 +164,7 @@ public class Inventory {
 		shell.setSize(config.getInt("inventory.window.width", 1150), config.getInt("inventory.window.height", 700));
 		shell.open();
 		
-		InventoryCallback callback = new InventoryCallback(md, config, configAbsolutePath);
+		InventoryCallback callback = new InventoryCallback(md, config, configAbsolutePath, reader, readerStartupNotice);
 		md.setCallback(callback);
 		InventoryThread inventoryThread = new InventoryThread(reader, callback, md, config);
 		md.setThread(inventoryThread);

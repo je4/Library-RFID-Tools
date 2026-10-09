@@ -84,6 +84,22 @@ public interface ISO15693Reader {
 	public String getDeviceInfo();
 
 	/**
+	 * returns any startup logs or messages produced during discovery and initialization
+	 * @return list of startup log messages
+	 */
+	public default java.util.List<String> getStartupLogs() {
+		return java.util.Collections.emptyList();
+	}
+
+	/**
+	 * returns joined startup log
+	 * @return startup log string
+	 */
+	public default String getStartupLog() {
+		return "";
+	}
+
+	/**
 	 * cleanup
 	 * @throws Exception
 	 */

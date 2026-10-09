@@ -122,6 +122,16 @@ public class ISO15693Feig implements ISO15693Reader {
 		return feig != null ? feig.getDeviceInfo() : null;
 	}
 
+	@Override
+	public List<String> getStartupLogs() {
+		return feig != null ? feig.getStartupLogs() : java.util.Collections.emptyList();
+	}
+
+	@Override
+	public String getStartupLog() {
+		return feig != null ? feig.getStartupLog() : "";
+	}
+
 	/**
 	 * @see org.objectspace.rfid.library.ISO15693Reader#close() 
 	 */
@@ -141,7 +151,7 @@ public class ISO15693Feig implements ISO15693Reader {
 			return;
 		}
 
-		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 1);
+		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 0);
 		int totalTags = tagHandlers != null ? tagHandlers.size() : 0;
 		if (totalTags == 0) {
 			inventoryCallback.empty();
@@ -151,16 +161,16 @@ public class ISO15693Feig implements ISO15693Reader {
 		int counter = 0;
 		for (ThBase tagHandler : tagHandlers) {
 			try {
-				if (tagHandler instanceof ThIso15693) {
-					ThIso15693 th = (ThIso15693) tagHandler;
-
+				if (tagHandler != null) {
 					// get size of tag from configuration or guess something
-					String tagName = th.transponderName();
-					Integer maxBlocks = maxBlocksMap.get(tagName);
+					String tagName = tagHandler.transponderName();
+					Integer maxBlocks = maxBlocksMap != null ? maxBlocksMap.get(tagName) : null;
 					// tagName not in configuration
 					if (maxBlocks == null) {
 						maxBlocks = numBlocks;
-						maxBlocksMap.put(tagName, maxBlocks);
+						if (maxBlocksMap != null) {
+							maxBlocksMap.put(tagName, maxBlocks);
+						}
 					}
 
 					// paranoia don't read too much
@@ -169,29 +179,42 @@ public class ISO15693Feig implements ISO15693Reader {
 					// read data blocks
 					LongRef blockSizeRef = new LongRef();
 					DataBuffer dataBuffer = new DataBuffer();
-					int back = th.readMultipleBlocks(0, blocksToRead, blockSizeRef, dataBuffer);
+					int back = tagHandler.readMultipleBlocks(0, blocksToRead, blockSizeRef, dataBuffer);
 					byte[] data = dataBuffer.data();
+					if ((data == null || data.length == 0) && blocksToRead > 4) {
+						dataBuffer = new DataBuffer();
+						back = tagHandler.readMultipleBlocks(0, 4, blockSizeRef, dataBuffer);
+						data = dataBuffer.data();
+						if (data != null && data.length > 0) {
+							blocksToRead = 4;
+						}
+					}
 					if (data == null || data.length == 0) {
 						continue;
 					}
 
+					String mfrName = (tagHandler instanceof ThIso15693) ? ((ThIso15693) tagHandler).manufacturerName() : "";
 					byte[] newBlock = inventoryCallback.doIt(
 						counter,
 						totalTags,
-						th.manufacturerName(),
+						mfrName,
 						tagName,
-						th.iddToHexString(),
+						tagHandler.iddToHexString(),
 						data,
 						blocksToRead
 					);
 					if (newBlock != null) {
 					}
 				} else {
-					System.out.println("Tag not supported: " + tagHandler.getClass().getName());
+					System.out.println("Tag handler is null");
 				}
+			} catch (Exception ex) {
+				System.err.println("Tag processing error: " + ex.getMessage());
 			} finally {
 				try {
-					tagHandler.close();
+					if (tagHandler != null) {
+						tagHandler.close();
+					}
 				} catch (Throwable t) {
 					// Ignore
 				}

@@ -176,4 +176,112 @@ public class InventoryViewTest {
 		assertThat(InventoryModernFrame.formatHexDump(null)).isEmpty();
 		assertThat(InventoryModernFrame.formatHexDump(new byte[0])).isEmpty();
 	}
+
+	@Test
+	@DisplayName("Test that starting scan requires a location/marker in InventoryModernFrame")
+	public void testScanRequiresMarkerInModernFrame() {
+		BaseConfiguration config = new BaseConfiguration();
+		config.setProperty("inventory.theme", "system");
+		config.setProperty("inventory.marker", "");
+
+		InventoryModernFrame.setupTheme(config);
+		InventoryModernFrame frame = new InventoryModernFrame(config, null);
+
+		try {
+			assertThat(frame.getTagInfo()).isEmpty();
+			assertThat(frame.isRunning()).isFalse();
+
+			// Attempt to start scan without marker
+			frame.toggleScanState();
+			assertThat(frame.isRunning()).isFalse();
+
+			// Enter a marker
+			frame.tInventoryTag.setText("Regal-1-Fach-A");
+			assertThat(frame.getTagInfo()).isEqualTo("Regal-1-Fach-A");
+
+			// Start scan with marker present
+			frame.toggleScanState();
+			assertThat(frame.isRunning()).isTrue();
+
+			// Clearing marker while running should pause scan
+			frame.tInventoryTag.setText("");
+			assertThat(frame.getTagInfo()).isEmpty();
+			assertThat(frame.isRunning()).isFalse();
+		} finally {
+			frame.dispose();
+		}
+	}
+
+	@Test
+	@DisplayName("Test that InventoryThread enforces location/marker before unpausing")
+	public void testInventoryThreadMarkerValidation() {
+		MockInventoryView mockView = new MockInventoryView();
+		mockView.marker = "";
+
+		BaseConfiguration config = new BaseConfiguration();
+		InventoryThread thread = new InventoryThread(null, null, mockView, config);
+
+		assertThat(thread.isPaused()).isTrue();
+
+		// Attempt to unpause without marker
+		thread.pause(false);
+		assertThat(thread.isPaused()).isTrue();
+
+		// Set marker and unpause
+		mockView.marker = "Standort-Regal-12";
+		thread.pause(false);
+		assertThat(thread.isPaused()).isFalse();
+
+		// Re-pause
+		thread.pause(true);
+		assertThat(thread.isPaused()).isTrue();
+	}
+
+	@Test
+	@DisplayName("Test that startup messages (config path, reader logs, DB and webservice status) are written to log")
+	public void testStartupLogsOutputToLog() throws Exception {
+		MockInventoryView mockView = new MockInventoryView();
+		BaseConfiguration config = new BaseConfiguration();
+		config.setProperty("config.file.path", "C:\\test\\inventory.xml");
+		config.setProperty("database.active", false);
+		config.setProperty("webservice.active", true);
+		config.setProperty("webservice.url", "http://localhost:8080/api/inventory");
+		config.setProperty("webservice.method", "POST");
+		config.setProperty("webservice.jwt.key", "secret12345678901234567890");
+
+		org.objectspace.rfid.library.ISO15693Reader mockReader = new org.objectspace.rfid.library.ISO15693Reader() {
+			@Override
+			public void inventory(org.objectspace.rfid.TagCallback callback, int numBlocks) {}
+			@Override
+			public void connect() {}
+			@Override
+			public void init() {}
+			@Override
+			public boolean isConnected() { return true; }
+			@Override
+			public boolean checkConnection() { return true; }
+			@Override
+			public String getDeviceInfo() { return "FEIG ISC.MR102-USB (12345678)"; }
+			@Override
+			public List<String> getStartupLogs() {
+				return java.util.Arrays.asList(
+					"Device found: 12345678",
+					"Connecting to: 12345678",
+					"FEIG Electronic ID ISC.MR102-USB HW:01.00 FW:02.00"
+				);
+			}
+			@Override
+			public void close() {}
+		};
+
+		new InventoryCallback(mockView, config, "C:\\test\\inventory.xml", mockReader, null);
+
+		assertThat(mockView.logs).anyMatch(l -> l.contains("Konfigurationsdatei: C:\\test\\inventory.xml"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("Device found: 12345678"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("Connecting to: 12345678"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("FEIG Electronic ID ISC.MR102-USB HW:01.00 FW:02.00"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("[RFID-Reader] Verbunden: FEIG ISC.MR102-USB (12345678)"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("[Datenbank] Inaktiv"));
+		assertThat(mockView.logs).anyMatch(l -> l.contains("[Webservice] Aktiv: POST http://localhost:8080/api/inventory"));
+	}
 }
