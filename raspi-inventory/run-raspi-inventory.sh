@@ -133,9 +133,35 @@ if [ -n "$NATIVE_DIR" ]; then
     JVM_OPTS+=("-Djava.library.path=$NATIVE_DIR")
 fi
 
+# Process debug flags and arguments
+DEBUG_MODE=false
+DEBUG_SUSPEND=n
+DEBUG_PORT="${DEBUG_PORT:-5005}"
+APP_ARGS=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --debug|-d)
+            DEBUG_MODE=true
+            ;;
+        --debug-wait|--debug-suspend)
+            DEBUG_MODE=true
+            DEBUG_SUSPEND=y
+            ;;
+        *)
+            APP_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+if [ "${DEBUG:-0}" = "1" ] || [ "$DEBUG_MODE" = true ]; then
+    echo "[Raspi-Inventory] Enabling JVM Remote Debugging on port $DEBUG_PORT (suspend=$DEBUG_SUSPEND)..."
+    JVM_OPTS+=("-agentlib:jdwp=transport=dt_socket,server=y,suspend=$DEBUG_SUSPEND,address=*:$DEBUG_PORT")
+fi
+
 # Default configuration argument if none provided and inventory.xml exists
 DEFAULT_CONFIG_ARGS=()
-if [ $# -eq 0 ]; then
+if [ ${#APP_ARGS[@]} -eq 0 ]; then
     if [ -f "$APP_DIR/inventory.xml" ]; then
         DEFAULT_CONFIG_ARGS=("-c" "$APP_DIR/inventory.xml")
     elif [ -f "$PROJECT_ROOT/inventory.xml" ]; then
@@ -144,4 +170,4 @@ if [ $# -eq 0 ]; then
 fi
 
 echo "[Raspi-Inventory] Starting headless scanner daemon..."
-exec "$JAVA_CMD" "${JVM_OPTS[@]}" -cp "$CLASSPATH" org.objectspace.rfid.raspi.RaspiInventory "${DEFAULT_CONFIG_ARGS[@]}" "$@"
+exec "$JAVA_CMD" "${JVM_OPTS[@]}" -cp "$CLASSPATH" org.objectspace.rfid.raspi.RaspiInventory "${DEFAULT_CONFIG_ARGS[@]}" "${APP_ARGS[@]}"
