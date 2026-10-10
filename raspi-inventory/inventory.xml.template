@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<!-- Configuration and selection of FEIG RFID reader -->
+	<device>
+		<select>feig</select>
+		
+		<feig>
+			<!-- Communication interface: usb (default) -->
+			<type>usb</type>
+
+			<!-- Device ID / needed if multiple devices are connected -->
+			<!-- <id>52E688</id> -->
+
+			<!-- Optional reader configuration file to load at startup -->
+			<!-- <configfile>host.xml</configfile> -->
+
+			<!-- Optional reader configuration file to restore on exit -->
+			<!-- <restoreconfig>host.xml</restoreconfig> -->
+		</feig>
+	</device>
+
+	<!-- Database connection (optional) -->
+	<database>
+		<active>false</active>
+		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=YOUR_PASSWORD]]></dsn>
+		<driver>com.mysql.cj.jdbc.Driver</driver>
+	</database>
+
+	<!-- Webservice connection (optional) -->
+	<webservice>
+		<!-- Enable/disable webservice dispatching (true/false) -->
+		<active>false</active>
+		<!-- Target URL or URL template with placeholders ({marker}, {session}, {uid}, {raw}, {itemid}, etc.) -->
+		<target_url><![CDATA[https://inventory.example.org/api/inventory]]></target_url>
+		<!-- HTTP Method: GET or POST -->
+		<http_method>POST</http_method>
+		<!-- Optional JWT Secret Key for HMAC-SHA256 authentication -->
+		<jwt_key><![CDATA[]]></jwt_key>
+		<!-- Debug mode: print detailed HTTP request and response information (true/false) -->
+		<debug_mode>false</debug_mode>
+	</webservice>
+
+	<!-- Number of blocks to read from RFID tag (default: 12) -->
+	<numblocks>12</numblocks>
+
+	<!-- Technical tag details and memory configuration -->
+	<tagfeatures>
+		<tag>
+			<name><![CDATA[ISO 15693 : NXP I-Code SLIX]]></name>
+			<blocksize>4</blocksize>
+			<usermemory>896</usermemory>
+			<blocks>32</blocks>
+		</tag>
+		<tag>
+			<name><![CDATA[ISO15693]]></name>
+			<blocksize>4</blocksize>
+			<usermemory>896</usermemory>
+			<blocks>32</blocks>
+		</tag>
+	</tagfeatures>
+
+	<!-- Configuration for the Inventory application -->
+	<inventory>
+		<!-- Scan cycle interval in milliseconds (default: 300) -->
+		<sleep>300</sleep>
+	</inventory>
+</configuration>

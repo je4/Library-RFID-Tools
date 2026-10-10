@@ -9,11 +9,11 @@
         <version>2.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>rfid-inventory</artifactId>
+    <artifactId>raspi-inventory</artifactId>
     <packaging>jar</packaging>
 
-    <name>RFID Inventory</name>
-    <description>Modernized Library RFID Inventory Tool supporting FEIG SDK Gen3 and ISO 28560 / Finnish Data Model</description>
+    <name>Raspi Inventory</name>
+    <description>Headless Continuous RFID Inventory Daemon for Raspberry Pi (aarch64)</description>
 
     <dependencies>
         <!-- RFID Core Module -->
@@ -80,22 +80,6 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
-        <!-- Eclipse SWT for Windows x64 -->
-        <dependency>
-            <groupId>org.eclipse.platform</groupId>
-            <artifactId>org.eclipse.swt.win32.win32.x86_64</artifactId>
-        </dependency>
-
-        <!-- Modern Swing FlatLaf Look and Feel -->
-        <dependency>
-            <groupId>com.formdev</groupId>
-            <artifactId>flatlaf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.formdev</groupId>
-            <artifactId>flatlaf-extras</artifactId>
-        </dependency>
-
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -125,10 +109,33 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>org.objectspace.rfid.library.inventory.Inventory</mainClass>
+                            <mainClass>org.objectspace.rfid.raspi.RaspiInventory</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
                         </manifest>
                     </archive>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/assembly/assembly.xml</descriptor>
+                    </descriptors>
+                    <finalName>raspi-inventory-${project.version}</finalName>
+                    <appendAssemblyId>true</appendAssemblyId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-assembly</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

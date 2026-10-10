@@ -1,0 +1,18 @@
+[Unit]
+Description=Raspi RFID Inventory Service (Headless)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/raspi-inventory
+ExecStart=/opt/raspi-inventory/run-raspi-inventory.sh -c /opt/raspi-inventory/inventory.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -9,20 +9,13 @@
         <version>2.0.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>rfid-inventory</artifactId>
+    <artifactId>rfid-core</artifactId>
     <packaging>jar</packaging>
 
-    <name>RFID Inventory</name>
-    <description>Modernized Library RFID Inventory Tool supporting FEIG SDK Gen3 and ISO 28560 / Finnish Data Model</description>
+    <name>RFID Core</name>
+    <description>Core library for FEIG RFID Reader integration, ISO 28560 / Finnish Data Model, and webservice dispatching</description>
 
     <dependencies>
-        <!-- RFID Core Module -->
-        <dependency>
-            <groupId>org.objectspace</groupId>
-            <artifactId>rfid-core</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
         <!-- FEIG SDK Gen3 Java 7.1.0 -->
         <dependency>
             <groupId>de.feig</groupId>
@@ -80,22 +73,6 @@
             <artifactId>mysql-connector-j</artifactId>
         </dependency>
 
-        <!-- Eclipse SWT for Windows x64 -->
-        <dependency>
-            <groupId>org.eclipse.platform</groupId>
-            <artifactId>org.eclipse.swt.win32.win32.x86_64</artifactId>
-        </dependency>
-
-        <!-- Modern Swing FlatLaf Look and Feel -->
-        <dependency>
-            <groupId>com.formdev</groupId>
-            <artifactId>flatlaf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.formdev</groupId>
-            <artifactId>flatlaf-extras</artifactId>
-        </dependency>
-
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -122,13 +99,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>org.objectspace.rfid.library.inventory.Inventory</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
             </plugin>
         </plugins>
     </build>

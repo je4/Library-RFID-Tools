@@ -132,7 +132,7 @@ public class InventoryCallback implements TagCallback {
 
 					if (driver != null && dsn != null) {
 						try {
-							Class.forName(driver).newInstance();
+							Class.forName(driver).getDeclaredConstructor().newInstance();
 							conn = DriverManager.getConnection(dsn);
 							conn.setAutoCommit(true);
 							println("[Datenbank] Verbunden mit: " + dsn, c1, c2);

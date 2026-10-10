@@ -45,12 +45,11 @@ public class TestRunner {
         int passed = 0;
         int failed = 0;
         Class<?>[] testClasses = new Class<?>[] {
-            FinnishDataModelTest.class,
-            org.objectspace.rfid.webservice.WebserviceTest.class,
             org.objectspace.rfid.library.inventory.InventoryViewTest.class,
             org.objectspace.rfid.library.inventory.InventorySplashScreenTest.class,
             org.objectspace.rfid.library.inventory.InventoryCsvExportTest.class,
-            org.objectspace.rfid.feig.saveconfig.SaveConfigTest.class
+            org.objectspace.rfid.library.inventory.InventoryItemEntryTest.class,
+            org.objectspace.rfid.library.inventory.InventoryCallbackWebserviceTest.class
         };
 
         System.out.println("=== Starting Test Runner ===");

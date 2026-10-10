@@ -1,5 +1,6 @@
 # ========================================================
-#   RFID Inventory - Application Startup Script (PowerShell)
+#   Raspi Inventory - Headless Continuous RFID Daemon
+#   Windows Test / Execution Script (PowerShell)
 #   info-age GmbH, Basel
 # ========================================================
 
@@ -19,8 +20,8 @@ if (-not $scriptDir) { $scriptDir = Get-Location }
 if (Test-Path "$scriptDir\src\main\java") {
     $moduleRoot = $scriptDir
     $repoRoot = (Get-Item "$scriptDir\..").FullName
-} elseif (Test-Path "$scriptDir\rfid-inventory\src\main\java") {
-    $moduleRoot = (Get-Item "$scriptDir\rfid-inventory").FullName
+} elseif (Test-Path "$scriptDir\raspi-inventory\src\main\java") {
+    $moduleRoot = (Get-Item "$scriptDir\raspi-inventory").FullName
     $repoRoot = $scriptDir
 } else {
     $moduleRoot = $scriptDir
@@ -51,21 +52,19 @@ if ($needsDependencies) {
     
     $m2Repo = Join-Path $HOME ".m2\repository"
     if (Test-Path $m2Repo) {
-        $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*', 'flatlaf*', 'jsvg*')
+        $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*')
         Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
             $name = $_.Name
             $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
         } | ForEach-Object {
             Copy-Item -Path $_.FullName -Destination $extDir -Force
         }
-    } else {
-        Write-Warning "Maven-Repository nicht gefunden unter '$m2Repo'. Externe Abhängigkeiten wurden möglicherweise nicht bereitgestellt."
     }
 }
 
 # 3. Compilation
 $classesDir = Join-Path $moduleRoot "target\classes"
-$mainClass = Join-Path $classesDir "org\objectspace\rfid\library\inventory\Inventory.class"
+$mainClass = Join-Path $classesDir "org\objectspace\rfid\raspi\RaspiInventory.class"
 $classpath = "$classesDir;$coreClassesDir;$coreJar;$libDir\*;$extDir\*"
 $buildClasspath = "$coreClassesDir;$coreJar;$libDir\*;$extDir\*"
 
@@ -89,7 +88,7 @@ if (-not $shouldRebuild) {
 }
 
 if ($shouldRebuild) {
-    Write-Host "Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
+    Write-Host "Kompiliere Raspi-Inventory Quellcodedateien (Java 25)..." -ForegroundColor Yellow
     if (Test-Path $classesDir) {
         Remove-Item -Force -Recurse $classesDir
     }
@@ -113,8 +112,6 @@ if ($shouldRebuild) {
             }
             exit $LASTEXITCODE
         }
-    } else {
-        Write-Warning "Keine Java-Quelldateien gefunden."
     }
 
     if (Test-Path $coreResourcesDir) {
@@ -123,14 +120,10 @@ if ($shouldRebuild) {
     if (Test-Path $resourcesDir) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
     }
-} else {
-    if ((Test-Path $resourcesDir) -and (Test-Path $classesDir)) {
-        Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir
-    }
 }
 
 # 4. Launch Application
-Write-Host "Starte RFID Inventory Anwendung..." -ForegroundColor Green
+Write-Host "Starte Raspi-Inventory Daemon (Headless)..." -ForegroundColor Green
 
 $jvmOptions = @(
     "--enable-native-access=ALL-UNNAMED",
@@ -140,14 +133,13 @@ if ($JavaArgs -and $JavaArgs.Length -gt 0) {
     $jvmOptions += $JavaArgs
 }
 
-& $javaCmd @jvmOptions -cp $classpath org.objectspace.rfid.library.inventory.Inventory @AppArgs
+& $javaCmd @jvmOptions -cp $classpath org.objectspace.rfid.raspi.RaspiInventory @AppArgs
 $exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
     Write-Host "`nAnwendung beendet mit Exit-Code $exitCode." -ForegroundColor Red
 }
 
-# 5. Interactive Pause
 if (-not $NoPause) {
     try {
         if ([Environment]::UserInteractive) {

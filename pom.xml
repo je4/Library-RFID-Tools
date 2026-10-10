@@ -12,7 +12,9 @@
     <description>Modernized Library RFID Tools supporting FEIG SDK Gen3 (v7.1.0) and ISO 28560 / Finnish Data Model</description>
 
     <modules>
+        <module>rfid-core</module>
         <module>rfid-inventory</module>
+        <module>raspi-inventory</module>
     </modules>
 
     <properties>

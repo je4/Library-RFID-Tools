@@ -91,7 +91,9 @@ public class MarcReader extends DefaultHandler {
 				String dsn = config.getString("database.dsn");
 
 				if (driver != null && dsn != null) {
-					Class.forName(driver).newInstance();
+					try {
+						Class.forName(driver).getDeclaredConstructor().newInstance();
+					} catch (Exception ignored) {}
 					conn = DriverManager.getConnection(dsn);
 					conn.setAutoCommit(true);
 				}
