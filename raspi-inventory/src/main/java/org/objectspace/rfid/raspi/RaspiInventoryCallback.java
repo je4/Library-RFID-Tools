@@ -99,6 +99,9 @@ public class RaspiInventoryCallback implements TagCallback {
 							logger.warn("{}", wsResp.formatScanLogDetails());
 						}
 					}
+					logger.debug("[Webservice] URL: {}", wsResp.getRequestUrl());
+					logger.debug("[Webservice] Headers: {}", wsResp.getRequestHeaders());
+					logger.debug("[Webservice] Body: {}", wsResp.getRequestBody());
 				}
 			} catch (Exception e) {
 				logger.error("[Webservice Exception] Failed to dispatch UID {}: {}", UID, e.getMessage(), e);

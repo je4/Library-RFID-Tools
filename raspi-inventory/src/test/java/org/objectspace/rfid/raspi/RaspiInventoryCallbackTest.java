@@ -143,4 +143,80 @@ public class RaspiInventoryCallbackTest {
 
         assertDoesNotThrow(() -> callback.close());
     }
+
+    @Test
+    @DisplayName("Test Webservice debug logging emits url, headers, and body at DEBUG level")
+    public void testWebserviceDebugLogging() throws Exception {
+        ch.qos.logback.classic.Logger callbackLogger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(RaspiInventoryCallback.class);
+        ch.qos.logback.classic.Level originalLevel = callbackLogger.getLevel();
+        callbackLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender = new ch.qos.logback.core.read.ListAppender<>();
+        listAppender.start();
+        callbackLogger.addAppender(listAppender);
+
+        try {
+            Map<String, String> headers = Map.of("Authorization", "Bearer test-jwt", "Content-Type", "application/json");
+            String reqUrl = "https://inventory.sammlung.cc/inventory?clientid=1";
+            String reqBody = "{\"uid\":\"E00401080AD4B4E7\",\"clientId\":\"1\"}";
+
+            WebserviceConfig wsCfg = new WebserviceConfig(true, reqUrl, "POST", "my-secret-key", false);
+            WebserviceDispatcher mockDispatcher = new WebserviceDispatcher(wsCfg) {
+                @Override
+                public WebserviceResponse dispatchScan(
+                        String marker,
+                        String userText,
+                        String nfcContent,
+                        String rawPayloadHex,
+                        String uid,
+                        FinnishDataModel libraryData,
+                        String session,
+                        String deviceName
+                ) {
+                    return WebserviceResponse.success(200, "{\"ok\":true}", reqUrl, 520, "my-secret-key", headers, reqBody, "");
+                }
+            };
+
+            BaseConfiguration cfg = new BaseConfiguration();
+            cfg.setProperty("database.active", false);
+            cfg.setProperty("webservice.active", true);
+
+            TagScanProcessor processor = new TagScanProcessor(cfg) {
+                @Override
+                public WebserviceResponse dispatchWebservice(String marker, String itemId, String rawHex, String uid,
+                        FinnishDataModel metadata, String sessionName, String extra) throws Exception {
+                    return mockDispatcher.dispatchScan(marker, marker, itemId, rawHex, uid, metadata, sessionName, extra);
+                }
+            };
+
+            RaspiInventoryCallback callback = new RaspiInventoryCallback(processor, 3000L);
+            callback.doIt(1, 1, "NXP", "SLIX", "E00401080AD4B4E7", null, 4);
+
+            boolean foundUrl = false;
+            boolean foundHeaders = false;
+            boolean foundBody = false;
+
+            for (ch.qos.logback.classic.spi.ILoggingEvent event : listAppender.list) {
+                if (event.getLevel() == ch.qos.logback.classic.Level.DEBUG) {
+                    String msg = event.getFormattedMessage();
+                    if (msg.contains("URL: " + reqUrl)) {
+                        foundUrl = true;
+                    }
+                    if (msg.contains("Headers:") && msg.contains("Authorization") && msg.contains("Bearer test-jwt")) {
+                        foundHeaders = true;
+                    }
+                    if (msg.contains("Body: " + reqBody)) {
+                        foundBody = true;
+                    }
+                }
+            }
+
+            assertTrue(foundUrl, "Debug log should contain URL");
+            assertTrue(foundHeaders, "Debug log should contain headers");
+            assertTrue(foundBody, "Debug log should contain body");
+        } finally {
+            callbackLogger.detachAppender(listAppender);
+            callbackLogger.setLevel(originalLevel);
+        }
+    }
 }
