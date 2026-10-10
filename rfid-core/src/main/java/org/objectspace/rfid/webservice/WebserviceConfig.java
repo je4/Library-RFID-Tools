@@ -34,16 +34,22 @@ public class WebserviceConfig {
 	private String httpMethod = DEFAULT_HTTP_METHOD;
 	private String jwtKey = "";
 	private boolean debugMode = false;
+	private String clientId = "";
 
 	public WebserviceConfig() {
 	}
 
 	public WebserviceConfig(boolean active, String targetUrl, String httpMethod, String jwtKey, boolean debugMode) {
+		this(active, targetUrl, httpMethod, jwtKey, debugMode, "");
+	}
+
+	public WebserviceConfig(boolean active, String targetUrl, String httpMethod, String jwtKey, boolean debugMode, String clientId) {
 		this.active = active;
 		this.targetUrl = (targetUrl != null && !targetUrl.trim().isEmpty()) ? targetUrl.trim() : DEFAULT_TARGET_URL;
 		this.httpMethod = (httpMethod != null && !httpMethod.trim().isEmpty()) ? httpMethod.trim().toUpperCase() : DEFAULT_HTTP_METHOD;
 		this.jwtKey = (jwtKey != null) ? jwtKey.trim() : "";
 		this.debugMode = debugMode;
+		this.clientId = (clientId != null) ? clientId.trim() : "";
 	}
 
 	/**
@@ -97,6 +103,26 @@ public class WebserviceConfig {
 		boolean debug = config.getBoolean("webservice.debug_mode", config.getBoolean("webservice.debug", false));
 		wsConfig.setDebugMode(debug);
 
+		String clientId = config.getString("webservice.client_id");
+		if (clientId == null) {
+			clientId = config.getString("webservice.clientid");
+		}
+		if (clientId == null) {
+			clientId = config.getString("webservice.client-id");
+		}
+		if (clientId == null) {
+			clientId = config.getString("client_id");
+		}
+		if (clientId == null) {
+			clientId = config.getString("clientid");
+		}
+		if (clientId == null) {
+			clientId = config.getString("client-id");
+		}
+		if (clientId != null) {
+			wsConfig.setClientId(clientId.trim());
+		}
+
 		return wsConfig;
 	}
 
@@ -140,6 +166,14 @@ public class WebserviceConfig {
 		this.debugMode = debugMode;
 	}
 
+	public String getClientId() {
+		return clientId != null ? clientId : "";
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = (clientId != null) ? clientId.trim() : "";
+	}
+
 	@Override
 	public String toString() {
 		return "WebserviceConfig{" +
@@ -148,6 +182,7 @@ public class WebserviceConfig {
 				", httpMethod='" + httpMethod + '\'' +
 				", jwtKey='" + (jwtKey.isEmpty() ? "(none)" : "***") + '\'' +
 				", debugMode=" + debugMode +
+				", clientId='" + clientId + '\'' +
 				'}';
 	}
 }

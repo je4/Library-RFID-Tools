@@ -76,8 +76,10 @@ public class TagScanProcessor implements AutoCloseable {
 		if (webserviceConfig != null && webserviceConfig.isActive()) {
 			this.webserviceDispatcher = new WebserviceDispatcher(webserviceConfig);
 			int keyLen = (webserviceConfig.getJwtKey() != null) ? webserviceConfig.getJwtKey().length() : 0;
-			logger.info("[Webservice] Aktiv: {} {} (JWT-Key-Länge: {} Zeichen)",
-					webserviceConfig.getHttpMethod(), webserviceConfig.getTargetUrl(),
+			String clientInfo = (webserviceConfig.getClientId() != null && !webserviceConfig.getClientId().isEmpty())
+					? " (Client-ID: " + webserviceConfig.getClientId() + ")" : "";
+			logger.info("[Webservice] Aktiv: {} {}{} (JWT-Key-Länge: {} Zeichen)",
+					webserviceConfig.getHttpMethod(), webserviceConfig.getTargetUrl(), clientInfo,
 					keyLen > 0 ? String.valueOf(keyLen) : "0 (kein Key)");
 		} else {
 			logger.info("[Webservice] Inaktiv");

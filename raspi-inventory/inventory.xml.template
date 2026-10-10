@@ -30,8 +30,10 @@
 	<webservice>
 		<!-- Enable/disable webservice dispatching (true/false) -->
 		<active>false</active>
-		<!-- Target URL or URL template with placeholders ({marker}, {session}, {uid}, {raw}, {itemid}, etc.) -->
-		<target_url><![CDATA[https://inventory.example.org/api/inventory]]></target_url>
+		<!-- Client ID for identifying the inventory station (e.g., 1, 2, station-a) -->
+		<client_id><![CDATA[1]]></client_id>
+		<!-- Target URL or URL template with placeholders ({marker}, {session}, {uid}, {raw}, {itemid}, {clientid}, etc.) -->
+		<target_url><![CDATA[https://inventory.example.org/api/inventory?clientid={clientid}]]></target_url>
 		<!-- HTTP Method: GET or POST -->
 		<http_method>POST</http_method>
 		<!-- Optional JWT Secret Key for HMAC-SHA256 authentication -->

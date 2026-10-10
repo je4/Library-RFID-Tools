@@ -39,9 +39,8 @@ public class UrlBuilder {
 	/**
 	 * Builds the target URL containing the marker, session, and NFC/RFID content.
 	 * Supports template placeholders ({marker}, {session}, {text}, {raw}, {uid}, {timestamp}, {ts}, {jwt},
-	 * {itemid}, {afi}, {country}, {isil}, {parts}, {partno}, {usagetype}, {version}) and
+	 * {itemid}, {afi}, {country}, {isil}, {parts}, {partno}, {usagetype}, {version}, {clientid}) and
 	 * automatic query parameter appending if placeholders are not present (for GET requests).
-	 * For POST requests, query parameters are omitted.
 	 *
 	 * @param baseUrlOrTemplate The base URL or template with placeholders
 	 * @param marker            The marker / shelf identifier
@@ -71,6 +70,45 @@ public class UrlBuilder {
 			String httpMethod,
 			String userText
 	) {
+		return buildUrl(baseUrlOrTemplate, marker, rawPayloadHex, uid, timestamp, jwtToken, libraryData, nfcContent, session, deviceName, httpMethod, userText, "");
+	}
+
+	/**
+	 * Builds the target URL containing the marker, session, client ID, and NFC/RFID content.
+	 * Supports template placeholders ({marker}, {session}, {text}, {raw}, {uid}, {timestamp}, {ts}, {jwt},
+	 * {itemid}, {afi}, {country}, {isil}, {parts}, {partno}, {usagetype}, {version}, {clientid}, {client_id}, {clientId})
+	 * and automatic query parameter appending if placeholders are not present.
+	 *
+	 * @param baseUrlOrTemplate The base URL or template with placeholders
+	 * @param marker            The marker / shelf identifier
+	 * @param rawPayloadHex     Raw tag payload as hex string
+	 * @param uid               The tag UID
+	 * @param timestamp         Scan timestamp in ms
+	 * @param jwtToken          JWT token string (optional)
+	 * @param libraryData       Parsed FinnishDataModel (optional)
+	 * @param nfcContent        Text representation of tag content (optional)
+	 * @param session           Session name (optional, generated if blank)
+	 * @param deviceName        Device name (optional, determined from system if blank)
+	 * @param httpMethod        "GET" or "POST"
+	 * @param userText          User text / marker fallback (optional)
+	 * @param clientId          Client / station identifier (optional)
+	 * @return The formatted URL
+	 */
+	public static String buildUrl(
+			String baseUrlOrTemplate,
+			String marker,
+			String rawPayloadHex,
+			String uid,
+			long timestamp,
+			String jwtToken,
+			FinnishDataModel libraryData,
+			String nfcContent,
+			String session,
+			String deviceName,
+			String httpMethod,
+			String userText,
+			String clientId
+	) {
 		if (baseUrlOrTemplate == null) {
 			return "";
 		}
@@ -89,6 +127,7 @@ public class UrlBuilder {
 		String encodedUid = encode(uid != null ? uid.trim() : "");
 		String encodedTimestamp = encode(Long.toString(timestamp));
 		String encodedJwt = encode(jwtToken != null ? jwtToken.trim() : "");
+		String encodedClientId = encode(clientId != null ? clientId.trim() : "");
 
 		String itemId = (libraryData != null && libraryData.getPrimaryItemId() != null) ? libraryData.getPrimaryItemId() : "";
 		String country = (libraryData != null && libraryData.getCountryOfOwnerLib() != null) ? libraryData.getCountryOfOwnerLib() : "";
@@ -108,28 +147,6 @@ public class UrlBuilder {
 		String encodedVersion = encode(version);
 		String encodedAfi = encode(afi);
 
-		if (httpMethod != null && httpMethod.equalsIgnoreCase("POST")) {
-			// Beim POST-Aufruf sollen keine GET-Parameter vorhanden sein
-			String pathPart = trimmed.contains("?") ? trimmed.substring(0, trimmed.indexOf("?")) : trimmed;
-			return pathPart
-					.replace("{marker}", encodedMarker)
-					.replace("{text}", encodedMarker)
-					.replace("{session}", encodedSession)
-					.replace("{raw}", encodedRaw)
-					.replace("{uid}", encodedUid)
-					.replace("{timestamp}", encodedTimestamp)
-					.replace("{ts}", encodedTimestamp)
-					.replace("{jwt}", encodedJwt)
-					.replace("{itemid}", encodedItemId)
-					.replace("{afi}", encodedAfi)
-					.replace("{country}", encodedCountry)
-					.replace("{isil}", encodedIsil)
-					.replace("{parts}", encodedParts)
-					.replace("{partno}", encodedPartNo)
-					.replace("{usagetype}", encodedUsageType)
-					.replace("{version}", encodedVersion);
-		}
-
 		boolean hasPlaceholders = trimmed.contains("{marker}") ||
 				trimmed.contains("{text}") ||
 				trimmed.contains("{session}") ||
@@ -145,7 +162,11 @@ public class UrlBuilder {
 				trimmed.contains("{parts}") ||
 				trimmed.contains("{partno}") ||
 				trimmed.contains("{usagetype}") ||
-				trimmed.contains("{version}");
+				trimmed.contains("{version}") ||
+				trimmed.contains("{clientid}") ||
+				trimmed.contains("{client_id}") ||
+				trimmed.contains("{clientId}") ||
+				trimmed.contains("{client}");
 
 		if (hasPlaceholders) {
 			return trimmed
@@ -164,19 +185,35 @@ public class UrlBuilder {
 					.replace("{parts}", encodedParts)
 					.replace("{partno}", encodedPartNo)
 					.replace("{usagetype}", encodedUsageType)
-					.replace("{version}", encodedVersion);
-		} else {
-			String delimiter = trimmed.contains("?") ? "&" : "?";
-			String baseParams = trimmed + delimiter + "marker=" + encodedMarker + "&session=" + encodedSession +
-					"&raw=" + encodedRaw + "&uid=" + encodedUid + "&ts=" + encodedTimestamp;
-			if (libraryData != null && !libraryData.isEmpty()) {
-				String afiParam = (encodedAfi != null && !encodedAfi.isEmpty()) ? "&afi=" + encodedAfi : "";
-				return baseParams + "&itemid=" + encodedItemId + "&country=" + encodedCountry +
-						"&isil=" + encodedIsil + "&parts=" + encodedParts + "&partno=" + encodedPartNo +
-						"&usagetype=" + encodedUsageType + "&version=" + encodedVersion + afiParam;
-			} else {
-				return baseParams;
+					.replace("{version}", encodedVersion)
+					.replace("{clientid}", encodedClientId)
+					.replace("{client_id}", encodedClientId)
+					.replace("{clientId}", encodedClientId)
+					.replace("{client}", encodedClientId);
+		}
+
+		boolean isPost = (httpMethod != null && httpMethod.equalsIgnoreCase("POST"));
+		if (isPost) {
+			if (encodedClientId != null && !encodedClientId.isEmpty() && !trimmed.contains("clientid=") && !trimmed.contains("client_id=")) {
+				String delimiter = trimmed.contains("?") ? "&" : "?";
+				return trimmed + delimiter + "clientid=" + encodedClientId;
 			}
+			return trimmed;
+		}
+
+		String delimiter = trimmed.contains("?") ? "&" : "?";
+		String baseParams = trimmed + delimiter + "marker=" + encodedMarker + "&session=" + encodedSession +
+				"&raw=" + encodedRaw + "&uid=" + encodedUid + "&ts=" + encodedTimestamp;
+		if (encodedClientId != null && !encodedClientId.isEmpty() && !trimmed.contains("clientid=") && !trimmed.contains("client_id=")) {
+			baseParams += "&clientid=" + encodedClientId;
+		}
+		if (libraryData != null && !libraryData.isEmpty()) {
+			String afiParam = (encodedAfi != null && !encodedAfi.isEmpty()) ? "&afi=" + encodedAfi : "";
+			return baseParams + "&itemid=" + encodedItemId + "&country=" + encodedCountry +
+					"&isil=" + encodedIsil + "&parts=" + encodedParts + "&partno=" + encodedPartNo +
+					"&usagetype=" + encodedUsageType + "&version=" + encodedVersion + afiParam;
+		} else {
+			return baseParams;
 		}
 	}
 

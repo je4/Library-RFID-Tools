@@ -45,7 +45,18 @@ public class JwtGenerator {
 	 * @return Formatted JWT string: header.payload.signature
 	 */
 	public static String generateToken(String secret) {
-		return generateToken(secret, DEFAULT_VALIDITY_SECONDS, System.currentTimeMillis(), null);
+		return generateToken(secret, null, DEFAULT_VALIDITY_SECONDS, System.currentTimeMillis(), null);
+	}
+
+	/**
+	 * Generates a signed JWT token using the HS256 algorithm with default 60s validity and a subject.
+	 *
+	 * @param secret Secret key used for signing (HMAC-SHA256)
+	 * @param subject Subject claim (sub)
+	 * @return Formatted JWT string: header.payload.signature
+	 */
+	public static String generateToken(String secret, String subject) {
+		return generateToken(secret, subject, DEFAULT_VALIDITY_SECONDS, System.currentTimeMillis(), null);
 	}
 
 	/**
@@ -58,6 +69,20 @@ public class JwtGenerator {
 	 * @return Formatted JWT string: header.payload.signature
 	 */
 	public static String generateToken(String secret, long validitySeconds, long issuedAtMillis, Map<String, Object> customClaims) {
+		return generateToken(secret, null, validitySeconds, issuedAtMillis, customClaims);
+	}
+
+	/**
+	 * Generates a signed JWT token using the HS256 algorithm with a subject and custom claims.
+	 *
+	 * @param secret Secret key used for signing (HMAC-SHA256)
+	 * @param subject Subject claim (sub) to include in the payload (optional)
+	 * @param validitySeconds Token validity duration in seconds (defaults to 60 seconds)
+	 * @param issuedAtMillis Timestamp in milliseconds when the token is issued
+	 * @param customClaims Optional map of additional claims to include in the payload
+	 * @return Formatted JWT string: header.payload.signature
+	 */
+	public static String generateToken(String secret, String subject, long validitySeconds, long issuedAtMillis, Map<String, Object> customClaims) {
 		if (secret == null || secret.trim().isEmpty()) {
 			throw new IllegalArgumentException("Secret key must not be blank");
 		}
@@ -69,8 +94,17 @@ public class JwtGenerator {
 
 		StringBuilder payloadSb = new StringBuilder();
 		payloadSb.append("{\"iat\":").append(iatSeconds).append(",\"exp\":").append(expSeconds);
+		if (subject != null && !subject.trim().isEmpty()) {
+			payloadSb.append(",\"sub\":\"").append(escapeJson(subject.trim())).append("\"");
+		}
 		if (customClaims != null) {
 			for (Map.Entry<String, Object> entry : customClaims.entrySet()) {
+				if (entry.getKey() == null || entry.getValue() == null) {
+					continue;
+				}
+				if (entry.getKey().equals("sub") && subject != null && !subject.trim().isEmpty()) {
+					continue;
+				}
 				payloadSb.append(",\"").append(escapeJson(entry.getKey())).append("\":");
 				Object val = entry.getValue();
 				if (val instanceof Number || val instanceof Boolean) {

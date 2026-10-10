@@ -86,7 +86,13 @@ public class WebserviceDispatcher {
 		String jwtToken = null;
 		if (jwtKey != null && !jwtKey.trim().isEmpty()) {
 			try {
-				jwtToken = JwtGenerator.generateToken(jwtKey, 60, timestamp, null);
+				Map<String, Object> customClaims = new LinkedHashMap<>();
+				String clientId = config.getClientId();
+				if (clientId != null && !clientId.trim().isEmpty()) {
+					customClaims.put("client_id", clientId.trim());
+				}
+				String subject = (uid != null && !uid.trim().isEmpty()) ? uid.trim() : null;
+				jwtToken = JwtGenerator.generateToken(jwtKey, subject, 60, timestamp, customClaims);
 			} catch (Exception e) {
 				System.err.println("JWT token generation failed: " + e.getMessage());
 			}
@@ -107,7 +113,8 @@ public class WebserviceDispatcher {
 				actualSession,
 				deviceName,
 				httpMethod,
-				userText
+				userText,
+				config.getClientId()
 		);
 
 		Map<String, String> headers = new LinkedHashMap<>();
@@ -121,7 +128,7 @@ public class WebserviceDispatcher {
 
 		String requestBody = null;
 		if (httpMethod.equalsIgnoreCase("POST")) {
-			requestBody = buildJsonBody(actualMarker, actualSession, rawPayloadHex, nfcContent, uid, timestamp, jwtToken, libraryData);
+			requestBody = buildJsonBody(actualMarker, actualSession, rawPayloadHex, nfcContent, uid, timestamp, jwtToken, libraryData, config.getClientId());
 			headers.put("Content-Type", "application/json; charset=utf-8");
 		}
 
@@ -219,7 +226,8 @@ public class WebserviceDispatcher {
 			String uid,
 			long timestamp,
 			String jwtToken,
-			FinnishDataModel libraryData
+			FinnishDataModel libraryData,
+			String clientId
 	) {
 		StringBuilder sb = new StringBuilder();
 		sb.append("{");
@@ -232,6 +240,10 @@ public class WebserviceDispatcher {
 
 		if (jwtToken != null && !jwtToken.trim().isEmpty()) {
 			sb.append(",\"jwt\":\"").append(escapeJson(jwtToken)).append("\"");
+		}
+
+		if (clientId != null && !clientId.trim().isEmpty()) {
+			sb.append(",\"clientId\":\"").append(escapeJson(clientId.trim())).append("\"");
 		}
 
 		if (libraryData != null && !libraryData.isEmpty()) {
