@@ -50,4 +50,21 @@ public class RaspiInventoryTest {
         RaspiInventory appWithOverrides = new RaspiInventory(config, 5000L, 100, 16);
         assertEquals(5000L, appWithOverrides.getCallback().getDebounceMillis());
     }
+
+    @Test
+    @DisplayName("Test setLogLevel modifies Logback root logger level")
+    public void testSetLogLevel() {
+        ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        ch.qos.logback.classic.Level initial = root.getLevel();
+
+        try {
+            RaspiInventory.setLogLevel(ch.qos.logback.classic.Level.DEBUG);
+            assertEquals(ch.qos.logback.classic.Level.DEBUG, root.getLevel());
+
+            RaspiInventory.setLogLevel(ch.qos.logback.classic.Level.INFO);
+            assertEquals(ch.qos.logback.classic.Level.INFO, root.getLevel());
+        } finally {
+            root.setLevel(initial);
+        }
+    }
 }

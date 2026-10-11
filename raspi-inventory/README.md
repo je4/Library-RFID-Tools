@@ -63,6 +63,11 @@ Die Datei `inventory.xml` steuert die Schnittstellen und Parameter:
 
 # Mit CLI-Parametern (z.B. Debounce auf 5s, Scan-Intervall auf 200ms)
 ./run-raspi-inventory.sh -c inventory.xml --debounce 5000 --sleep 200
+
+# Mit Debug-Logging
+./run-raspi-inventory.sh --debug
+# oder über Umgebungsvariable
+LOG_LEVEL=DEBUG ./run-raspi-inventory.sh
 ```
 
 ### Befehlszeilenoptionen:
@@ -70,6 +75,8 @@ Die Datei `inventory.xml` steuert die Schnittstellen und Parameter:
 * `-d, --debounce <ms>`: Debounce-Zeitfenster in ms (Standard: `3000`)
 * `-s, --sleep <ms>`: Pause zwischen Scan-Durchläufen in ms (Standard: `300`)
 * `-b, --blocks <num>`: Anzahl der zu lesenden ISO 15693 Datenblöcke (Standard: `12`)
+* `--debug`: Ausführliche DEBUG-Logausgaben aktivieren
+* `--remote-debug`: JVM Remote Debugging (Port 5005) aktivieren
 * `-v, --version`: Versionsnummer ausgeben
 * `-h, --help`: Hilfe anzeigen
 

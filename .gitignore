@@ -108,5 +108,5 @@ pom.xml.versionsBackup
 # Logs
 logs/
 
-target/
+#target/
 inventory.xml

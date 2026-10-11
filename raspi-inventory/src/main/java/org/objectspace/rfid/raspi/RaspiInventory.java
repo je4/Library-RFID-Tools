@@ -105,6 +105,8 @@ public class RaspiInventory {
 			} else if ("-v".equals(arg) || "--version".equals(arg)) {
 				System.out.println("raspi-inventory version " + VERSION);
 				System.exit(0);
+			} else if ("--debug".equals(arg)) {
+				setLogLevel(ch.qos.logback.classic.Level.DEBUG);
 			} else if (("-c".equals(arg) || "--config".equals(arg)) && i + 1 < args.length) {
 				configFile = args[++i];
 			} else if (("-d".equals(arg) || "--debounce".equals(arg)) && i + 1 < args.length) {
@@ -138,6 +140,15 @@ public class RaspiInventory {
 		}
 	}
 
+	public static void setLogLevel(ch.qos.logback.classic.Level level) {
+		try {
+			ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+			root.setLevel(level);
+		} catch (Exception e) {
+			logger.warn("Could not set log level dynamically: {}", e.getMessage());
+		}
+	}
+
 	private static void printHelp() {
 		System.out.println("Usage: java -jar raspi-inventory.jar [options] [config-file]");
 		System.out.println();
@@ -146,6 +157,7 @@ public class RaspiInventory {
 		System.out.println("  -d, --debounce <ms>     Debounce window in ms to suppress duplicate reads (default: 3000)");
 		System.out.println("  -s, --sleep <ms>        Sleep interval between scan cycles in ms (default: 300)");
 		System.out.println("  -b, --blocks <num>      Number of blocks to read from ISO 15693 tag (default: 12)");
+		System.out.println("  --debug                 Enable DEBUG logging output");
 		System.out.println("  -v, --version           Print version information and exit");
 		System.out.println("  -h, --help              Print this help message and exit");
 	}
