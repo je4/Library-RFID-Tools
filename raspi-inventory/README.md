@@ -1,34 +1,127 @@
 # Raspi Inventory - Headless Continuous RFID Daemon
 
-**Raspi Inventory** ist ein leichtgewichtiger, autonomer RFID-Dienst für Raspberry Pi 4 / 5 (Linux `aarch64`), der FEIG Electronic RFID-Leser (USB) steuert und RFID-Medien (ISO 15693 / ISO 28560-2) kontinuierlich scannt und verarbeitet.
+**Raspi Inventory** is a lightweight, autonomous background RFID daemon for Raspberry Pi 4 and 5 (Linux `aarch64`), designed to control FEIG Electronic RFID readers (USB) and continuously scan, validate, and dispatch library media items (ISO 15693 / ISO 28560-2).
 
 ---
 
-## 1. Systemvoraussetzungen (Raspberry Pi)
+## Key Features
 
-* **Hardware**: Raspberry Pi 4 / 5 (64-Bit OS / `aarch64`)
-* **Betriebssystem**: Raspberry Pi OS 64-Bit (Debian Bookworm oder Bullseye)
-* **Java Runtime**: OpenJDK 21 oder OpenJDK 25 (Headless JRE genügt):
+* **Headless Autonomous Operation**: Runs out-of-the-box as a CLI tool or managed `systemd` background service without graphical dependencies.
+* **Continuous Scanning & Time-Based Debouncing**: Continuously queries the reader field and suppresses redundant event bursts using a configurable debounce cooldown window (default: 3000 ms).
+* **Automatic Hardware Discovery & Auto-Reconnect**: Seamlessly re-establishes connection on USB disconnects or power cycles without daemon restarts.
+* **REST Webservice & Client TLS Integration**: Dispatches scan events in real-time with HMAC-SHA256 JWT authorization tokens and dynamic TLS.
+* **Native 64-bit ARM Support**: Fully integrated with FEIG Gen3 Linux aarch64 native libraries (`lib/native/aarch64/*.so`).
+
+---
+
+## Daemon Architecture & Scanning Flow
+
+```mermaid
+graph TD
+    subgraph Hardware["Raspberry Pi 4 / 5 Hardware Layer"]
+        RPI["Raspberry Pi (Linux aarch64)"]
+        USB["FEIG USB RFID Reader<br/>(e.g. ID ISC.MR102)"]
+        RPI <-->|USB / VCP Interface| USB
+    end
+
+    subgraph NativeLayer["Native FEIG Drivers"]
+        SO["libfecom.so / libfedm.so<br/>(lib/native/aarch64/)"]
+        SDK["FEIG Java Gen3 SDK"]
+        USB --> SO
+        SO --> SDK
+    end
+
+    subgraph Daemon["RaspiInventory Daemon Engine"]
+        Main["RaspiInventory<br/>(CLI / Service Entry Point)"]
+        Scanner["Continuous Scan Loop<br/>(interval: &lt;sleep&gt; 300ms)"]
+        Debounce["Time-Based Debounce Cache<br/>(cooldown: 3000ms)"]
+        FDM["FinnishDataModel<br/>(ISO 28560-2 Decoder)"]
+
+        Main --> Scanner
+        SDK --> Scanner
+        Scanner --> Debounce
+        Debounce -->|New Unique Tag| FDM
+    end
+
+    subgraph Output["Dispatching & Persistence"]
+        WSD["WebserviceDispatcher<br/>(HTTP POST with JWT)"]
+        DB["MySQL Connector (optional)"]
+        Log["SLF4J / Logback Console Log"]
+
+        FDM --> WSD
+        FDM --> DB
+        FDM --> Log
+    end
+
+    subgraph Remote["Remote Infrastructure"]
+        REST["Library ILS / Inventory Server"]
+        WSD -->|mTLS / REST| REST
+    end
+```
+
+---
+
+## Continuous Scan & Debounce Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Field as RFID Antenna Field
+    participant Daemon as RaspiInventory Daemon
+    participant Debounce as Debounce Filter
+    participant Decoder as FinnishDataModel Decoder
+    participant Dispatcher as WebserviceDispatcher
+    participant Remote as Remote ILS Webservice
+
+    loop Continuous Scan (every 300ms)
+        Daemon->>Field: Poll Inventory (Read Blocks 0..11)
+        alt No tag present
+            Field-->>Daemon: No tag in field
+            Daemon->>Daemon: Sleep 300ms
+        else Tag present in field
+            Field-->>Daemon: Return UID + 48 bytes raw data
+            Daemon->>Debounce: checkTag(uid, now)
+            alt Tag seen within debounce cooldown (e.g. < 3000ms)
+                Debounce-->>Daemon: Drop duplicate scan
+            else First scan or cooldown expired
+                Debounce-->>Daemon: Accept scan & update timestamp
+                Daemon->>Decoder: decode(rawBytes)
+                Decoder-->>Daemon: Item ID: "310029384", Part: 1/1
+                Daemon->>Dispatcher: dispatchScan(marker, uid, item)
+                Dispatcher->>Remote: HTTP POST /inventory (JWT Auth)
+                Remote-->>Dispatcher: 200 OK
+            end
+        end
+    end
+```
+
+---
+
+## 1. System Requirements (Raspberry Pi)
+
+* **Hardware**: Raspberry Pi 4 / 5 (64-bit OS / `aarch64`)
+* **Operating System**: Raspberry Pi OS 64-bit (Debian Bookworm or Bullseye)
+* **Java Runtime**: OpenJDK 21 or OpenJDK 25 (Headless JRE is sufficient):
   ```bash
   sudo apt update
   sudo apt install -y openjdk-21-jre-headless
   ```
-* **Hardware-Zugriffsrechte**: Der Benutzer muss Zugriff auf USB-Geräte haben (z. B. Gruppe `plugdev` oder `dialout`).
+* **Hardware Permissions**: The running user must belong to `plugdev` or `dialout` groups for USB access.
 
 ---
 
 ## 2. Installation
 
-Das Distributions-Paket kann an beliebiger Stelle entpackt werden (empfohlen: `/opt/raspi-inventory`):
+Extract the distribution package to `/opt/raspi-inventory`:
 
 ```bash
-# Zielverzeichnis anlegen
+# Create target directory
 sudo mkdir -p /opt/raspi-inventory
 sudo chown -R $USER:$USER /opt/raspi-inventory
 
-# Distributionsarchiv entpacken
+# Extract distribution archive
 tar -xzf raspi-inventory-2.0.0-SNAPSHOT-linux-aarch64.tar.gz -C /opt/
-# oder
+# or
 unzip raspi-inventory-2.0.0-SNAPSHOT-linux-aarch64.zip -d /opt/
 
 cd /opt/raspi-inventory
@@ -37,67 +130,108 @@ chmod +x run-raspi-inventory.sh lib/native/aarch64/*.sh lib/native/aarch64/*.so*
 
 ---
 
-## 3. Konfiguration
+## 3. Configuration (`inventory.xml`)
 
-Die Datei `inventory.xml` steuert die Schnittstellen und Parameter:
+The `inventory.xml` file configures the RFID reader interface, scan parameters, and remote dispatching:
 
-* **RFID-Leser**: Standardmäßig USB (`<type>usb</type>`).
-* **Webservice**: Automatische Übertragung gelesener Medien an einen REST-Endpunkt (mit optionaler JWT-Signierung).
-* **Datenbank**: Direkter SQL-Export (MySQL / MariaDB).
-* **Scan-Zyklus & Debounce**:
-  * Scan-Intervall: `<sleep>300</sleep>` (in ms)
-  * Debounce-Fenster: Standard 3000 ms (unterdrückt Mehrfachmeldungen solange ein Tag im Antennenfeld liegt).
+```xml
+<configuration>
+    <!-- RFID Reader Settings -->
+    <device>
+        <select>feig</select>
+        <feig>
+            <type>usb</type>
+        </feig>
+    </device>
+
+    <!-- Webservice connection (optional) -->
+    <webservice>
+        <active>true</active>
+        <client_id>raspi-station-01</client_id>
+        <target_url><![CDATA[https://inventory.example.org/api/inventory?clientid={clientid}]]></target_url>
+        <http_method>POST</http_method>
+        <jwt_key><![CDATA[secret-jwt-key]]></jwt_key>
+        <debug_mode>false</debug_mode>
+    </webservice>
+
+    <!-- Client TLS / mTLS configuration with dynamic certificate loading -->
+    <clienttls>
+        <type>minivault</type>
+        <minivault>
+            <baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
+            <parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
+            <tokentype>client_cert</tokentype>
+            <tokenpolicies>
+                <policy>wsbroker.client</policy>
+            </tokenpolicies>
+            <certtype>client_cert</certtype>
+            <uris>
+                <uri>wsbroker:client:display01</uri>
+            </uris>
+            <ca>
+                <path>certs/minivault.ca.pem</path>
+            </ca>
+            <usesystempool>false</usesystempool>
+        </minivault>
+    </clienttls>
+
+    <!-- Scan cycle interval in milliseconds -->
+    <inventory>
+        <sleep>300</sleep>
+    </inventory>
+</configuration>
+```
 
 ---
 
-## 4. Manuelles Starten
+## 4. Manual Execution
 
-Über das mitgelieferte Run-Script:
+Run the daemon via the startup script:
 
 ```bash
-# Standard-Start (verwendet inventory.xml im aktuellen Verzeichnis)
+# Standard startup (reads inventory.xml from current directory)
 ./run-raspi-inventory.sh
 
-# Mit expliziter Konfigurationsdatei
+# With explicit configuration file
 ./run-raspi-inventory.sh -c /opt/raspi-inventory/inventory.xml
 
-# Mit CLI-Parametern (z.B. Debounce auf 5s, Scan-Intervall auf 200ms)
+# Custom debounce (5s) and scan cycle interval (200ms)
 ./run-raspi-inventory.sh -c inventory.xml --debounce 5000 --sleep 200
 
-# Mit Debug-Logging
+# Enable debug logging
 ./run-raspi-inventory.sh --debug
-# oder über Umgebungsvariable
+# or via environment variable
 LOG_LEVEL=DEBUG ./run-raspi-inventory.sh
 ```
 
-### Befehlszeilenoptionen:
-* `-c, --config <file>`: Pfad zur `inventory.xml` (Standard: `inventory.xml`)
-* `-d, --debounce <ms>`: Debounce-Zeitfenster in ms (Standard: `3000`)
-* `-s, --sleep <ms>`: Pause zwischen Scan-Durchläufen in ms (Standard: `300`)
-* `-b, --blocks <num>`: Anzahl der zu lesenden ISO 15693 Datenblöcke (Standard: `12`)
-* `--debug`: Ausführliche DEBUG-Logausgaben aktivieren
-* `--remote-debug`: JVM Remote Debugging (Port 5005) aktivieren
-* `-v, --version`: Versionsnummer ausgeben
-* `-h, --help`: Hilfe anzeigen
+### Command Line Options:
+* `-c, --config <file>`: Path to `inventory.xml` (default: `inventory.xml`)
+* `-d, --debounce <ms>`: Debounce cooldown window in ms (default: `3000`)
+* `-s, --sleep <ms>`: Pause between scan loops in ms (default: `300`)
+* `-b, --blocks <num>`: Number of ISO 15693 blocks to read (default: `12`)
+* `--debug`: Enable verbose DEBUG log output
+* `--remote-debug`: Enable JVM remote debugging on port 5005
+* `-v, --version`: Print version information
+* `-h, --help`: Display help and usage information
 
 ---
 
-## 5. Einrichtung als Systemd-Hintergrunddienst
+## 5. Systemd Background Service Setup
 
-Für den automatischen Start beim Booten des Raspberry Pi:
+To enable auto-start on Raspberry Pi boot:
 
 ```bash
-# Service-Datei kopieren
+# Copy systemd unit file
 sudo cp /opt/raspi-inventory/raspi-inventory.service /etc/systemd/system/
 
-# Systemd neu laden
+# Reload systemd daemon
 sudo systemctl daemon-reload
 
-# Dienst aktivieren und starten
+# Enable and start service
 sudo systemctl enable raspi-inventory.service
 sudo systemctl start raspi-inventory.service
 
-# Status und Log-Ausgaben prüfen
+# Check service status and live logs
 sudo systemctl status raspi-inventory.service
 sudo journalctl -u raspi-inventory.service -f
 ```

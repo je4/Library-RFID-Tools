@@ -110,3 +110,9 @@ logs/
 
 #target/
 inventory.xml
+
+# Certificates & Keys
+certs/
+*.pem
+*.crt
+*.key

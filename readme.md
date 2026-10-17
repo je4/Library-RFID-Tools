@@ -1,6 +1,6 @@
 # Library RFID Tools
 
-**Library RFID Tools** is a modernized Java-based multi-module software suite and hardware integration toolkit for library RFID management, ISO 15693 tag processing, and FEIG electronic RFID reader control.
+**Library RFID Tools** is a modernized Java-based multi-module software suite and hardware integration toolkit for library RFID management, ISO 15693 tag processing, FEIG electronic RFID reader control, and automated dynamic X.509 certificate management (MiniVault mTLS).
 
 The system implements the **ISO 28560-2** library RFID standard ("Finnish Data Model") and integrates with the **FEIG SDK Gen3 (v7.1.0)** for high-throughput scanning, hardware diagnostic monitoring, and firmware configuration management.
 
@@ -14,13 +14,66 @@ The system implements the **ISO 28560-2** library RFID standard ("Finnish Data M
 
 ---
 
+## System Architecture
+
+```mermaid
+graph TD
+    subgraph PKI["PKI & Zero-Downtime TLS (`certmanager`)"]
+        MV["MiniVault PKI Service"]
+        CM["CertManager & MiniVaultLoader<br/>• DynamicKeyManager (mTLS)<br/>• DynamicTrustManager (CA Sync)<br/>• DynamicSSLContext"]
+        MV -->|Token & Cert Rotation| CM
+    end
+
+    subgraph Core["Shared Foundation (`rfid-core`)"]
+        FeigCore["FEIG SDK Gen3 Adapter<br/>(fedm-java-api 7.1.0)"]
+        FDM["FinnishDataModel<br/>(ISO 28560-2 Decoder)"]
+        TSP["TagScanProcessor<br/>• Time-Based Debounce Cache"]
+        WSD["WebserviceDispatcher<br/>• HMAC-SHA256 JWT Generator<br/>• UrlBuilder Template Engine"]
+        
+        FeigCore -->|Raw Tag Blocks| TSP
+        TSP -->|Raw Bytes| FDM
+        FDM --> WSD
+        CM -.->|Dynamic TLS Config| WSD
+    end
+
+    subgraph DesktopApp["Desktop Application (`rfid-inventory`)"]
+        UI["Dual GUI (FlatLaf Swing / SWT)<br/>• KPI Cards & Live Table<br/>• Hex Tag Inspector<br/>• MR102 Host-Mode Config"]
+        Installer["Windows jpackage & Inno Setup 6"]
+        TSP --> UI
+    end
+
+    subgraph EmbeddedDaemon["Embedded Daemon (`raspi-inventory`)"]
+        Daemon["RaspiInventory Headless Service<br/>(Linux aarch64 / systemd)"]
+        NativeArm["lib/native/aarch64/*.so"]
+        TSP --> Daemon
+        NativeArm --> FeigCore
+    end
+
+    subgraph Hardware["RFID Reader Hardware"]
+        Reader["FEIG Electronic RFID Reader<br/>(MR102 / LR1002 / PRH102)"]
+        Tag["ISO 15693 Tags (NXP I-Code SLIX)"]
+        Tag -->|HF 13.56 MHz| Reader
+        Reader --> FeigCore
+    end
+
+    subgraph Endpoints["Backend Services"]
+        ILS["Library ILS / Webservice API"]
+        MySQL["MySQL Database"]
+        WSD -->|HTTP POST with JWT| ILS
+        UI -->|JDBC Export| MySQL
+        Daemon -->|JDBC Export| MySQL
+    end
+```
+
+---
+
 ## Project Modules & Repository Overview
 
 ```
 Library-RFID-Tools/
 ├── pom.xml                                  # Root Maven multi-module POM (Java 25)
 ├── readme.md                                # Top-level project documentation
-├── run-raspi-inventory.sh                   # Raspi startup script (Linux aarch64)
+├── certs/                                   # Local certificates & CA store (gitignored)
 ├── lib/                                     # Bundled FEIG SDK Gen3 JARs & native binaries
 │   ├── fedm-java-api-7.1.0.jar              # FEIG Java API (Gen3)
 │   ├── fedm-funit-java-api-1.1.0.jar        # FEIG Functional Unit API
@@ -31,47 +84,49 @@ Library-RFID-Tools/
 ├── FEIG.ID.SDK.Gen3.Java-v7.1.0/            # Upstream FEIG Java Gen3 SDK distribution
 ├── FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/   # FEIG Raspberry Pi aarch64 SDK distribution
 ├── ID_ISC.SDK.Java.Win-V5.6.3/              # Legacy FEIG SDK reference
+├── certmanager/                             # Dynamic TLS Certificate Manager & MiniVault PKI Client
 ├── rfid-core/                               # Shared Core Module (Hardware drivers, ISO 28560, DB, Webservice)
 ├── rfid-inventory/                          # Desktop RFID Inventory Scanning Application (Swing/FlatLaf & SWT)
 └── raspi-inventory/                         # Headless Continuous RFID Daemon for Raspberry Pi (aarch64)
-    ├── pom.xml                              # Raspi module POM
-    ├── run-raspi-inventory.sh               # Execution shell script
-    ├── raspi-inventory.service              # Systemd unit file template
-    └── src/                                 # Daemon source code and unit tests
 ```
 
 ---
 
 ## Modules
 
-### 1. `rfid-core`
+### 1. [Certificate Manager](certmanager/README.md) (`certmanager`)
+Automated dynamic certificate management, token lifecycle management, and zero-downtime hot-reloading for client and server certificates in Java:
+* **MiniVault PKI Integration**: Automatic token renewal (`/auth/token/get`, `/auth/token/create`), certificate issuance (`/cert/create`), and CA synchronization (`/cert/ca/pem`).
+* **Dynamic JSSE Components**: Custom `DynamicKeyManager`, `DynamicTrustManager`, and `DynamicSSLContext` enabling certificate rotation without restarting the JVM or re-creating network clients.
+* **Pluggable Backends**: MiniVault PKI, local file polling (`FILE`), environment variables (`ENV`), and in-memory self-signed generation (`DEV`).
+
+### 2. [RFID Core](rfid-core/README.md) (`rfid-core`)
 The headless foundation module shared by desktop and embedded applications:
 * **FEIG Reader Integration**: `FeigRFID`, `ISO15693Feig`, `ISO15693ReaderFactory` wrapping FEIG SDK Gen3 APIs.
 * **Data Model**: ISO 28560 / Finnish Data Model encoding/decoding (`FinnishDataModel`, `FinnishDataModelOptionalBlock`).
 * **Processing & Dispatching**: `TagScanProcessor`, `WebserviceDispatcher`, HMAC-SHA256 `JwtGenerator`, and dynamic `UrlBuilder`.
 
-### 2. [RFID Inventory](rfid-inventory/readme.md) (`rfid-inventory`)
+### 3. [RFID Inventory](rfid-inventory/readme.md) (`rfid-inventory`)
 Desktop inventory scanning tool for ISO 15693 RFID tags.
 * **Dual UI**: Modern Swing / FlatLaf interface with Dark/Light theme support, live search, KPI metrics cards, tag inspector, and hex dump analysis, or classic SWT native UI.
 * **Data Logging**: Real-time export to SQL databases (MySQL/MariaDB) or RESTful webservices with HMAC-SHA256 JWT authorization, plus CSV export.
 * **Hardware & Firmware Management**: Built-in scripts to backup and restore full EEPROM/RAM hardware parameter sets on FEIG readers (`backup-firmware.ps1`, `restore-firmware.ps1`).
 * **Packaging**: Self-contained Windows runtime packaging (`jpackage`) and Inno Setup installer generator (`build-installer.ps1`).
 
-### 3. `raspi-inventory`
+### 4. [Raspi Inventory](raspi-inventory/README.md) (`raspi-inventory`)
 Lightweight, headless daemon for Raspberry Pi 4 / 5 (Linux aarch64):
 * **No UI Required**: Runs fully automated as a CLI tool or background systemd service without GUI dependencies.
 * **Immediate Autonomous Scanning**: Automatically discovers connected FEIG USB readers, initiates scanning immediately upon startup, and auto-reconnects on hardware disconnections.
 * **Time-Based Debounce**: Built-in configurable cooldown (default: 3000 ms) to suppress repetitive events while tags linger in the antenna field.
 * **Native aarch64 Support**: Fully integrated with FEIG Gen3 Linux aarch64 `.so` libraries.
 
-For detailed usage, configuration, and build instructions, see [rfid-inventory/readme.md](rfid-inventory/readme.md).
-
 ---
 
 ## Technical Stack & Dependencies
 
 * **Language & Runtime**: Java 25 (LTS compatibility with `--release 25`)
-* **RFID Hardware SDK**: FEIG SDK Gen3 for Java (v7.1.0) with x64 native driver DLLs
+* **Cryptography & PKI**: BouncyCastle (bcprov 1.79, bcpkix 1.79) & Jackson (2.18.2)
+* **RFID Hardware SDK**: FEIG SDK Gen3 for Java (v7.1.0) with x64 & aarch64 native driver binaries
 * **UI Frameworks**:
   * [FlatLaf 3.5.4](https://www.formdev.com/flatlaf/) for modern responsive Swing GUI
   * Eclipse SWT (Standard Widget Toolkit, Windows x64) for classic interface
@@ -84,7 +139,7 @@ For detailed usage, configuration, and build instructions, see [rfid-inventory/r
 
 ## Prerequisites
 
-* **Operating System**: Windows 10 / 11 (x64)
+* **Operating System**: Windows 10 / 11 (x64) or Linux (aarch64 / x86_64)
 * **Java Development Kit**: JDK 25 or later (with `JAVA_HOME` environment variable configured)
 * **Maven**: Apache Maven 3.9+ (or an IDE with integrated Maven support)
 * **Inno Setup 6** *(optional)*: Required only when compiling the Windows installation package (`.exe`)
@@ -92,8 +147,6 @@ For detailed usage, configuration, and build instructions, see [rfid-inventory/r
 ---
 
 ## Building the Project
-
-### Using Maven
 
 From the project root:
 

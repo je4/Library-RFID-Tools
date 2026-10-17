@@ -12,6 +12,7 @@
     <description>Modernized Library RFID Tools supporting FEIG SDK Gen3 (v7.1.0) and ISO 28560 / Finnish Data Model</description>
 
     <modules>
+        <module>certmanager</module>
         <module>rfid-core</module>
         <module>rfid-inventory</module>
         <module>raspi-inventory</module>
@@ -25,10 +26,42 @@
         <junit.version>5.10.2</junit.version>
         <assertj.version>3.25.3</assertj.version>
         <mysql.version>8.4.0</mysql.version>
+        <jackson.version>2.18.2</jackson.version>
+        <bouncycastle.version>1.79</bouncycastle.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Project Modules -->
+            <dependency>
+                <groupId>org.objectspace</groupId>
+                <artifactId>certmanager</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- JSON -->
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.datatype</groupId>
+                <artifactId>jackson-datatype-jsr310</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+
+            <!-- Bouncy Castle (Crypto & PKI & PEM) -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpkix-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
             <!-- Apache Commons -->
             <dependency>
                 <groupId>org.apache.commons</groupId>
