@@ -13,6 +13,7 @@
 
     <modules>
         <module>certmanager</module>
+        <module>wsbrokerclient</module>
         <module>rfid-core</module>
         <module>rfid-inventory</module>
         <module>raspi-inventory</module>
@@ -20,6 +21,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
         <maven.compiler.release>25</maven.compiler.release>
         <slf4j.version>2.0.16</slf4j.version>
         <logback.version>1.5.12</logback.version>
@@ -36,6 +39,11 @@
             <dependency>
                 <groupId>org.objectspace</groupId>
                 <artifactId>certmanager</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.objectspace</groupId>
+                <artifactId>wsbrokerclient</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

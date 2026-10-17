@@ -85,6 +85,7 @@ Library-RFID-Tools/
 ├── FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/   # FEIG Raspberry Pi aarch64 SDK distribution
 ├── ID_ISC.SDK.Java.Win-V5.6.3/              # Legacy FEIG SDK reference
 ├── certmanager/                             # Dynamic TLS Certificate Manager & MiniVault PKI Client
+├── wsbrokerclient/                          # WebSocket, REST & NTP Client with dynamic mTLS for WSBroker
 ├── rfid-core/                               # Shared Core Module (Hardware drivers, ISO 28560, DB, Webservice)
 ├── rfid-inventory/                          # Desktop RFID Inventory Scanning Application (Swing/FlatLaf & SWT)
 └── raspi-inventory/                         # Headless Continuous RFID Daemon for Raspberry Pi (aarch64)
@@ -94,26 +95,34 @@ Library-RFID-Tools/
 
 ## Modules
 
-### 1. [Certificate Manager](certmanager/README.md) (`certmanager`)
+### 1. [Certificate Manager](certmanager/readme.md) (`certmanager`)
 Automated dynamic certificate management, token lifecycle management, and zero-downtime hot-reloading for client and server certificates in Java:
 * **MiniVault PKI Integration**: Automatic token renewal (`/auth/token/get`, `/auth/token/create`), certificate issuance (`/cert/create`), and CA synchronization (`/cert/ca/pem`).
 * **Dynamic JSSE Components**: Custom `DynamicKeyManager`, `DynamicTrustManager`, and `DynamicSSLContext` enabling certificate rotation without restarting the JVM or re-creating network clients.
 * **Pluggable Backends**: MiniVault PKI, local file polling (`FILE`), environment variables (`ENV`), and in-memory self-signed generation (`DEV`).
 
-### 2. [RFID Core](rfid-core/README.md) (`rfid-core`)
+### 2. [WSBroker Client](wsbrokerclient/readme.md) (`wsbrokerclient`)
+Asynchronous WebSocket, REST, and NTP client library for WSBroker event routing with zero-downtime dynamic mTLS:
+* **WebSocket Pub/Sub & Remote Actions**: Thread-safe event routing, auto-reconnect with exponential backoff, automated ping/pong heartbeats, and typed payload handling.
+* **Dynamic mTLS via `certmanager`**: Seamless integration with `CertLoader` for automatic client certificate rotation and CA trust updates.
+* **NTP over WebSocket Time Sync**: RFC 5905 48-byte NTP synchronization over WebSocket with clock offset and round-trip latency calculations.
+* **REST Management API**: Dispatches events to channels and manages remote subscribers via HTTP REST endpoints.
+* **Native GUI Demo (`WSChat`)**: Complete desktop GUI client demo application with FlatLaf modern UI, dark/light theme, KPI metrics cards, dynamic channel joining, and live event console matching `wschat.xml`.
+
+### 3. [RFID Core](rfid-core/readme.md) (`rfid-core`)
 The headless foundation module shared by desktop and embedded applications:
 * **FEIG Reader Integration**: `FeigRFID`, `ISO15693Feig`, `ISO15693ReaderFactory` wrapping FEIG SDK Gen3 APIs.
 * **Data Model**: ISO 28560 / Finnish Data Model encoding/decoding (`FinnishDataModel`, `FinnishDataModelOptionalBlock`).
 * **Processing & Dispatching**: `TagScanProcessor`, `WebserviceDispatcher`, HMAC-SHA256 `JwtGenerator`, and dynamic `UrlBuilder`.
 
-### 3. [RFID Inventory](rfid-inventory/readme.md) (`rfid-inventory`)
+### 4. [RFID Inventory](rfid-inventory/readme.md) (`rfid-inventory`)
 Desktop inventory scanning tool for ISO 15693 RFID tags.
 * **Dual UI**: Modern Swing / FlatLaf interface with Dark/Light theme support, live search, KPI metrics cards, tag inspector, and hex dump analysis, or classic SWT native UI.
 * **Data Logging**: Real-time export to SQL databases (MySQL/MariaDB) or RESTful webservices with HMAC-SHA256 JWT authorization, plus CSV export.
 * **Hardware & Firmware Management**: Built-in scripts to backup and restore full EEPROM/RAM hardware parameter sets on FEIG readers (`backup-firmware.ps1`, `restore-firmware.ps1`).
 * **Packaging**: Self-contained Windows runtime packaging (`jpackage`) and Inno Setup installer generator (`build-installer.ps1`).
 
-### 4. [Raspi Inventory](raspi-inventory/README.md) (`raspi-inventory`)
+### 5. [Raspi Inventory](raspi-inventory/readme.md) (`raspi-inventory`)
 Lightweight, headless daemon for Raspberry Pi 4 / 5 (Linux aarch64):
 * **No UI Required**: Runs fully automated as a CLI tool or background systemd service without GUI dependencies.
 * **Immediate Autonomous Scanning**: Automatically discovers connected FEIG USB readers, initiates scanning immediately upon startup, and auto-reconnects on hardware disconnections.

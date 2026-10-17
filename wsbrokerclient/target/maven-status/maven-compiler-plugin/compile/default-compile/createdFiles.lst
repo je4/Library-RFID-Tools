@@ -1,0 +1,13 @@
+org\objectspace\wsbrokerclient\demo\wschat\WSChatModernFrame$1.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatModernFrame$2.class
+org\objectspace\wsbrokerclient\demo\wschat\ChatMessage.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatClient$1.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatConfig.class
+org\objectspace\wsbrokerclient\demo\wschat\MessageStore$StoreListener.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatModernFrame$MessageListCellRenderer.class
+org\objectspace\wsbrokerclient\demo\wschat\MessageStore.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatClient.class
+org\objectspace\wsbrokerclient\demo\wschat\MessageStore$StoreStats.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChat.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatModernFrame$ChannelListCellRenderer.class
+org\objectspace\wsbrokerclient\demo\wschat\WSChatModernFrame.class

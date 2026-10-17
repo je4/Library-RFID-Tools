@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<!-- Unique client name used for WSBroker authentication and messaging identity -->
+	<name>test01</name>
+
+	<!-- Target WSBroker endpoint URL -->
+	<wsbroker><![CDATA[https://localhost:8765]]></wsbroker>
+
+	<!-- Initial channels to subscribe to upon startup -->
+	<channels>
+		<channel>all</channel>
+		<channel>intern</channel>
+	</channels>
+
+	<!-- Client TLS / mTLS configuration with dynamic certificate loading via certmanager (minivault, file, env, dev) -->
+	<clienttls>
+		<type>minivault</type>
+
+		<minivault>
+			<baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
+			<parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
+			<tokentype>client_cert</tokentype>
+			<tokenpolicies>
+				<policy>wsbroker.client</policy>
+			</tokenpolicies>
+			<certtype>client_cert</certtype>
+			<uris>
+				<uri>wsbroker:client:test01</uri>
+				<uri>wsbroker:channel:all</uri>
+				<uri>wsbroker:channel:intern</uri>
+			</uris>
+			<ca>
+				<path>../certs/minivault.ca.pem</path>
+				<path>certs/minivault.ca.pem</path>
+			</ca>
+			<usesystempool>false</usesystempool>
+		</minivault>
+	</clienttls>
+
+	<!-- Native GUI configuration matching modern FlatLaf RFID inventory styling -->
+	<gui>
+		<!-- Theme: "system" (default/auto OS detection), "dark", or "light" -->
+		<theme>system</theme>
+
+		<!-- Main window initial dimensions and position -->
+		<window>
+			<posx>100</posx>
+			<posy>100</posy>
+			<width>1150</width>
+			<height>720</height>
+		</window>
+	</gui>
+</configuration>
