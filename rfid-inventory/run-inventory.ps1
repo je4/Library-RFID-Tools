@@ -43,24 +43,55 @@ if (Test-Path $nativeDir) {
 
 # 2. Dependency Staging (lib\ext)
 $extDir = Join-Path $libDir "ext"
-$needsDependencies = (-not (Test-Path $extDir)) -or ((Get-ChildItem -Path $extDir -Filter "*.jar" -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0)
+New-Item -ItemType Directory -Force -Path $extDir | Out-Null
 
-if ($needsDependencies) {
-    Write-Host "Kopiere externe Maven-Abhängigkeiten nach $extDir..." -ForegroundColor Cyan
-    New-Item -ItemType Directory -Force -Path $extDir | Out-Null
-    
-    $m2Repo = Join-Path $HOME ".m2\repository"
-    if (Test-Path $m2Repo) {
-        $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*', 'flatlaf*', 'jsvg*')
-        Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
-            $name = $_.Name
-            $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
-        } | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination $extDir -Force
-        }
-    } else {
-        Write-Warning "Maven-Repository nicht gefunden unter '$m2Repo'. Externe Abhängigkeiten wurden möglicherweise nicht bereitgestellt."
+$m2Repo = Join-Path $HOME ".m2\repository"
+if (Test-Path $m2Repo) {
+    $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'protobuf-*', 'org.eclipse.swt*', 'flatlaf*', 'jsvg*')
+    $matchedJars = Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
+        $name = $_.Name
+        $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
     }
+
+    # Group by artifact base name (ignoring version suffix) to select highest version
+    $grouped = $matchedJars | Group-Object {
+        if ($_.BaseName -match '^(.+?)-(\d+(\.\d+)*.*)$') { $Matches[1] } else { $_.BaseName }
+    }
+
+    $selectedJars = @()
+    foreach ($g in $grouped) {
+        $sorted = $g.Group | Sort-Object {
+            if ($_.BaseName -match '^.+?-(\d+(\.\d+)*.*)$') {
+                $ver = $Matches[1]
+                ($ver -split '[\.\-_]' | ForEach-Object { if ($_ -match '^\d+$') { ('{0:D6}' -f [int]$_) } else { $_ } }) -join '.'
+            } else {
+                ""
+            }
+        } -Descending
+        $best = $sorted | Select-Object -First 1
+        $selectedJars += $best
+    }
+
+    # Clean obsolete / duplicate versions of matching artifacts in extDir
+    Get-ChildItem -Path "$extDir\*.jar" -ErrorAction SilentlyContinue | Where-Object {
+        $existing = $_
+        $isManaged = $patterns | Where-Object { $existing.Name -like $_ }
+        if ($isManaged) {
+            $isKeep = $selectedJars | Where-Object { $_.Name -eq $existing.Name }
+            if (-not $isKeep) {
+                Remove-Item -Path $existing.FullName -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    foreach ($jar in $selectedJars) {
+        $destFile = Join-Path $extDir $jar.Name
+        if (-not (Test-Path $destFile)) {
+            Copy-Item -Path $jar.FullName -Destination $destFile -Force
+        }
+    }
+} else {
+    Write-Warning "Maven-Repository nicht gefunden unter '$m2Repo'. Externe Abhängigkeiten wurden möglicherweise nicht bereitgestellt."
 }
 
 # 3. Compilation
@@ -76,15 +107,31 @@ $srcDir = Join-Path $moduleRoot "src\main\java"
 $resourcesDir = Join-Path $moduleRoot "src\main\resources"
 $coreResourcesDir = Join-Path $coreModuleRoot "src\main\resources"
 
-$shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass))
+$allSources = @()
+if (Test-Path $srcDir) { $allSources += Get-ChildItem -Recurse -Path "$srcDir\*.java" }
+if (Test-Path $coreSrcDir) { $allSources += Get-ChildItem -Recurse -Path "$coreSrcDir\*.java" }
+
+$shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass)) -or (-not (Test-Path $classesDir))
 if (-not $shouldRebuild) {
-    $allSources = @()
-    if (Test-Path $srcDir) { $allSources += Get-ChildItem -Recurse -Path "$srcDir\*.java" }
-    if (Test-Path $coreSrcDir) { $allSources += Get-ChildItem -Recurse -Path "$coreSrcDir\*.java" }
-    $latestSource = $allSources | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    $mainClassItem = Get-Item $mainClass -ErrorAction SilentlyContinue
-    if ($latestSource -and $mainClassItem -and ($latestSource.LastWriteTime -gt $mainClassItem.LastWriteTime)) {
-        $shouldRebuild = $true
+    foreach ($src in $allSources) {
+        $srcFullName = $src.FullName
+        $relClassPath = $null
+        if ($srcFullName.Contains("src\main\java\")) {
+            $rel = $srcFullName.Substring($srcFullName.IndexOf("src\main\java\") + 14)
+            $relClassPath = [System.IO.Path]::ChangeExtension($rel, ".class")
+        }
+        if ($relClassPath) {
+            $targetClass = Join-Path $classesDir $relClassPath
+            if (-not (Test-Path $targetClass)) {
+                $shouldRebuild = $true
+                break
+            }
+            $targetClassItem = Get-Item $targetClass -ErrorAction SilentlyContinue
+            if ($targetClassItem -and ($src.LastWriteTime -gt $targetClassItem.LastWriteTime)) {
+                $shouldRebuild = $true
+                break
+            }
+        }
     }
 }
 

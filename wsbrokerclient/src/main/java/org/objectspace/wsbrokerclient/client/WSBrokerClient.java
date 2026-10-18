@@ -62,7 +62,7 @@ public class WSBrokerClient implements AutoCloseable {
     private final Map<String, List<EventHandler>> channelHandlers = new ConcurrentHashMap<>();
     private final Map<String, List<EventHandler>> actionHandlers = new ConcurrentHashMap<>();
 
-    private final Map<String, CompletableFuture<NTPResponse>> pendingNtpQueries = new ConcurrentHashMap<>();
+    private final ConcurrentLinkedQueue<CompletableFuture<NTPResponse>> pendingNtpQueries = new ConcurrentLinkedQueue<>();
 
     private ScheduledFuture<?> pingTask;
     private ScheduledFuture<?> reconnectTask;
@@ -371,7 +371,14 @@ public class WSBrokerClient implements AutoCloseable {
      */
     public void subscribe(String channel) {
         if (channel != null && !channel.isBlank()) {
-            subscribedChannels.add(channel.trim());
+            String cleanChannel = channel.trim();
+            subscribedChannels.add(cleanChannel);
+            if (isConnected()) {
+                send(Event.createAttach(clientName, cleanChannel)).exceptionally(err -> {
+                    log.debug("Failed to send attach event: {}", err.getMessage());
+                    return null;
+                });
+            }
         }
     }
 
@@ -382,8 +389,15 @@ public class WSBrokerClient implements AutoCloseable {
      */
     public void unsubscribe(String channel) {
         if (channel != null) {
-            subscribedChannels.remove(channel.trim());
-            channelHandlers.remove(channel.trim());
+            String cleanChannel = channel.trim();
+            subscribedChannels.remove(cleanChannel);
+            channelHandlers.remove(cleanChannel);
+            if (isConnected()) {
+                send(Event.createDetach(clientName, cleanChannel)).exceptionally(err -> {
+                    log.debug("Failed to send detach event: {}", err.getMessage());
+                    return null;
+                });
+            }
         }
     }
 
@@ -422,6 +436,17 @@ public class WSBrokerClient implements AutoCloseable {
      */
     public CompletableFuture<Void> publish(String target, Object payload) {
         return send(Event.createMessage(clientName, target, payload));
+    }
+
+    /**
+     * Sends a message payload to a target destination or channel (alias for publish).
+     *
+     * @param target  target client or channel
+     * @param payload data payload
+     * @return CompletableFuture
+     */
+    public CompletableFuture<Void> sendMessage(String target, Object payload) {
+        return publish(target, payload);
     }
 
     /**
@@ -476,11 +501,22 @@ public class WSBrokerClient implements AutoCloseable {
     /**
      * Sends a heartbeat pong reply event.
      *
-     * @param token incoming ping token
+     * @param target destination client or broker
      * @return CompletableFuture
      */
-    public CompletableFuture<Void> sendPong(String token) {
-        return send(Event.createPong(clientName, token));
+    public CompletableFuture<Void> sendPong(String target) {
+        return send(Event.createPong(clientName, target != null ? target : "wsbroker"));
+    }
+
+    /**
+     * Sends a heartbeat pong reply event with token.
+     *
+     * @param target destination client or broker
+     * @param token  optional token
+     * @return CompletableFuture
+     */
+    public CompletableFuture<Void> sendPong(String target, String token) {
+        return send(Event.createPong(clientName, target != null ? target : "wsbroker", token));
     }
 
     // --- NTP Time Synchronization over WebSocket ---
@@ -496,33 +532,25 @@ public class WSBrokerClient implements AutoCloseable {
             return CompletableFuture.failedFuture(new IllegalStateException("WebSocket is not connected"));
         }
 
-        String token = UUID.randomUUID().toString();
         NTPPacket queryPacket = NTPPacket.createClientQuery();
         byte[] encoded = queryPacket.encode();
-        String base64Data = Base64.getEncoder().encodeToString(encoded);
 
-        Event queryEvent = Event.builder()
-                .type(EventType.CLIENT_NTP_QUERY)
-                .source(clientName)
-                .token(token)
-                .data(base64Data)
-                .build();
+        Event queryEvent = Event.createNtpQuery(clientName, encoded);
 
         CompletableFuture<NTPResponse> ntpFuture = new CompletableFuture<>();
-        pendingNtpQueries.put(token, ntpFuture);
+        pendingNtpQueries.add(ntpFuture);
 
-        // Timeout handler
+        Duration effectiveTimeout = timeout != null ? timeout : Duration.ofSeconds(5);
         ScheduledFuture<?> timeoutTask = scheduler.schedule(() -> {
-            CompletableFuture<NTPResponse> removed = pendingNtpQueries.remove(token);
-            if (removed != null && !removed.isDone()) {
-                removed.completeExceptionally(new TimeoutException("NTP query timed out after " + timeout));
+            if (pendingNtpQueries.remove(ntpFuture) && !ntpFuture.isDone()) {
+                ntpFuture.completeExceptionally(new TimeoutException("NTP query timed out after " + effectiveTimeout));
             }
-        }, timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }, effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
 
         ntpFuture.whenComplete((res, ex) -> timeoutTask.cancel(false));
 
         send(queryEvent).exceptionally(err -> {
-            pendingNtpQueries.remove(token);
+            pendingNtpQueries.remove(ntpFuture);
             ntpFuture.completeExceptionally(err);
             return null;
         });
@@ -619,35 +647,47 @@ public class WSBrokerClient implements AutoCloseable {
 
         // Heartbeat auto-reply
         if (evt.isType(EventType.CLIENT_PING)) {
-            String token = evt.getToken();
-            sendPong(token).exceptionally(err -> {
+            String target = evt.getSource();
+            if (target == null || target.isBlank()) {
+                target = "wsbroker";
+            }
+            sendPong(target, evt.getToken()).exceptionally(err -> {
                 log.debug("Auto-pong response failed: {}", err.getMessage());
                 return null;
             });
             return;
         }
 
+        // Heartbeat pong received
+        if (evt.isType(EventType.CLIENT_PONG)) {
+            log.debug("Received pong from {}", evt.getSource());
+            return;
+        }
+
         // Handle NTP Response or Error
         if (evt.isType(EventType.CLIENT_NTP_RESPONSE) || evt.isType(EventType.CLIENT_NTP_ERROR)) {
-            String token = evt.getToken();
-            if (token != null) {
-                CompletableFuture<NTPResponse> future = pendingNtpQueries.remove(token);
-                if (future != null) {
-                    Instant destinationTime = Instant.now();
-                    if (evt.isType(EventType.CLIENT_NTP_ERROR)) {
-                        future.completeExceptionally(new RuntimeException("NTP broker error: " + evt.getError()));
-                    } else {
-                        try {
-                            byte[] ntpBytes = extractNtpBytes(evt.getData());
-                            NTPPacket packet = NTPPacket.decode(ntpBytes);
-                            NTPResponse response = new NTPResponse(packet, destinationTime);
-                            future.complete(response);
-                        } catch (Exception e) {
-                            future.completeExceptionally(new IllegalArgumentException("Failed to decode NTP response packet", e));
-                        }
+            CompletableFuture<NTPResponse> future = pendingNtpQueries.poll();
+            if (future != null) {
+                Instant destinationTime = Instant.now();
+                if (evt.isType(EventType.CLIENT_NTP_ERROR)) {
+                    String errorMsg = "Unknown NTP error";
+                    if (evt.getError() != null && !evt.getError().isBlank()) {
+                        errorMsg = evt.getError();
+                    } else if (evt.getData() != null) {
+                        errorMsg = evt.getData().isTextual() ? evt.getData().asText() : evt.getData().toString();
                     }
-                    return;
+                    future.completeExceptionally(new RuntimeException("NTP broker error: " + errorMsg));
+                } else {
+                    try {
+                        byte[] ntpBytes = extractNtpBytes(evt.getData());
+                        NTPPacket packet = NTPPacket.decode(ntpBytes);
+                        NTPResponse response = new NTPResponse(packet, destinationTime);
+                        future.complete(response);
+                    } catch (Exception e) {
+                        future.completeExceptionally(new IllegalArgumentException("Failed to decode NTP response packet", e));
+                    }
                 }
+                return;
             }
         }
 
@@ -696,13 +736,20 @@ public class WSBrokerClient implements AutoCloseable {
         if (data == null || data.isNull()) {
             throw new IllegalArgumentException("NTP data payload is missing");
         }
-        if (data.isTextual()) {
-            return Base64.getDecoder().decode(data.asText());
-        }
         if (data.isBinary()) {
             try {
                 return data.binaryValue();
             } catch (Exception ignored) {}
+        }
+        if (data.isTextual()) {
+            return Base64.getDecoder().decode(data.asText());
+        }
+        if (data.isArray()) {
+            byte[] bytes = new byte[data.size()];
+            for (int i = 0; i < data.size(); i++) {
+                bytes[i] = (byte) data.get(i).asInt();
+            }
+            return bytes;
         }
         throw new IllegalArgumentException("Unsupported NTP payload format: " + data.getNodeType());
     }
@@ -738,10 +785,10 @@ public class WSBrokerClient implements AutoCloseable {
                 }
             }
 
-            for (CompletableFuture<NTPResponse> f : pendingNtpQueries.values()) {
+            CompletableFuture<NTPResponse> f;
+            while ((f = pendingNtpQueries.poll()) != null) {
                 f.completeExceptionally(new IllegalStateException("Client is closing"));
             }
-            pendingNtpQueries.clear();
 
             scheduler.shutdownNow();
             workerExecutor.shutdown();

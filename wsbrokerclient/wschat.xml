@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 	<!-- Unique client name used for WSBroker authentication and messaging identity -->
-	<name>test01</name>
+	<name>test-java</name>
 
 	<!-- Target WSBroker endpoint URL -->
 	<wsbroker><![CDATA[https://localhost:8765]]></wsbroker>
@@ -25,7 +25,7 @@
 			</tokenpolicies>
 			<certtype>client_cert</certtype>
 			<uris>
-				<uri>wsbroker:client:test01</uri>
+				<uri>wsbroker:client:test-java</uri>
 				<uri>wsbroker:channel:all</uri>
 				<uri>wsbroker:channel:intern</uri>
 			</uris>

@@ -28,6 +28,8 @@ import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.ECPrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -119,15 +121,94 @@ public final class PemUtils {
             if (obj == null) {
                 throw new GeneralSecurityException("No private key object found in PEM content");
             }
+            PrivateKey key;
             if (obj instanceof PEMKeyPair keyPair) {
-                return converter.getPrivateKey(keyPair.getPrivateKeyInfo());
+                key = converter.getPrivateKey(keyPair.getPrivateKeyInfo());
             } else if (obj instanceof PrivateKeyInfo keyInfo) {
-                return converter.getPrivateKey(keyInfo);
-            } else if (obj instanceof PrivateKey key) {
-                return key;
+                key = converter.getPrivateKey(keyInfo);
+            } else if (obj instanceof PrivateKey pk) {
+                key = pk;
             } else {
                 throw new GeneralSecurityException("Unsupported private key object type: " + obj.getClass().getName());
             }
+            return normalizePrivateKey(key);
+        }
+    }
+
+    /**
+     * Normalizes a PrivateKey to use standard Java JCA algorithm names (e.g. "EC" instead of BouncyCastle's "ECDSA")
+     * so that SunJSSE and standard SSL/TLS engines recognize the key for client certificate authentication.
+     */
+    public static PrivateKey normalizePrivateKey(PrivateKey key) {
+        if (key == null) {
+            return null;
+        }
+        String algorithm = key.getAlgorithm();
+        if ("ECDSA".equalsIgnoreCase(algorithm)) {
+            try {
+                KeyFactory kf = KeyFactory.getInstance("EC");
+                return kf.generatePrivate(new PKCS8EncodedKeySpec(key.getEncoded()));
+            } catch (Exception e) {
+                if (key instanceof ECPrivateKey ecKey) {
+                    return new DelegatingECPrivateKey(ecKey, "EC");
+                }
+                return new DelegatingPrivateKey(key, "EC");
+            }
+        }
+        return key;
+    }
+
+    private static class DelegatingPrivateKey implements PrivateKey {
+        protected final PrivateKey delegate;
+        protected final String algorithm;
+
+        public DelegatingPrivateKey(PrivateKey delegate, String algorithm) {
+            this.delegate = delegate;
+            this.algorithm = algorithm;
+        }
+
+        @Override
+        public String getAlgorithm() {
+            return algorithm;
+        }
+
+        @Override
+        public String getFormat() {
+            return delegate.getFormat();
+        }
+
+        @Override
+        public byte[] getEncoded() {
+            return delegate.getEncoded();
+        }
+
+        @Override
+        public void destroy() throws javax.security.auth.DestroyFailedException {
+            delegate.destroy();
+        }
+
+        @Override
+        public boolean isDestroyed() {
+            return delegate.isDestroyed();
+        }
+    }
+
+    private static final class DelegatingECPrivateKey extends DelegatingPrivateKey implements ECPrivateKey {
+        private final ECPrivateKey ecDelegate;
+
+        public DelegatingECPrivateKey(ECPrivateKey ecDelegate, String algorithm) {
+            super(ecDelegate, algorithm);
+            this.ecDelegate = ecDelegate;
+        }
+
+        @Override
+        public BigInteger getS() {
+            return ecDelegate.getS();
+        }
+
+        @Override
+        public java.security.spec.ECParameterSpec getParams() {
+            return ecDelegate.getParams();
         }
     }
 

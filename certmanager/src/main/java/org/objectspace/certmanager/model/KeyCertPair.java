@@ -1,5 +1,7 @@
 package org.objectspace.certmanager.model;
 
+import org.objectspace.certmanager.util.PemUtils;
+
 import java.security.PrivateKey;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
@@ -24,6 +26,7 @@ public record KeyCertPair(
             throw new IllegalArgumentException("certificateChain cannot be empty");
         }
         certificateChain = certificateChain.clone();
+        privateKey = PemUtils.normalizePrivateKey(privateKey);
     }
 
     @Override

@@ -33,7 +33,7 @@ class EventTest {
                 .build();
 
         String json = original.toJson();
-        assertThat(json).contains("\"type\":\"client:message\"");
+        assertThat(json).contains("\"type\":\"message\"");
         assertThat(json).contains("\"source\":\"sensor-1\"");
         assertThat(json).contains("\"target\":\"hub-main\"");
         assertThat(json).contains("\"name\":\"ItemA\"");
@@ -42,7 +42,7 @@ class EventTest {
         Event deserialized = Event.fromJson(json);
         assertThat(deserialized.getSource()).isEqualTo("sensor-1");
         assertThat(deserialized.getTarget()).isEqualTo("hub-main");
-        assertThat(deserialized.getType()).isEqualTo("client:message");
+        assertThat(deserialized.getType()).isEqualTo("message");
         assertThat(deserialized.getEventType()).isEqualTo(EventType.CLIENT_MESSAGE);
         assertThat(deserialized.isType(EventType.CLIENT_MESSAGE)).isTrue();
         assertThat(deserialized.getToken()).isEqualTo("tok-12345");
@@ -82,11 +82,21 @@ class EventTest {
         Event ping = Event.createPing("client-A");
         assertThat(ping.getType()).isEqualTo(EventType.CLIENT_PING.getValue());
         assertThat(ping.getSource()).isEqualTo("client-A");
-        assertThat(ping.getToken()).isNotBlank();
+        assertThat(ping.getDataAsString()).isEqualTo("ping");
 
-        Event pong = Event.createPong("client-B", ping.getToken());
+        Event pong = Event.createPong("client-B", "wsbroker");
         assertThat(pong.getType()).isEqualTo(EventType.CLIENT_PONG.getValue());
-        assertThat(pong.getToken()).isEqualTo(ping.getToken());
+        assertThat(pong.getSource()).isEqualTo("client-B");
+        assertThat(pong.getTarget()).isEqualTo("wsbroker");
+        assertThat(pong.getDataAsString()).isEqualTo("pong");
+
+        Event attach = Event.createAttach("client-A", "test-channel");
+        assertThat(attach.getType()).isEqualTo(EventType.CLIENT_ATTACH.getValue());
+        assertThat(attach.getTarget()).isEqualTo("test-channel");
+
+        Event detach = Event.createDetach("client-A", "test-channel");
+        assertThat(detach.getType()).isEqualTo(EventType.CLIENT_DETACH.getValue());
+        assertThat(detach.getTarget()).isEqualTo("test-channel");
 
         Event action = Event.createAction("src", "dst", "openDoor", Map.of("doorId", "D1"));
         assertThat(action.getType()).isEqualTo(EventType.CLIENT_ACTION.getValue());
@@ -99,5 +109,17 @@ class EventTest {
         Event status = Event.createStatus("node-1", "OPERATIONAL");
         assertThat(status.getType()).isEqualTo(EventType.CLIENT_STATUS.getValue());
         assertThat(status.getMessage()).isEqualTo("OPERATIONAL");
+    }
+
+    @Test
+    @DisplayName("Test backwards compatibility with legacy client: prefixed event types")
+    void testLegacyEventTypeParsing() {
+        Event legacyPing = Event.fromJson("{\"type\":\"client:ping\",\"source\":\"test01\",\"data\":\"ping\"}");
+        assertThat(legacyPing.getEventType()).isEqualTo(EventType.CLIENT_PING);
+        assertThat(legacyPing.isType(EventType.CLIENT_PING)).isTrue();
+
+        Event legacyNtp = Event.fromJson("{\"type\":\"client:ntp:query\",\"source\":\"test01\"}");
+        assertThat(legacyNtp.getEventType()).isEqualTo(EventType.CLIENT_NTP_QUERY);
+        assertThat(legacyNtp.isType(EventType.CLIENT_NTP_QUERY)).isTrue();
     }
 }

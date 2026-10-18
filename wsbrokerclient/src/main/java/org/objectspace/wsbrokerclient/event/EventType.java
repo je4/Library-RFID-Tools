@@ -13,62 +13,77 @@ public enum EventType {
     /**
      * Heartbeat ping event.
      */
-    CLIENT_PING("client:ping"),
+    CLIENT_PING("ping"),
 
     /**
      * Heartbeat pong response.
      */
-    CLIENT_PONG("client:pong"),
+    CLIENT_PONG("pong"),
 
     /**
      * Standard message payload event.
      */
-    CLIENT_MESSAGE("client:message"),
+    CLIENT_MESSAGE("message"),
+
+    /**
+     * Binary or document file transfer payload event.
+     */
+    CLIENT_FILE("file"),
+
+    /**
+     * Dynamic channel attach / subscribe event.
+     */
+    CLIENT_ATTACH("attach"),
+
+    /**
+     * Dynamic channel detach / unsubscribe event.
+     */
+    CLIENT_DETACH("detach"),
 
     /**
      * Remote action invocation event.
      */
-    CLIENT_ACTION("client:action"),
+    CLIENT_ACTION("action"),
 
     /**
      * Client or node status announcement.
      */
-    CLIENT_STATUS("client:status"),
+    CLIENT_STATUS("status"),
 
     /**
      * Client runtime metadata or capability information.
      */
-    CLIENT_INFO("client:info"),
+    CLIENT_INFO("info"),
 
     /**
      * Broadcast message dispatched to all connected clients.
      */
-    CLIENT_BROADCAST("client:broadcast"),
+    CLIENT_BROADCAST("broadcast"),
 
     /**
      * NTP time synchronization query over WebSocket.
      */
-    CLIENT_NTP_QUERY("client:ntp:query"),
+    CLIENT_NTP_QUERY("ntp-query"),
 
     /**
      * NTP time synchronization response over WebSocket.
      */
-    CLIENT_NTP_RESPONSE("client:ntp:response"),
+    CLIENT_NTP_RESPONSE("ntp-response"),
 
     /**
      * NTP synchronization error event.
      */
-    CLIENT_NTP_ERROR("client:ntp:error"),
+    CLIENT_NTP_ERROR("ntp-error"),
 
     /**
      * Administrative or control event.
      */
-    CLIENT_CONTROL("client:control"),
+    CLIENT_CONTROL("control"),
 
     /**
      * Broker system-level event.
      */
-    CLIENT_SYSTEM("client:system");
+    CLIENT_SYSTEM("system");
 
     private final String value;
 
@@ -102,11 +117,27 @@ public enum EventType {
         if (value == null) {
             return null;
         }
+        String clean = value.trim();
         for (EventType type : values()) {
-            if (type.value.equalsIgnoreCase(value.trim())) {
+            if (type.value.equalsIgnoreCase(clean)) {
                 return type;
             }
         }
+        // Fallback / legacy alias matching:
+        // Support prefixes like "client:" (e.g. "client:ping", "client:ntp:query", "client:message")
+        // and alternative delimiters (e.g. "ntp:query", "ntp_query")
+        String normalized = clean.toLowerCase();
+        if (normalized.startsWith("client:")) {
+            normalized = normalized.substring(7);
+        }
+        normalized = normalized.replace(':', '-').replace('_', '-');
+
+        for (EventType type : values()) {
+            if (type.value.equalsIgnoreCase(normalized)) {
+                return type;
+            }
+        }
+
         return null;
     }
 
@@ -117,6 +148,12 @@ public enum EventType {
      * @return true if matching
      */
     public boolean matches(String typeString) {
-        return typeString != null && value.equalsIgnoreCase(typeString.trim());
+        if (typeString == null) {
+            return false;
+        }
+        if (value.equalsIgnoreCase(typeString.trim())) {
+            return true;
+        }
+        return fromString(typeString) == this;
     }
 }

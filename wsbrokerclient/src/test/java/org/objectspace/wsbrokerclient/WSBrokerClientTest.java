@@ -80,4 +80,21 @@ class WSBrokerClientTest {
             client.removeConnectionListener(listener);
         }
     }
+
+    @Test
+    @DisplayName("Test message event creation ensures proper source sender name and channel target")
+    void testMessageSenderAndTargetIntegrity() {
+        Event msg = Event.createMessage("test01", "all", "Hello world");
+        assertThat(msg.getType()).isEqualTo("message");
+        assertThat(msg.getSource()).isEqualTo("test01");
+        assertThat(msg.getTarget()).isEqualTo("all");
+        assertThat(msg.getDataAsString()).isEqualTo("Hello world");
+
+        String json = msg.toJson();
+        Event deserialized = Event.fromJson(json);
+        assertThat(deserialized.getSource()).isEqualTo("test01");
+        assertThat(deserialized.getTarget()).isEqualTo("all");
+        assertThat(deserialized.getType()).isEqualTo("message");
+        assertThat(deserialized.getDataAsString()).isEqualTo("Hello world");
+    }
 }

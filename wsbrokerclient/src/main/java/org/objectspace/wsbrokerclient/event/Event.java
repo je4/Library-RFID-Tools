@@ -190,13 +190,19 @@ public class Event {
     }
 
     /**
-     * Returns the event data payload as a raw JSON string.
+     * Returns the event data payload as a string (unquoted text if textual, or JSON representation otherwise).
      *
-     * @return raw JSON string or null
+     * @return string representation or null
      */
     @JsonIgnore
     public String getDataAsString() {
-        return data != null ? data.toString() : null;
+        if (data == null || data.isNull() || data.isMissingNode()) {
+            return null;
+        }
+        if (data.isTextual()) {
+            return data.asText();
+        }
+        return data.toString();
     }
 
     public String getMessage() {
@@ -253,15 +259,52 @@ public class Event {
         return builder()
                 .type(EventType.CLIENT_PING)
                 .source(source)
-                .token(UUID.randomUUID().toString())
+                .data("ping")
                 .build();
     }
 
-    public static Event createPong(String source, String token) {
+    public static Event createPong(String source, String target) {
         return builder()
                 .type(EventType.CLIENT_PONG)
                 .source(source)
+                .target(target != null && !target.isBlank() ? target : "wsbroker")
+                .data("pong")
+                .build();
+    }
+
+    public static Event createPong(String source, String target, String token) {
+        return builder()
+                .type(EventType.CLIENT_PONG)
+                .source(source)
+                .target(target != null && !target.isBlank() ? target : "wsbroker")
                 .token(token)
+                .data("pong")
+                .build();
+    }
+
+    public static Event createAttach(String source, String channel) {
+        return builder()
+                .type(EventType.CLIENT_ATTACH)
+                .source(source)
+                .target(channel)
+                .data(channel)
+                .build();
+    }
+
+    public static Event createDetach(String source, String channel) {
+        return builder()
+                .type(EventType.CLIENT_DETACH)
+                .source(source)
+                .target(channel)
+                .data(channel)
+                .build();
+    }
+
+    public static Event createNtpQuery(String source, byte[] ntpBytes) {
+        return builder()
+                .type(EventType.CLIENT_NTP_QUERY)
+                .source(source)
+                .data(ntpBytes)
                 .build();
     }
 
