@@ -1,16 +1,19 @@
 # RFID Headless - Continuous RFID Daemon
 
-**RFID Headless** (formerly Raspi Inventory) is a lightweight, autonomous background RFID daemon for Raspberry Pi 4 and 5 (Linux `aarch64`), designed to control FEIG Electronic RFID readers (USB) and continuously scan, validate, and dispatch library media items (ISO 15693 / ISO 28560-2).
+**RFID Headless** (formerly Raspi Inventory) is a lightweight, autonomous background RFID daemon for Linux (x64), Windows (x64), and Raspberry Pi 4 / 5 (Linux `aarch64`), designed to control FEIG Electronic RFID readers (USB) and continuously scan, validate, and dispatch library media items (ISO 15693 / ISO 28560-2).
 
 ---
 
 ## Key Features
 
-* **Headless Autonomous Operation**: Runs out-of-the-box as a CLI tool or managed `systemd` background service without graphical dependencies.
+* **Cross-Platform Operation**: Native distribution packages and run scripts for Windows (x64), Linux (x64), and Raspberry Pi (aarch64).
+* **Targeted FEIG SDK Integration**:
+  * **Windows & Linux (x64)**: Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0` with 64-bit DLLs and shared `.so` libraries.
+  * **Raspberry Pi (aarch64)**: Uses `FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0` with 64-bit ARM Linux `.so` libraries.
+* **Headless Autonomous Operation**: Runs out-of-the-box as a CLI tool, batch daemon, or managed `systemd` background service without graphical dependencies.
 * **Continuous Scanning & Time-Based Debouncing**: Continuously queries the reader field and suppresses redundant event bursts using a configurable debounce cooldown window (default: 3000 ms).
 * **Automatic Hardware Discovery & Auto-Reconnect**: Seamlessly re-establishes connection on USB disconnects or power cycles without daemon restarts.
 * **REST Webservice & Client TLS Integration**: Dispatches scan events in real-time with HMAC-SHA256 JWT authorization tokens and dynamic TLS.
-* **Native 64-bit ARM Support**: Fully integrated with FEIG Gen3 Linux aarch64 native libraries (`lib/native/aarch64/*.so`).
 
 ---
 
@@ -18,14 +21,14 @@
 
 ```mermaid
 graph TD
-    subgraph Hardware["Raspberry Pi 4 / 5 Hardware Layer"]
-        RPI["Raspberry Pi (Linux aarch64)"]
+    subgraph Hardware["Hardware Layer"]
+        HW["Host System (Windows / Linux / Raspi)"]
         USB["FEIG USB RFID Reader<br/>(e.g. ID ISC.MR102)"]
-        RPI <-->|USB / VCP Interface| USB
+        HW <-->|USB / VCP Interface| USB
     end
 
     subgraph NativeLayer["Native FEIG Drivers"]
-        SO["libfecom.so / libfedm.so<br/>(lib/native/aarch64/)"]
+        SO["FEIG Native Drivers<br/>(Windows: .dll / Linux & Raspi: .so)"]
         SDK["FEIG Java Gen3 SDK"]
         USB --> SO
         SO --> SDK
@@ -61,71 +64,53 @@ graph TD
 
 ---
 
-## Continuous Scan & Debounce Sequence
+## 1. Building Distribution Packages (`build-dist`)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Field as RFID Antenna Field
-    participant Daemon as HeadlessReader Daemon
-    participant Debounce as Debounce Filter
-    participant Decoder as FinnishDataModel Decoder
-    participant Dispatcher as WebserviceDispatcher
-    participant Remote as Remote ILS Webservice
+Build self-contained distribution packages for Windows, Linux, and Raspberry Pi:
 
-    loop Continuous Scan (every 300ms)
-        Daemon->>Field: Poll Inventory (Read Blocks 0..11)
-        alt No tag present
-            Field-->>Daemon: No tag in field
-            Daemon->>Daemon: Sleep 300ms
-        else Tag present in field
-            Field-->>Daemon: Return UID + 48 bytes raw data
-            Daemon->>Debounce: checkTag(uid, now)
-            alt Tag seen within debounce cooldown (e.g. < 3000ms)
-                Debounce-->>Daemon: Drop duplicate scan
-            else First scan or cooldown expired
-                Debounce-->>Daemon: Accept scan & update timestamp
-                Daemon->>Decoder: decode(rawBytes)
-                Decoder-->>Daemon: Item ID: "310029384", Part: 1/1
-                Daemon->>Dispatcher: dispatchScan(marker, uid, item)
-                Dispatcher->>Remote: HTTP POST /inventory (JWT Auth)
-                Remote-->>Dispatcher: 200 OK
-            end
-        end
-    end
+```powershell
+# Build for all target platforms (Windows, Linux, Raspi)
+.\build-dist.ps1 -Target all
+
+# Build specifically for Windows (x64)
+.\build-dist.ps1 -Target windows
+
+# Build specifically for Linux (x64)
+.\build-dist.ps1 -Target linux
+
+# Build specifically for Raspberry Pi (aarch64)
+.\build-dist.ps1 -Target raspi
 ```
 
----
-
-## 1. System Requirements (Raspberry Pi)
-
-* **Hardware**: Raspberry Pi 4 / 5 (64-bit OS / `aarch64`)
-* **Operating System**: Raspberry Pi OS 64-bit (Debian Bookworm or Bullseye)
-* **Java Runtime**: OpenJDK 21 or OpenJDK 25 (Headless JRE is sufficient):
-  ```bash
-  sudo apt update
-  sudo apt install -y openjdk-21-jre-headless
-  ```
-* **Hardware Permissions**: The running user must belong to `plugdev` or `dialout` groups for USB access.
+### Output Packages:
+* **Windows (x64)**: `dist/rfid-headless-2.0.0-SNAPSHOT-windows-x64.zip` (Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0`)
+* **Linux (x64)**: `dist/rfid-headless-2.0.0-SNAPSHOT-linux-x64.tar.gz` and `.zip` (Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0`)
+* **Raspberry Pi (aarch64)**: `dist/rfid-headless-2.0.0-SNAPSHOT-raspi-aarch64.tar.gz` and `.zip` (Uses `FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0`)
 
 ---
 
-## 2. Installation
+## 2. Running RFID Headless (`run`)
 
-Extract the distribution package to `/opt/rfid-headless`:
+### On Windows:
+Using PowerShell:
+```powershell
+.\run-rfid-headless.ps1
+# With custom config or options:
+.\run-rfid-headless.ps1 -c inventory.xml --debounce 5000
+```
 
+### On Linux (x64):
 ```bash
-# Create target directory
-sudo mkdir -p /opt/rfid-headless
-sudo chown -R $USER:$USER /opt/rfid-headless
+./run-rfid-headless.sh --target linux
+# Or direct auto-detection:
+./run-rfid-headless.sh -c inventory.xml
+```
 
-# Extract distribution archive
-tar -xzf rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.tar.gz -C /opt/
-# or
-unzip rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.zip -d /opt/
-
-cd /opt/rfid-headless
-chmod +x run-rfid-headless.sh lib/native/aarch64/*.sh lib/native/aarch64/*.so*
+### On Raspberry Pi (aarch64):
+```bash
+./run-rfid-headless.sh --target raspi
+# Or direct auto-detection:
+./run-rfid-headless.sh -c inventory.xml --debounce 5000 --sleep 200
 ```
 
 ---
@@ -154,27 +139,6 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
         <debug_mode>false</debug_mode>
     </webservice>
 
-    <!-- Client TLS / mTLS configuration with dynamic certificate loading -->
-    <clienttls>
-        <type>minivault</type>
-        <minivault>
-            <baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
-            <parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
-            <tokentype>client_cert</tokentype>
-            <tokenpolicies>
-                <policy>wsbroker.client</policy>
-            </tokenpolicies>
-            <certtype>client_cert</certtype>
-            <uris>
-                <uri>wsbroker:client:display01</uri>
-            </uris>
-            <ca>
-                <path>certs/minivault.ca.pem</path>
-            </ca>
-            <usesystempool>false</usesystempool>
-        </minivault>
-    </clienttls>
-
     <!-- Scan cycle interval in milliseconds -->
     <inventory>
         <sleep>300</sleep>
@@ -184,54 +148,16 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 
 ---
 
-## 4. Manual Execution
+## 4. Systemd Service Setup (Linux & Raspberry Pi)
 
-Run the daemon via the startup script:
-
-```bash
-# Standard startup (reads inventory.xml from current directory)
-./run-rfid-headless.sh
-
-# With explicit configuration file
-./run-rfid-headless.sh -c /opt/rfid-headless/inventory.xml
-
-# Custom debounce (5s) and scan cycle interval (200ms)
-./run-rfid-headless.sh -c inventory.xml --debounce 5000 --sleep 200
-
-# Enable debug logging
-./run-rfid-headless.sh --debug
-# or via environment variable
-LOG_LEVEL=DEBUG ./run-rfid-headless.sh
-```
-
-### Command Line Options:
-* `-c, --config <file>`: Path to `inventory.xml` (default: `inventory.xml`)
-* `-d, --debounce <ms>`: Debounce cooldown window in ms (default: `3000`)
-* `-s, --sleep <ms>`: Pause between scan loops in ms (default: `300`)
-* `-b, --blocks <num>`: Number of ISO 15693 blocks to read (default: `12`)
-* `--debug`: Enable verbose DEBUG log output
-* `--remote-debug`: Enable JVM remote debugging on port 5005
-* `-v, --version`: Print version information
-* `-h, --help`: Display help and usage information
-
----
-
-## 5. Systemd Background Service Setup
-
-To enable auto-start on Raspberry Pi boot:
+To install and run `rfid-headless` as a background systemd service:
 
 ```bash
-# Copy systemd unit file
-sudo cp /opt/rfid-headless/rfid-headless.service /etc/systemd/system/
-
-# Reload systemd daemon
+sudo cp rfid-headless.service /etc/systemd/system/
 sudo systemctl daemon-reload
-
-# Enable and start service
 sudo systemctl enable rfid-headless.service
 sudo systemctl start rfid-headless.service
 
-# Check service status and live logs
-sudo systemctl status rfid-headless.service
-sudo journalctl -u rfid-headless.service -f
+# View live daemon logs
+sudo journalctl -u rfid-headless -f
 ```

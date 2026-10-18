@@ -122,7 +122,9 @@
                 <version>3.6.0</version>
                 <configuration>
                     <descriptors>
-                        <descriptor>src/assembly/assembly.xml</descriptor>
+                        <descriptor>src/assembly/assembly-windows-x64.xml</descriptor>
+                        <descriptor>src/assembly/assembly-linux-x64.xml</descriptor>
+                        <descriptor>src/assembly/assembly-raspi-aarch64.xml</descriptor>
                     </descriptors>
                     <finalName>rfid-headless-${project.version}</finalName>
                     <appendAssemblyId>true</appendAssemblyId>

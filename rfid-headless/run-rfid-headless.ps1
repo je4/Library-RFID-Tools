@@ -1,10 +1,13 @@
 # ========================================================
 #   RFID Headless - Headless Continuous RFID Daemon
-#   Windows Test / Execution Script (PowerShell)
+#   Multi-Platform Test / Execution Script (PowerShell)
+#   Target: Windows (x64), Linux (x64), Raspi (aarch64)
 #   info-age GmbH, Basel
 # ========================================================
 
 param(
+    [ValidateSet("auto", "windows", "linux", "raspi", "windows-x64", "linux-x64", "raspi-aarch64", "linux-aarch64")]
+    [string]$Target = "auto",
     [switch]$Rebuild,
     [switch]$NoPause,
     [string[]]$JavaArgs = @(),
@@ -30,16 +33,61 @@ if (Test-Path "$scriptDir\src\main\java") {
 
 Set-Location $moduleRoot
 
+# Detect or normalize Target platform
+if ($Target -eq "auto") {
+    $isLinux = ($PSVersionTable.PSVersion.Major -ge 6 -and $IsLinux) -or ([System.Environment]::OSVersion.Platform -eq "Unix")
+    if ($isLinux) {
+        $arch = try { [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() } catch { "X64" }
+        $uname = try { (& uname -m 2>$null) } catch { "" }
+        if ($arch -match "Arm|Aarch64" -or $uname -match "aarch64|arm64|armv") {
+            $Target = "raspi"
+        } else {
+            $Target = "linux"
+        }
+    } else {
+        $Target = "windows"
+    }
+} elseif ($Target -in @("raspi-aarch64", "linux-aarch64")) {
+    $Target = "raspi"
+} elseif ($Target -eq "linux-x64") {
+    $Target = "linux"
+} elseif ($Target -eq "windows-x64") {
+    $Target = "windows"
+}
+
 # 1. Library and Native Paths Setup
 $coreModuleRoot = Join-Path $repoRoot "rfid-core"
 $coreSrcDir = Join-Path $coreModuleRoot "src\main\java"
 $coreClassesDir = Join-Path $coreModuleRoot "target\classes"
 $coreJar = Join-Path $coreModuleRoot "target\rfid-core-2.0.0-SNAPSHOT.jar"
 
+$sdkGen3Java = Join-Path $repoRoot "FEIG.ID.SDK.Gen3.Java-v7.1.0"
+$sdkGen3Raspi = Join-Path $repoRoot "FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0"
+
 $libDir = if (Test-Path "$moduleRoot\lib") { "$moduleRoot\lib" } else { "$repoRoot\lib" }
-$nativeDir = Join-Path $libDir "native\x64"
-if (Test-Path $nativeDir) {
-    $env:PATH = "$nativeDir;$env:PATH"
+
+$nativeDir = $null
+if ($Target -eq "windows") {
+    if (Test-Path "$moduleRoot\lib\native\x64") { $nativeDir = "$moduleRoot\lib\native\x64" }
+    elseif (Test-Path "$repoRoot\lib\native\x64") { $nativeDir = "$repoRoot\lib\native\x64" }
+    elseif (Test-Path "$sdkGen3Java\windows.x64\bin") { $nativeDir = "$sdkGen3Java\windows.x64\bin" }
+} elseif ($Target -eq "linux") {
+    if (Test-Path "$moduleRoot\lib\native\linux-x64") { $nativeDir = "$moduleRoot\lib\native\linux-x64" }
+    elseif (Test-Path "$moduleRoot\lib\native\x64") { $nativeDir = "$moduleRoot\lib\native\x64" }
+    elseif (Test-Path "$repoRoot\lib\native\linux-x64") { $nativeDir = "$repoRoot\lib\native\linux-x64" }
+    elseif (Test-Path "$sdkGen3Java\linux.x64\bin") { $nativeDir = "$sdkGen3Java\linux.x64\bin" }
+} elseif ($Target -eq "raspi") {
+    if (Test-Path "$moduleRoot\lib\native\aarch64") { $nativeDir = "$moduleRoot\lib\native\aarch64" }
+    elseif (Test-Path "$repoRoot\lib\native\aarch64") { $nativeDir = "$repoRoot\lib\native\aarch64" }
+    elseif (Test-Path "$sdkGen3Raspi\java\bin\release") { $nativeDir = "$sdkGen3Raspi\java\bin\release" }
+}
+
+if ($nativeDir -and (Test-Path $nativeDir)) {
+    if ($Target -eq "windows") {
+        $env:PATH = "$nativeDir;$env:PATH"
+    } else {
+        $env:LD_LIBRARY_PATH = "$nativeDir" + $(if ($env:LD_LIBRARY_PATH) { ":$env:LD_LIBRARY_PATH" } else { "" })
+    }
 }
 
 # 2. Dependency Staging (lib\ext)

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ========================================================
 #   RFID Headless - Headless Continuous RFID Daemon
-#   Target Architecture: Linux aarch64 (Raspberry Pi 4 / 5)
+#   Multi-Platform Execution Script (Bash)
+#   Target: Linux (x64), Raspberry Pi (aarch64), Windows
 #   info-age GmbH, Basel
 # ========================================================
 
@@ -24,38 +25,146 @@ else
     PROJECT_ROOT="$SCRIPT_DIR"
 fi
 
-# Locate Native Libraries (aarch64)
+# Detect platform / architecture or parse from flags
+TARGET_PLATFORM="${TARGET_PLATFORM:-auto}"
+REMOTE_DEBUG_MODE=false
+DEBUG_SUSPEND=n
+DEBUG_PORT="${DEBUG_PORT:-5005}"
+APP_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --target|--platform)
+            TARGET_PLATFORM="$2"
+            shift 2
+            ;;
+        --target=*|--platform=*)
+            TARGET_PLATFORM="${1#*=}"
+            shift
+            ;;
+        --raspi|--aarch64)
+            TARGET_PLATFORM="raspi"
+            shift
+            ;;
+        --linux|--x64|--linux-x64)
+            TARGET_PLATFORM="linux"
+            shift
+            ;;
+        --windows|--win)
+            TARGET_PLATFORM="windows"
+            shift
+            ;;
+        --remote-debug|--jdwp)
+            REMOTE_DEBUG_MODE=true
+            shift
+            ;;
+        --debug-wait|--debug-suspend)
+            REMOTE_DEBUG_MODE=true
+            DEBUG_SUSPEND=y
+            shift
+            ;;
+        *)
+            APP_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ "$TARGET_PLATFORM" = "auto" ]; then
+    UNAME_S="$(uname -s 2>/dev/null || echo "")"
+    UNAME_M="$(uname -m 2>/dev/null || echo "")"
+    case "$UNAME_S" in
+        CYGWIN*|MINGW*|MSYS*)
+            TARGET_PLATFORM="windows"
+            ;;
+        *)
+            case "$UNAME_M" in
+                aarch64*|arm64*|armv*)
+                    TARGET_PLATFORM="raspi"
+                    ;;
+                *)
+                    TARGET_PLATFORM="linux"
+                    ;;
+            esac
+            ;;
+    esac
+fi
+
+# Normalize TARGET_PLATFORM
+case "$TARGET_PLATFORM" in
+    raspi*|linux-aarch64|aarch64)
+        TARGET_PLATFORM="raspi"
+        ;;
+    linux*|x86_64|amd64)
+        TARGET_PLATFORM="linux"
+        ;;
+    win*|windows*)
+        TARGET_PLATFORM="windows"
+        ;;
+esac
+
+# Locate Native Libraries based on target
 NATIVE_DIR=""
-if [ -d "$APP_DIR/lib/native/aarch64" ]; then
-    NATIVE_DIR="$APP_DIR/lib/native/aarch64"
-elif [ -d "$APP_DIR/native/aarch64" ]; then
-    NATIVE_DIR="$APP_DIR/native/aarch64"
-elif [ -d "$PROJECT_ROOT/lib/native/aarch64" ]; then
-    NATIVE_DIR="$PROJECT_ROOT/lib/native/aarch64"
-elif [ -d "$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/java/bin/release" ]; then
-    NATIVE_DIR="$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/java/bin/release"
+if [ "$TARGET_PLATFORM" = "raspi" ]; then
+    if [ -d "$APP_DIR/lib/native/aarch64" ]; then
+        NATIVE_DIR="$APP_DIR/lib/native/aarch64"
+    elif [ -d "$APP_DIR/native/aarch64" ]; then
+        NATIVE_DIR="$APP_DIR/native/aarch64"
+    elif [ -d "$PROJECT_ROOT/lib/native/aarch64" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/lib/native/aarch64"
+    elif [ -d "$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/java/bin/release" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/java/bin/release"
+    elif [ -d "$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/cpp/bin/release" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0/cpp/bin/release"
+    fi
+elif [ "$TARGET_PLATFORM" = "linux" ]; then
+    if [ -d "$APP_DIR/lib/native/linux-x64" ]; then
+        NATIVE_DIR="$APP_DIR/lib/native/linux-x64"
+    elif [ -d "$APP_DIR/lib/native/x64" ]; then
+        NATIVE_DIR="$APP_DIR/lib/native/x64"
+    elif [ -d "$APP_DIR/native/linux-x64" ]; then
+        NATIVE_DIR="$APP_DIR/native/linux-x64"
+    elif [ -d "$PROJECT_ROOT/lib/native/linux-x64" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/lib/native/linux-x64"
+    elif [ -d "$PROJECT_ROOT/lib/native/x64" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/lib/native/x64"
+    elif [ -d "$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Java-v7.1.0/linux.x64/bin" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Java-v7.1.0/linux.x64/bin"
+    fi
+elif [ "$TARGET_PLATFORM" = "windows" ]; then
+    if [ -d "$APP_DIR/lib/native/x64" ]; then
+        NATIVE_DIR="$APP_DIR/lib/native/x64"
+    elif [ -d "$PROJECT_ROOT/lib/native/x64" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/lib/native/x64"
+    elif [ -d "$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Java-v7.1.0/windows.x64/bin" ]; then
+        NATIVE_DIR="$PROJECT_ROOT/FEIG.ID.SDK.Gen3.Java-v7.1.0/windows.x64/bin"
+    fi
 fi
 
 if [ -n "$NATIVE_DIR" ] && [ -d "$NATIVE_DIR" ]; then
-    # Ensure unversioned and major version .so symlinks exist for Java JNI System.loadLibrary
-    for libfile in "$NATIVE_DIR"/lib*.so.*.*.*; do
-        if [ -f "$libfile" ] && [ ! -L "$libfile" ]; then
-            basefile="$(basename "$libfile")"
-            libminor="${basefile%.[0-9]*}"
-            libmajor="${libminor%.[0-9]*}"
-            libname="${libmajor%.[0-9]*}"
-            if [ -n "$libmajor" ] && [ ! -e "$NATIVE_DIR/$libmajor" ]; then
-                ln -sf "$basefile" "$NATIVE_DIR/$libmajor" 2>/dev/null || cp "$libfile" "$NATIVE_DIR/$libmajor" 2>/dev/null || true
+    # Ensure unversioned and major version .so symlinks exist for Java JNI System.loadLibrary on Unix
+    if [ "$TARGET_PLATFORM" != "windows" ]; then
+        for libfile in "$NATIVE_DIR"/lib*.so.*.*.*; do
+            if [ -f "$libfile" ] && [ ! -L "$libfile" ]; then
+                basefile="$(basename "$libfile")"
+                libminor="${basefile%.[0-9]*}"
+                libmajor="${libminor%.[0-9]*}"
+                libname="${libmajor%.[0-9]*}"
+                if [ -n "$libmajor" ] && [ ! -e "$NATIVE_DIR/$libmajor" ]; then
+                    ln -sf "$basefile" "$NATIVE_DIR/$libmajor" 2>/dev/null || cp "$libfile" "$NATIVE_DIR/$libmajor" 2>/dev/null || true
+                fi
+                if [ -n "$libname" ] && [ ! -e "$NATIVE_DIR/$libname" ]; then
+                    ln -sf "$basefile" "$NATIVE_DIR/$libname" 2>/dev/null || cp "$libfile" "$NATIVE_DIR/$libname" 2>/dev/null || true
+                fi
             fi
-            if [ -n "$libname" ] && [ ! -e "$NATIVE_DIR/$libname" ]; then
-                ln -sf "$basefile" "$NATIVE_DIR/$libname" 2>/dev/null || cp "$libfile" "$NATIVE_DIR/$libname" 2>/dev/null || true
-            fi
-        fi
-    done
-    export LD_LIBRARY_PATH="$NATIVE_DIR:${LD_LIBRARY_PATH:-}"
-    echo "[RFID-Headless] Using native library directory: $NATIVE_DIR"
+        done
+        export LD_LIBRARY_PATH="$NATIVE_DIR:${LD_LIBRARY_PATH:-}"
+    else
+        export PATH="$NATIVE_DIR:${PATH:-}"
+    fi
+    echo "[RFID-Headless] Target: $TARGET_PLATFORM | Native library directory: $NATIVE_DIR"
 else
-    echo "[RFID-Headless] WARNING: Native aarch64 library directory not found!" >&2
+    echo "[RFID-Headless] WARNING: Native library directory for target '$TARGET_PLATFORM' not found!" >&2
 fi
 
 # Construct Classpath

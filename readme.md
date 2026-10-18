@@ -123,11 +123,12 @@ Desktop inventory scanning tool for ISO 15693 RFID tags.
 * **Packaging**: Self-contained Windows runtime packaging (`jpackage`) and Inno Setup installer generator (`build-installer.ps1`).
 
 ### 5. [RFID Headless](rfid-headless/README.md) (`rfid-headless`)
-Lightweight, headless daemon for Raspberry Pi 4 / 5 (Linux aarch64):
+Lightweight, headless daemon for Windows (x64), Linux (x64), and Raspberry Pi 4 / 5 (Linux aarch64):
+* **Cross-Platform Support**: Native build distributions and run scripts for Windows, Linux, and Raspberry Pi.
+* **Targeted FEIG SDKs**: Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0` for Windows & Linux and `FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0` for Raspberry Pi.
 * **No UI Required**: Runs fully automated as a CLI tool or background systemd service without GUI dependencies.
 * **Immediate Autonomous Scanning**: Automatically discovers connected FEIG USB readers, initiates scanning immediately upon startup, and auto-reconnects on hardware disconnections.
 * **Time-Based Debounce**: Built-in configurable cooldown (default: 3000 ms) to suppress repetitive events while tags linger in the antenna field.
-* **Native aarch64 Support**: Fully integrated with FEIG Gen3 Linux aarch64 `.so` libraries.
 
 ---
 
@@ -196,45 +197,46 @@ cd rfid-inventory
 
 ---
 
-## Quick Start: RFID Headless (Raspberry Pi / Linux aarch64)
+## Quick Start: RFID Headless (Windows / Linux / Raspberry Pi)
 
-### Building the Distribution Package
+### Building Distribution Packages
 
-To build the self-contained Linux aarch64 distribution package (`.tar.gz` and `.zip`):
+To build the self-contained distribution packages for Windows, Linux, and Raspberry Pi:
 
 ```powershell
-# From project root:
-.\build-rfid-headless-dist.ps1
+# Build for all targets (Windows, Linux, Raspi):
+.\build-rfid-headless-dist.ps1 -Target all
 
-# Or from rfid-headless directory:
-cd rfid-headless
-.\build-dist.ps1
+# Or build for a specific target:
+.\build-rfid-headless-dist.ps1 -Target windows
+.\build-rfid-headless-dist.ps1 -Target linux
+.\build-rfid-headless-dist.ps1 -Target raspi
 ```
 
 Output artifacts:
-* `dist/rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.tar.gz`
-* `dist/rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.zip`
+* `dist/rfid-headless-2.0.0-SNAPSHOT-windows-x64.zip` (Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0`)
+* `dist/rfid-headless-2.0.0-SNAPSHOT-linux-x64.tar.gz` and `.zip` (Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0`)
+* `dist/rfid-headless-2.0.0-SNAPSHOT-raspi-aarch64.tar.gz` and `.zip` (Uses `FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0`)
 
-### Deployment & Execution on Raspberry Pi
+### Running RFID Headless
 
-Extract the archive on the Raspberry Pi (e.g. to `/opt/rfid-headless`):
-
-```bash
-# Extract package
-sudo mkdir -p /opt/rfid-headless
-sudo chown -R $USER:$USER /opt/rfid-headless
-tar -xzf rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.tar.gz -C /opt/
-cd /opt/rfid-headless
-chmod +x run-rfid-headless.sh lib/native/aarch64/*.sh lib/native/aarch64/*.so*
-
-# Direct startup using run script
-./run-rfid-headless.sh
-
-# Custom debounce (5 seconds) and scan cycle interval (200 ms)
-./run-rfid-headless.sh -c inventory.xml --debounce 5000 --sleep 200
+#### Windows:
+```powershell
+.\run-rfid-headless.ps1
+# Or with specific options:
+.\run-rfid-headless.ps1 -c inventory.xml
 ```
 
-To install as a persistent background `systemd` service:
+#### Linux & Raspberry Pi:
+```bash
+# Linux x64:
+./run-rfid-headless.sh --target linux -c inventory.xml
+
+# Raspberry Pi:
+./run-rfid-headless.sh --target raspi -c inventory.xml --debounce 5000 --sleep 200
+```
+
+To install as a persistent background `systemd` service (Linux / Raspberry Pi):
 
 ```bash
 sudo cp rfid-headless.service /etc/systemd/system/
