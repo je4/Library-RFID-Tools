@@ -77,7 +77,7 @@ New-Item -ItemType Directory -Force -Path $extDir | Out-Null
 
 $m2Repo = Join-Path $HOME ".m2\repository"
 if (Test-Path $m2Repo) {
-    $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*')
+    $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'flatlaf*', 'jackson-*', 'bcprov-*', 'bcpkix-*', 'bcutil-*')
     $matchedJars = Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
         $name = $_.Name
         $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
@@ -109,14 +109,22 @@ if (Test-Path $m2Repo) {
     }
 }
 
-# 2. Compile Java sources (rfid-core + rfid-headless)
+# 2. Compile Java sources (rfid-core + certmanager + wsbrokerclient + rfid-headless)
 Write-Host "[2/5] Kompiliere Java-Quellcodedateien (Java 25)..." -ForegroundColor Yellow
 $coreSrcDir = Join-Path $repoRoot "rfid-core\src\main\java"
+$certSrcDir = Join-Path $repoRoot "certmanager\src\main\java"
+$wsbrokerSrcDir = Join-Path $repoRoot "wsbrokerclient\src\main\java"
 $srcDir = Join-Path $moduleRoot "src\main\java"
 
 $javaSources = @()
 if (Test-Path $coreSrcDir) {
     $javaSources += (Get-ChildItem -Recurse -Path "$coreSrcDir\*.java").FullName
+}
+if (Test-Path $certSrcDir) {
+    $javaSources += (Get-ChildItem -Recurse -Path "$certSrcDir\*.java").FullName
+}
+if (Test-Path $wsbrokerSrcDir) {
+    $javaSources += (Get-ChildItem -Recurse -Path "$wsbrokerSrcDir\*.java").FullName
 }
 if (Test-Path $srcDir) {
     $javaSources += (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
@@ -133,6 +141,14 @@ if ($LASTEXITCODE -ne 0) {
 $coreResourcesDir = Join-Path $repoRoot "rfid-core\src\main\resources"
 if (Test-Path $coreResourcesDir) {
     Copy-Item -Recurse -Force -Path "$coreResourcesDir\*" -Destination $classesDir
+}
+$certResourcesDir = Join-Path $repoRoot "certmanager\src\main\resources"
+if (Test-Path $certResourcesDir) {
+    Copy-Item -Recurse -Force -Path "$certResourcesDir\*" -Destination $classesDir
+}
+$wsbrokerResourcesDir = Join-Path $repoRoot "wsbrokerclient\src\main\resources"
+if (Test-Path $wsbrokerResourcesDir) {
+    Copy-Item -Recurse -Force -Path "$wsbrokerResourcesDir\*" -Destination $classesDir
 }
 
 $resourcesDir = Join-Path $moduleRoot "src\main\resources"

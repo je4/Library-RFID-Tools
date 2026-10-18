@@ -180,6 +180,12 @@ fi
 if [ -f "$APP_DIR/lib/rfid-core.jar" ]; then
     CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/lib/rfid-core.jar"
 fi
+if [ -f "$APP_DIR/lib/certmanager.jar" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/lib/certmanager.jar"
+fi
+if [ -f "$APP_DIR/lib/wsbrokerclient.jar" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/lib/wsbrokerclient.jar"
+fi
 
 # 2. Development target classes or JARs
 if [ -d "$APP_DIR/target/classes" ]; then
@@ -188,11 +194,23 @@ fi
 if [ -d "$PROJECT_ROOT/rfid-core/target/classes" ]; then
     CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/rfid-core/target/classes"
 fi
+if [ -d "$PROJECT_ROOT/certmanager/target/classes" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/certmanager/target/classes"
+fi
+if [ -d "$PROJECT_ROOT/wsbrokerclient/target/classes" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/wsbrokerclient/target/classes"
+fi
 if [ -f "$APP_DIR/target/rfid-headless-2.0.0-SNAPSHOT.jar" ]; then
     CLASSPATH="${CLASSPATH:+$CLASSPATH:}$APP_DIR/target/rfid-headless-2.0.0-SNAPSHOT.jar"
 fi
 if [ -f "$PROJECT_ROOT/rfid-core/target/rfid-core-2.0.0-SNAPSHOT.jar" ]; then
     CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/rfid-core/target/rfid-core-2.0.0-SNAPSHOT.jar"
+fi
+if [ -f "$PROJECT_ROOT/certmanager/target/certmanager-2.0.0-SNAPSHOT.jar" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/certmanager/target/certmanager-2.0.0-SNAPSHOT.jar"
+fi
+if [ -f "$PROJECT_ROOT/wsbrokerclient/target/wsbrokerclient-2.0.0-SNAPSHOT.jar" ]; then
+    CLASSPATH="${CLASSPATH:+$CLASSPATH:}$PROJECT_ROOT/wsbrokerclient/target/wsbrokerclient-2.0.0-SNAPSHOT.jar"
 fi
 
 # 3. Add bundled JARs from lib/ and lib/ext/
@@ -223,7 +241,7 @@ fi
 # 5. Maven local repository fallback if running in dev environment
 M2_REPO="${HOME}/.m2/repository"
 if [ -d "$M2_REPO" ]; then
-    for jar in $(find "$M2_REPO" -name "*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" 2>/dev/null | grep -E "commons-|slf4j-|logback-|mysql-" || true); do
+    for jar in $(find "$M2_REPO" -name "*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" 2>/dev/null | grep -E "commons-|slf4j-|logback-|mysql-|jackson-|bcprov-|bcpkix-|bcutil-" || true); do
         if [ -f "$jar" ]; then
             CLASSPATH="${CLASSPATH:+$CLASSPATH:}$jar"
         fi

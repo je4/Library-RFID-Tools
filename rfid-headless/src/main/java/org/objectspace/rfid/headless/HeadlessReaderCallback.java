@@ -21,6 +21,7 @@ public class HeadlessReaderCallback implements TagCallback {
 	private static final Logger logger = LoggerFactory.getLogger(HeadlessReaderCallback.class);
 
 	private final TagScanProcessor tagScanProcessor;
+	private final HeadlessWsBrokerDispatcher wsBrokerDispatcher;
 	private final long debounceMillis;
 	private final ConcurrentHashMap<String, Long> lastSeenMap;
 	private final String sessionName;
@@ -30,7 +31,12 @@ public class HeadlessReaderCallback implements TagCallback {
 	private final AtomicLong debouncedScans = new AtomicLong(0);
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, long debounceMillis) {
+		this(tagScanProcessor, null, debounceMillis);
+	}
+
+	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher, long debounceMillis) {
 		this.tagScanProcessor = tagScanProcessor;
+		this.wsBrokerDispatcher = wsBrokerDispatcher;
 		this.debounceMillis = debounceMillis > 0 ? debounceMillis : HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS;
 		this.lastSeenMap = new ConcurrentHashMap<>();
 		this.sessionName = LocalDateTime.now().toString();
@@ -108,7 +114,32 @@ public class HeadlessReaderCallback implements TagCallback {
 			}
 		}
 
-		// 3. Update debounce cache
+		// 3. WSBroker WebSocket channels dispatch
+		if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
+			try {
+				String rawHex = (metadata.getData() != null) ? HexConvert.toHexString(metadata.getData()) : "";
+				String clientId = (tagScanProcessor != null && tagScanProcessor.getWebserviceConfig() != null)
+						? tagScanProcessor.getWebserviceConfig().getClientId()
+						: "";
+				wsBrokerDispatcher.dispatchTag(
+						UID,
+						itemId,
+						rawHex,
+						isil,
+						country,
+						crcOk,
+						tagName,
+						sessionName,
+						now,
+						clientId,
+						metadata
+				);
+			} catch (Exception e) {
+				logger.error("[WSBroker Exception] Failed to dispatch UID {}: {}", UID, e.getMessage(), e);
+			}
+		}
+
+		// 4. Update debounce cache
 		lastSeenMap.put(UID, now);
 		dispatchedScans.incrementAndGet();
 
@@ -127,6 +158,13 @@ public class HeadlessReaderCallback implements TagCallback {
 
 	@Override
 	public void close() throws Exception {
+		if (wsBrokerDispatcher != null) {
+			try {
+				wsBrokerDispatcher.close();
+			} catch (Exception e) {
+				logger.warn("Error closing WSBroker dispatcher: {}", e.getMessage());
+			}
+		}
 		clearCache();
 		logger.info("HeadlessReaderCallback closed.");
 	}
@@ -134,6 +172,10 @@ public class HeadlessReaderCallback implements TagCallback {
 	private void pruneCache(long now) {
 		long expiryThreshold = now - (debounceMillis * 2);
 		lastSeenMap.entrySet().removeIf(entry -> entry.getValue() < expiryThreshold);
+	}
+
+	public HeadlessWsBrokerDispatcher getWsBrokerDispatcher() {
+		return wsBrokerDispatcher;
 	}
 
 	public long getDebounceMillis() {

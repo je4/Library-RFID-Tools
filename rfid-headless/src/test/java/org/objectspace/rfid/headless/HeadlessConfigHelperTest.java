@@ -103,4 +103,64 @@ public class HeadlessConfigHelperTest {
         assertEquals(12, HeadlessConfigHelper.getNumBlocks(config));
         assertEquals(3000L, HeadlessConfigHelper.getDebounceMillis(config));
     }
+    @Test
+    @DisplayName("Test WSBroker nested configuration parsing and active flag")
+    public void testWsBrokerNestedConfigParsing() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <wsbroker>
+                        <active>true</active>
+                        <name>reader-unit-1</name>
+                        <url>https://broker.local:8765</url>
+                        <channels>
+                            <channel>all</channel>
+                            <channel>special</channel>
+                        </channels>
+                    </wsbroker>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-wsbroker-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+        assertTrue(HeadlessConfigHelper.isWsBrokerActive(config));
+        assertEquals("reader-unit-1", HeadlessConfigHelper.getClientName(config));
+        assertEquals("https://broker.local:8765", HeadlessConfigHelper.getWsBrokerEndpoint(config));
+        assertEquals(java.util.List.of("all", "special"), HeadlessConfigHelper.getChannels(config));
+    }
+
+    @Test
+    @DisplayName("Test WSBroker disabled when active is false")
+    public void testWsBrokerDisabledWhenActiveFalse() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <wsbroker>
+                        <active>false</active>
+                        <name>reader-unit-2</name>
+                        <url>https://broker.local:8765</url>
+                    </wsbroker>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-wsbroker-disabled-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+        assertFalse(HeadlessConfigHelper.isWsBrokerActive(config));
+        assertEquals("reader-unit-2", HeadlessConfigHelper.getClientName(config));
+        assertEquals("https://broker.local:8765", HeadlessConfigHelper.getWsBrokerEndpoint(config));
+    }
 }

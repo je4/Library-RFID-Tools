@@ -61,6 +61,16 @@ $coreSrcDir = Join-Path $coreModuleRoot "src\main\java"
 $coreClassesDir = Join-Path $coreModuleRoot "target\classes"
 $coreJar = Join-Path $coreModuleRoot "target\rfid-core-2.0.0-SNAPSHOT.jar"
 
+$certModuleRoot = Join-Path $repoRoot "certmanager"
+$certSrcDir = Join-Path $certModuleRoot "src\main\java"
+$certClassesDir = Join-Path $certModuleRoot "target\classes"
+$certJar = Join-Path $certModuleRoot "target\certmanager-2.0.0-SNAPSHOT.jar"
+
+$wsbrokerModuleRoot = Join-Path $repoRoot "wsbrokerclient"
+$wsbrokerSrcDir = Join-Path $wsbrokerModuleRoot "src\main\java"
+$wsbrokerClassesDir = Join-Path $wsbrokerModuleRoot "target\classes"
+$wsbrokerJar = Join-Path $wsbrokerModuleRoot "target\wsbrokerclient-2.0.0-SNAPSHOT.jar"
+
 $sdkGen3Java = Join-Path $repoRoot "FEIG.ID.SDK.Gen3.Java-v7.1.0"
 $sdkGen3Raspi = Join-Path $repoRoot "FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0"
 
@@ -96,7 +106,7 @@ New-Item -ItemType Directory -Force -Path $extDir | Out-Null
 
 $m2Repo = Join-Path $HOME ".m2\repository"
 if (Test-Path $m2Repo) {
-    $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*')
+    $patterns = @('commons-*', 'slf4j-*', 'logback-*', 'mysql-*', 'flatlaf*', 'jackson-*', 'bcprov-*', 'bcpkix-*', 'bcutil-*')
     $matchedJars = Get-ChildItem -Recurse -Path "$m2Repo\*.jar" -ErrorAction SilentlyContinue | Where-Object {
         $name = $_.Name
         $name -notmatch '-sources.jar' -and ($patterns | Where-Object { $name -like $_ })
@@ -144,8 +154,8 @@ if (Test-Path $m2Repo) {
 # 3. Compilation
 $classesDir = Join-Path $moduleRoot "target\classes"
 $mainClass = Join-Path $classesDir "org\objectspace\rfid\headless\HeadlessReader.class"
-$classpath = "$classesDir;$coreClassesDir;$coreJar;$libDir\*;$extDir\*"
-$buildClasspath = "$coreClassesDir;$coreJar;$libDir\*;$extDir\*"
+$classpath = "$classesDir;$coreClassesDir;$coreJar;$certClassesDir;$certJar;$wsbrokerClassesDir;$wsbrokerJar;$libDir\*;$extDir\*"
+$buildClasspath = "$coreClassesDir;$coreJar;$certClassesDir;$certJar;$wsbrokerClassesDir;$wsbrokerJar;$libDir\*;$extDir\*"
 
 $javaCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) { "$env:JAVA_HOME\bin\java.exe" } else { "java" }
 $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) { "$env:JAVA_HOME\bin\javac.exe" } else { "javac" }
@@ -153,10 +163,14 @@ $javacCmd = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\javac.exe")) 
 $srcDir = Join-Path $moduleRoot "src\main\java"
 $resourcesDir = Join-Path $moduleRoot "src\main\resources"
 $coreResourcesDir = Join-Path $coreModuleRoot "src\main\resources"
+$certResourcesDir = Join-Path $certModuleRoot "src\main\resources"
+$wsbrokerResourcesDir = Join-Path $wsbrokerModuleRoot "src\main\resources"
 
 $allSources = @()
 if (Test-Path $srcDir) { $allSources += Get-ChildItem -Recurse -Path "$srcDir\*.java" }
 if (Test-Path $coreSrcDir) { $allSources += Get-ChildItem -Recurse -Path "$coreSrcDir\*.java" }
+if (Test-Path $certSrcDir) { $allSources += Get-ChildItem -Recurse -Path "$certSrcDir\*.java" }
+if (Test-Path $wsbrokerSrcDir) { $allSources += Get-ChildItem -Recurse -Path "$wsbrokerSrcDir\*.java" }
 
 $shouldRebuild = $Rebuild -or (-not (Test-Path $mainClass)) -or (-not (Test-Path $classesDir))
 if (-not $shouldRebuild) {
@@ -193,6 +207,12 @@ if ($shouldRebuild) {
     if (Test-Path $coreSrcDir) {
         $javaSources += (Get-ChildItem -Recurse -Path "$coreSrcDir\*.java").FullName
     }
+    if (Test-Path $certSrcDir) {
+        $javaSources += (Get-ChildItem -Recurse -Path "$certSrcDir\*.java").FullName
+    }
+    if (Test-Path $wsbrokerSrcDir) {
+        $javaSources += (Get-ChildItem -Recurse -Path "$wsbrokerSrcDir\*.java").FullName
+    }
     if (Test-Path $srcDir) {
         $javaSources += (Get-ChildItem -Recurse -Path "$srcDir\*.java").FullName
     }
@@ -211,6 +231,12 @@ if ($shouldRebuild) {
 
     if (Test-Path $coreResourcesDir) {
         Copy-Item -Recurse -Force -Path "$coreResourcesDir\*" -Destination $classesDir
+    }
+    if (Test-Path $certResourcesDir) {
+        Copy-Item -Recurse -Force -Path "$certResourcesDir\*" -Destination $classesDir
+    }
+    if (Test-Path $wsbrokerResourcesDir) {
+        Copy-Item -Recurse -Force -Path "$wsbrokerResourcesDir\*" -Destination $classesDir
     }
     if (Test-Path $resourcesDir) {
         Copy-Item -Recurse -Force -Path "$resourcesDir\*" -Destination $classesDir

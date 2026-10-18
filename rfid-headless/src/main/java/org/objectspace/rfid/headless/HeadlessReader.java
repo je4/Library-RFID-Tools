@@ -18,6 +18,7 @@ public class HeadlessReader {
 
 	private final XMLConfiguration config;
 	private final TagScanProcessor tagScanProcessor;
+	private final HeadlessWsBrokerDispatcher wsBrokerDispatcher;
 	private final ISO15693Reader reader;
 	private final HeadlessReaderCallback callback;
 	private final HeadlessReaderScanner scanner;
@@ -25,6 +26,7 @@ public class HeadlessReader {
 	public HeadlessReader(XMLConfiguration config, Long debounceOverride, Integer sleepOverride, Integer blocksOverride) throws Exception {
 		this.config = config;
 		this.tagScanProcessor = new TagScanProcessor(config);
+		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
 		this.reader = ISO15693ReaderFactory.createReader(config);
 
 		long debounce = (debounceOverride != null && debounceOverride > 0)
@@ -39,7 +41,7 @@ public class HeadlessReader {
 				? blocksOverride
 				: HeadlessConfigHelper.getNumBlocks(config);
 
-		this.callback = new HeadlessReaderCallback(tagScanProcessor, debounce);
+		this.callback = new HeadlessReaderCallback(tagScanProcessor, wsBrokerDispatcher, debounce);
 		this.scanner = new HeadlessReaderScanner(reader, callback, numBlocks, sleepInterval);
 	}
 
@@ -47,6 +49,11 @@ public class HeadlessReader {
 		logger.info("==================================================");
 		logger.info(" Starting RFID-Headless Reader Daemon v{} (Headless) ", VERSION);
 		logger.info("==================================================");
+
+		// Connect to WSBroker if configured
+		if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
+			wsBrokerDispatcher.connect();
+		}
 
 		// Register graceful shutdown hook
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -63,6 +70,13 @@ public class HeadlessReader {
 				}
 			} catch (Exception e) {
 				logger.warn("Error disconnecting reader: {}", e.getMessage());
+			}
+			try {
+				if (wsBrokerDispatcher != null) {
+					wsBrokerDispatcher.close();
+				}
+			} catch (Exception e) {
+				logger.warn("Error closing WSBroker dispatcher: {}", e.getMessage());
 			}
 			try {
 				tagScanProcessor.close();
@@ -85,6 +99,10 @@ public class HeadlessReader {
 
 	public TagScanProcessor getTagScanProcessor() {
 		return tagScanProcessor;
+	}
+
+	public HeadlessWsBrokerDispatcher getWsBrokerDispatcher() {
+		return wsBrokerDispatcher;
 	}
 
 	public ISO15693Reader getReader() {

@@ -11,7 +11,8 @@ public class TestRunner {
             HeadlessConfigHelperTest.class,
             HeadlessReaderCallbackTest.class,
             HeadlessReaderScannerTest.class,
-            HeadlessReaderTest.class
+            HeadlessReaderTest.class,
+            HeadlessWsBrokerDispatcherTest.class
         };
 
         System.out.println("=== Starting RFID-Headless Test Runner ===");

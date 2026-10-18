@@ -23,6 +23,18 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- WSBroker Client & CertManager Modules -->
+        <dependency>
+            <groupId>org.objectspace</groupId>
+            <artifactId>wsbrokerclient</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.objectspace</groupId>
+            <artifactId>certmanager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- FEIG SDK Gen3 Java 7.1.0 -->
         <dependency>
             <groupId>de.feig</groupId>

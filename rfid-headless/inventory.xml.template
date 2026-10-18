@@ -42,39 +42,48 @@
 		<debug_mode>false</debug_mode>
 	</webservice>
 
-	<!-- Client TLS / mTLS configuration with dynamic certificate loading (MiniVault, File, Env, Dev) -->
-	<clienttls>
-		<!-- Backend loader type: minivault, file, env, dev -->
-		<type>minivault</type>
+	<!-- WSBroker WebSocket connection (optional) -->
+	<wsbroker>
+		<!-- Enable/disable WSBroker dispatching (true/false) -->
+		<active>false</active>
 
-		<minivault>
-			<!-- Base URL of the MiniVault REST API endpoint -->
-			<baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
-			<!-- Initial parent authentication token (or env:VAULT_PARENT_TOKEN) -->
-			<parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
-			<!-- Token type to request from MiniVault (e.g. client_cert) -->
-			<tokentype>client_cert</tokentype>
-			<!-- MiniVault policies granted to child tokens -->
-			<tokenpolicies>
-				<policy>wsbroker.client</policy>
-			</tokenpolicies>
-			<!-- Certificate profile/type in MiniVault -->
-			<certtype>client_cert</certtype>
-			<!-- Subject Alternative Name (SAN) URIs for client certificate identification -->
-			<uris>
-				<uri>wsbroker:client:display01</uri>
-				<uri>wsbroker:channel:all</uri>
-				<uri>wsbroker:channel:intern</uri>
-				<uri>wsbroker:channel:display</uri>
-			</uris>
-			<!-- Custom CA certificate files to trust -->
-			<ca>
-				<path>certs/minivault.ca.pem</path>
-			</ca>
-			<!-- Whether to include system root CA certificates (true/false) -->
-			<usesystempool>false</usesystempool>
-		</minivault>
-	</clienttls>
+		<!-- Unique client name used for WSBroker authentication and messaging identity -->
+		<name>test-java</name>
+
+		<!-- Target WSBroker endpoint URL -->
+		<url><![CDATA[https://localhost:8765]]></url>
+
+		<!-- Initial channels to subscribe to upon startup -->
+		<channels>
+			<channel>all</channel>
+			<channel>intern</channel>
+		</channels>
+
+		<!-- Client TLS / mTLS configuration with dynamic certificate loading via certmanager (minivault, file, env, dev) -->
+		<clienttls>
+			<type>minivault</type>
+
+			<minivault>
+				<baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
+				<parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
+				<tokentype>client_cert</tokentype>
+				<tokenpolicies>
+					<policy>wsbroker.client</policy>
+				</tokenpolicies>
+				<certtype>client_cert</certtype>
+				<uris>
+					<uri>wsbroker:client:test-java</uri>
+					<uri>wsbroker:channel:all</uri>
+					<uri>wsbroker:channel:intern</uri>
+				</uris>
+				<ca>
+					<path>../certs/minivault.ca.pem</path>
+					<path>certs/minivault.ca.pem</path>
+				</ca>
+				<usesystempool>false</usesystempool>
+			</minivault>
+		</clienttls>
+	</wsbroker>
 
 	<!-- Number of blocks to read from RFID tag (default: 12) -->
 	<numblocks>12</numblocks>
