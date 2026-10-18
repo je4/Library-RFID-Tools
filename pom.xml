@@ -16,7 +16,7 @@
         <module>wsbrokerclient</module>
         <module>rfid-core</module>
         <module>rfid-inventory</module>
-        <module>raspi-inventory</module>
+        <module>rfid-headless</module>
     </modules>
 
     <properties>

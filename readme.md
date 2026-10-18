@@ -42,8 +42,8 @@ graph TD
         TSP --> UI
     end
 
-    subgraph EmbeddedDaemon["Embedded Daemon (`raspi-inventory`)"]
-        Daemon["RaspiInventory Headless Service<br/>(Linux aarch64 / systemd)"]
+    subgraph EmbeddedDaemon["Embedded Daemon (`rfid-headless`)"]
+        Daemon["HeadlessReader Service<br/>(Linux aarch64 / systemd)"]
         NativeArm["lib/native/aarch64/*.so"]
         TSP --> Daemon
         NativeArm --> FeigCore
@@ -88,7 +88,7 @@ Library-RFID-Tools/
 ├── wsbrokerclient/                          # WebSocket, REST & NTP Client with dynamic mTLS for WSBroker
 ├── rfid-core/                               # Shared Core Module (Hardware drivers, ISO 28560, DB, Webservice)
 ├── rfid-inventory/                          # Desktop RFID Inventory Scanning Application (Swing/FlatLaf & SWT)
-└── raspi-inventory/                         # Headless Continuous RFID Daemon for Raspberry Pi (aarch64)
+└── rfid-headless/                           # Headless Continuous RFID Daemon for Raspberry Pi (aarch64)
 ```
 
 ---
@@ -122,7 +122,7 @@ Desktop inventory scanning tool for ISO 15693 RFID tags.
 * **Hardware & Firmware Management**: Built-in scripts to backup and restore full EEPROM/RAM hardware parameter sets on FEIG readers (`backup-firmware.ps1`, `restore-firmware.ps1`).
 * **Packaging**: Self-contained Windows runtime packaging (`jpackage`) and Inno Setup installer generator (`build-installer.ps1`).
 
-### 5. [Raspi Inventory](raspi-inventory/readme.md) (`raspi-inventory`)
+### 5. [RFID Headless](rfid-headless/README.md) (`rfid-headless`)
 Lightweight, headless daemon for Raspberry Pi 4 / 5 (Linux aarch64):
 * **No UI Required**: Runs fully automated as a CLI tool or background systemd service without GUI dependencies.
 * **Immediate Autonomous Scanning**: Automatically discovers connected FEIG USB readers, initiates scanning immediately upon startup, and auto-reconnects on hardware disconnections.
@@ -196,7 +196,7 @@ cd rfid-inventory
 
 ---
 
-## Quick Start: Raspi Inventory (Raspberry Pi / Linux aarch64)
+## Quick Start: RFID Headless (Raspberry Pi / Linux aarch64)
 
 ### Building the Distribution Package
 
@@ -204,41 +204,41 @@ To build the self-contained Linux aarch64 distribution package (`.tar.gz` and `.
 
 ```powershell
 # From project root:
-.\build-raspi-dist.ps1
+.\build-rfid-headless-dist.ps1
 
-# Or from raspi-inventory directory:
-cd raspi-inventory
+# Or from rfid-headless directory:
+cd rfid-headless
 .\build-dist.ps1
 ```
 
 Output artifacts:
-* `dist/raspi-inventory-2.0.0-SNAPSHOT-linux-aarch64.tar.gz`
-* `dist/raspi-inventory-2.0.0-SNAPSHOT-linux-aarch64.zip`
+* `dist/rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.tar.gz`
+* `dist/rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.zip`
 
 ### Deployment & Execution on Raspberry Pi
 
-Extract the archive on the Raspberry Pi (e.g. to `/opt/raspi-inventory`):
+Extract the archive on the Raspberry Pi (e.g. to `/opt/rfid-headless`):
 
 ```bash
 # Extract package
-sudo mkdir -p /opt/raspi-inventory
-sudo chown -R $USER:$USER /opt/raspi-inventory
-tar -xzf raspi-inventory-2.0.0-SNAPSHOT-linux-aarch64.tar.gz -C /opt/
-cd /opt/raspi-inventory
-chmod +x run-raspi-inventory.sh lib/native/aarch64/*.sh lib/native/aarch64/*.so*
+sudo mkdir -p /opt/rfid-headless
+sudo chown -R $USER:$USER /opt/rfid-headless
+tar -xzf rfid-headless-2.0.0-SNAPSHOT-linux-aarch64.tar.gz -C /opt/
+cd /opt/rfid-headless
+chmod +x run-rfid-headless.sh lib/native/aarch64/*.sh lib/native/aarch64/*.so*
 
 # Direct startup using run script
-./run-raspi-inventory.sh
+./run-rfid-headless.sh
 
 # Custom debounce (5 seconds) and scan cycle interval (200 ms)
-./run-raspi-inventory.sh -c inventory.xml --debounce 5000 --sleep 200
+./run-rfid-headless.sh -c inventory.xml --debounce 5000 --sleep 200
 ```
 
 To install as a persistent background `systemd` service:
 
 ```bash
-sudo cp raspi-inventory.service /etc/systemd/system/
+sudo cp rfid-headless.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable raspi-inventory.service
-sudo systemctl start raspi-inventory.service
+sudo systemctl enable rfid-headless.service
+sudo systemctl start rfid-headless.service
 ```

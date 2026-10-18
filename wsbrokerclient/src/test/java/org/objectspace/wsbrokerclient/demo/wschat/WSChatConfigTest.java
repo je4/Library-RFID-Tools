@@ -13,9 +13,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class WSChatConfigTest {
 
     @Test
-    @DisplayName("Test loading wschat.xml configuration from project root")
+    @DisplayName("Test loading wschat.xml configuration from project root or module directory")
     void testLoadWSChatXml() throws Exception {
         File xmlFile = new File("wschat.xml");
+        if (!xmlFile.exists()) {
+            xmlFile = new File("wsbrokerclient/wschat.xml");
+        }
         if (!xmlFile.exists()) {
             xmlFile = new File("../wschat.xml");
         }
@@ -23,7 +26,7 @@ public class WSChatConfigTest {
 
         WSChatConfig config = WSChatConfig.load(xmlFile);
 
-        assertThat(config.getName()).isEqualTo("test01");
+        assertThat(config.getName()).isEqualTo("test-java");
         assertThat(config.getWsbroker()).isEqualTo("https://localhost:8765");
         assertThat(config.getChannels()).containsExactly("all", "intern");
         assertThat(config.getTheme()).isEqualTo("system");
@@ -36,7 +39,7 @@ public class WSChatConfigTest {
         assertThat(config.getClientTls().getVault().getBaseUrl()).isEqualTo("https://localhost:8759/api/v1");
         assertThat(config.getClientTls().getVault().getParentToken()).isEqualTo("pa.22f09dfd1cbfbe9f.c17b29cb2b730533");
         assertThat(config.getClientTls().getVault().getTokenType()).isEqualTo("client_cert");
-        assertThat(config.getClientTls().getVault().getUris()).contains("wsbroker:client:test01", "wsbroker:channel:all", "wsbroker:channel:intern");
+        assertThat(config.getClientTls().getVault().getUris()).contains("wsbroker:client:test-java", "wsbroker:channel:all", "wsbroker:channel:intern");
     }
 
     @Test

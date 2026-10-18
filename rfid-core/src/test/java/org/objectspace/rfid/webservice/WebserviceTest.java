@@ -486,7 +486,7 @@ public class WebserviceTest {
     @DisplayName("Test inventory.xml configuration files contain clientId and updated targetUrl")
     public void testInventoryXmlFilesConfiguration() throws Exception {
         java.io.File[] configFiles = new java.io.File[] {
-                new java.io.File("raspi-inventory/inventory.xml"),
+                new java.io.File("rfid-headless/inventory.xml"),
                 new java.io.File("rfid-inventory/inventory.xml"),
                 new java.io.File("inventory.xml")
         };

@@ -1,0 +1,18 @@
+[Unit]
+Description=RFID Headless Inventory Service
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/rfid-headless
+ExecStart=/opt/rfid-headless/run-rfid-headless.sh -c /opt/rfid-headless/inventory.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

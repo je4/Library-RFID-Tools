@@ -49,10 +49,15 @@ public class WSChatConfig {
     public static WSChatConfig load(String filePath) throws Exception {
         File file = new File(filePath != null && !filePath.isBlank() ? filePath : "wschat.xml");
         if (!file.exists()) {
-            // Check in parent or resources if running in subfolder
+            // Check in parent, subfolder, or resources
             File candidate = new File("../" + file.getName());
             if (candidate.exists()) {
                 file = candidate;
+            } else {
+                File subCandidate = new File("wsbrokerclient/" + file.getName());
+                if (subCandidate.exists()) {
+                    file = subCandidate;
+                }
             }
         }
         if (!file.exists()) {
