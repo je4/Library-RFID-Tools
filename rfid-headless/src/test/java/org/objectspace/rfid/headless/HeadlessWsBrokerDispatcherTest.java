@@ -8,6 +8,9 @@ import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.config.LoaderType;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.core.TagScanProcessor;
+import org.objectspace.rfid.headless.payload.BaseRfidPayload;
+import org.objectspace.rfid.headless.payload.TagReadPayload;
+import org.objectspace.rfid.headless.payload.TagsClearedPayload;
 import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
@@ -117,6 +120,7 @@ public class HeadlessWsBrokerDispatcherTest {
             assertEquals("rfid-station-1", evt.getSource());
             assertEquals("message", evt.getType());
             assertNotNull(evt.getData());
+            assertEquals("tag_read", evt.getData().get("event").asText());
             assertTrue(evt.getData().has("uid"));
             assertEquals("E004015099887766", evt.getData().get("uid").asText());
             assertEquals("BOOK-12345", evt.getData().get("itemId").asText());
@@ -278,9 +282,231 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(2, wsEvents.size(), "WSBroker events should have been sent to 2 channels");
         assertEquals("all", wsEvents.get(0).getTarget());
         assertEquals("intern", wsEvents.get(1).getTarget());
+        assertEquals("tag_read", wsEvents.get(0).getData().get("event").asText());
         assertEquals("ITEM-42", wsEvents.get(0).getData().get("itemId").asText());
         assertEquals("UID-42", wsEvents.get(0).getData().get("uid").asText());
 
         callback.close();
+    }
+
+    @Test
+    @DisplayName("Test dispatchEmpty sends tags_cleared Event to all configured channels")
+    void testDispatchEmptySendsToAllChannels() {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-station-1");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1",
+                "https://localhost:8765",
+                List.of("all", "station-1"),
+                null,
+                mockClient
+        );
+
+        assertTrue(dispatcher.isActive());
+
+        dispatcher.dispatchEmpty("Session-99", 1234567890L, "Station-Client-1");
+
+        assertEquals(2, sentEvents.size(), "Should have dispatched cleared event to both channels");
+
+        for (Event evt : sentEvents) {
+            assertEquals("rfid-station-1", evt.getSource());
+            assertEquals("message", evt.getType());
+            assertNotNull(evt.getData());
+            assertEquals("tags_cleared", evt.getData().get("event").asText());
+            assertEquals("empty", evt.getData().get("status").asText());
+            assertEquals(0, evt.getData().get("totalTags").asInt());
+            assertEquals("Session-99", evt.getData().get("session").asText());
+            assertEquals(1234567890L, evt.getData().get("timestamp").asLong());
+            assertEquals("Station-Client-1", evt.getData().get("clientId").asText());
+            assertTrue(evt.getMessage().contains("[READER CLEARED]"));
+        }
+
+        assertEquals("all", sentEvents.get(0).getTarget());
+        assertEquals("station-1", sentEvents.get(1).getTarget());
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test HeadlessReaderCallback dispatches empty event on edge transition (tags present -> no tags)")
+    void testCallbackDispatchesEmptyOnEdgeTransition() throws Exception {
+        List<Event> wsEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("test-edge-reader");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                wsEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher wsDispatcher = new HeadlessWsBrokerDispatcher(
+                "test-edge-reader",
+                "https://localhost:8765",
+                List.of("all"),
+                null,
+                mockClient
+        );
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, wsDispatcher, 3000L);
+
+        // 1. Initial state: empty() should not dispatch event if no tags were active
+        assertFalse(callback.hasActiveTags());
+        callback.empty();
+        assertEquals(0, callback.getClearedEvents());
+        assertEquals(0, wsEvents.size());
+
+        // 2. Tag placed on antenna -> doIt called
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "ITEM-100", "DE", "DE-101", new ArrayList<>());
+        callback.doIt(1, 1, "NXP", "SLIX", "UID-100", model.getBlock(32), 4);
+
+        assertTrue(callback.hasActiveTags());
+        assertEquals(1, wsEvents.size(), "Should have 1 tag read event");
+        assertEquals("tag_read", wsEvents.get(0).getData().get("event").asText());
+        assertEquals("UID-100", wsEvents.get(0).getData().get("uid").asText());
+
+        // 3. Tag removed from antenna -> empty() called
+        callback.empty();
+        assertFalse(callback.hasActiveTags());
+        assertEquals(1, callback.getClearedEvents());
+        assertEquals(2, wsEvents.size(), "Should have received 1 tag read + 1 cleared event");
+        assertEquals("tags_cleared", wsEvents.get(1).getData().get("event").asText());
+
+        // 4. Repeated empty() cycles while reader remains empty -> must NOT send duplicate cleared events
+        callback.empty();
+        callback.empty();
+        assertEquals(1, callback.getClearedEvents());
+        assertEquals(2, wsEvents.size());
+
+        // 5. Place tag again and remove again -> should send another cleared event
+        callback.doIt(1, 1, "NXP", "SLIX", "UID-101", model.getBlock(32), 4);
+        assertTrue(callback.hasActiveTags());
+        assertEquals(3, wsEvents.size());
+
+        callback.empty();
+        assertFalse(callback.hasActiveTags());
+        assertEquals(2, callback.getClearedEvents());
+        assertEquals(4, wsEvents.size());
+        assertEquals("tags_cleared", wsEvents.get(3).getData().get("event").asText());
+
+        callback.close();
+    }
+
+    @Test
+    @DisplayName("Test polymorphic dispatch with BaseRfidPayload instances")
+    void testPolymorphicDispatch() {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-station-1");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1",
+                "https://localhost:8765",
+                List.of("ch1"),
+                null,
+                mockClient
+        );
+
+        TagReadPayload tagPayload = new TagReadPayload(
+                "UID-999", "ITEM-999", "AABBCC", "DE-101", "DE",
+                true, "SLIX2", "Session-Poly", 1000L, "Station-1",
+                4, 1, 0, 1
+        );
+
+        TagsClearedPayload clearedPayload = new TagsClearedPayload("Session-Poly", 2000L, "Station-1");
+
+        // Polymorphic dispatch via BaseRfidPayload reference
+        BaseRfidPayload p1 = tagPayload;
+        BaseRfidPayload p2 = clearedPayload;
+
+        dispatcher.dispatch(p1);
+        dispatcher.dispatch(p2);
+
+        assertEquals(2, sentEvents.size());
+
+        Event e1 = sentEvents.get(0);
+        assertEquals("tag_read", e1.getData().get("event").asText());
+        assertEquals("UID-999", e1.getData().get("uid").asText());
+        assertEquals("ITEM-999", e1.getData().get("itemId").asText());
+        assertEquals(4, e1.getData().get("parts").asInt());
+        assertEquals(1, e1.getData().get("partNo").asInt());
+        assertEquals(0, e1.getData().get("usageType").asInt());
+        assertEquals(1, e1.getData().get("version").asInt());
+        assertTrue(e1.getMessage().contains("[TAG READ]"));
+
+        Event e2 = sentEvents.get(1);
+        assertEquals("tags_cleared", e2.getData().get("event").asText());
+        assertEquals("empty", e2.getData().get("status").asText());
+        assertEquals(0, e2.getData().get("totalTags").asInt());
+        assertTrue(e2.getMessage().contains("[READER CLEARED]"));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test TagReadPayload and TagsClearedPayload model properties and summary messages")
+    void testPayloadModelAndSummary() {
+        TagReadPayload tagPayload = new TagReadPayload(
+                "UID-1", "ITEM-1", "HEX1", "ISIL1", "DE",
+                true, "TagType", "Sess1", 12345L, "Client1",
+                null
+        );
+
+        assertEquals("tag_read", tagPayload.getEvent());
+        assertEquals("UID-1", tagPayload.getUid());
+        assertEquals("ITEM-1", tagPayload.getItemId());
+        assertEquals("HEX1", tagPayload.getRaw());
+        assertEquals("ISIL1", tagPayload.getIsil());
+        assertEquals("DE", tagPayload.getCountry());
+        assertTrue(tagPayload.isCrcOk());
+        assertTrue(tagPayload.isCrcValid());
+        assertEquals("OK", tagPayload.getCrc());
+        assertEquals("TagType", tagPayload.getTagName());
+        assertEquals("Sess1", tagPayload.getSession());
+        assertEquals(12345L, tagPayload.getTimestamp());
+        assertEquals("Client1", tagPayload.getClientId());
+        assertNull(tagPayload.getParts());
+        assertTrue(tagPayload.getSummaryMessage().contains("UID: UID-1"));
+
+        TagsClearedPayload clearedPayload = new TagsClearedPayload("Sess1", 12346L, "Client1");
+        assertEquals("tags_cleared", clearedPayload.getEvent());
+        assertEquals("empty", clearedPayload.getStatus());
+        assertEquals(0, clearedPayload.getTotalTags());
+        assertEquals("Sess1", clearedPayload.getSession());
+        assertEquals(12346L, clearedPayload.getTimestamp());
+        assertEquals("Client1", clearedPayload.getClientId());
+        assertTrue(clearedPayload.getSummaryMessage().contains("[READER CLEARED]"));
     }
 }

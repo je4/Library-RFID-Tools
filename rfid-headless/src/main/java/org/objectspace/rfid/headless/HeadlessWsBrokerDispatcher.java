@@ -12,6 +12,9 @@ import org.objectspace.certmanager.CertManager;
 import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.loader.CertLoader;
 import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.headless.payload.BaseRfidPayload;
+import org.objectspace.rfid.headless.payload.TagReadPayload;
+import org.objectspace.rfid.headless.payload.TagsClearedPayload;
 import org.objectspace.wsbrokerclient.WSBroker;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.config.WSClientConfig;
@@ -138,52 +141,60 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	}
 
 	/**
+	 * Dispatches an RFID event payload to all configured WSBroker channels.
+	 */
+	public void dispatch(BaseRfidPayload payload) {
+		if (!active || client == null || channels.isEmpty() || payload == null) {
+			return;
+		}
+
+		String summaryMsg = payload.getSummaryMessage();
+
+		for (String channel : channels) {
+			try {
+				Event event = Event.createMessage(clientName, channel, payload);
+				if (summaryMsg != null && !summaryMsg.isBlank()) {
+					event.setMessage(summaryMsg);
+				}
+				client.send(event).exceptionally(ex -> {
+					logger.debug("Failed to dispatch to channel #{}: {}", channel, ex.getMessage());
+					return null;
+				});
+				logger.debug("[WSBroker] Dispatched {} to channel #{}", payload.getEvent(), channel);
+			} catch (Exception e) {
+				logger.warn("[WSBroker] Failed to send {} to channel #{}: {}", payload.getEvent(), channel, e.getMessage());
+			}
+		}
+	}
+
+	/**
+	 * Dispatches a scanned RFID tag payload to all configured WSBroker channels.
+	 */
+	public void dispatchTag(TagReadPayload payload) {
+		dispatch(payload);
+	}
+
+	/**
 	 * Dispatches a scanned RFID tag to all configured WSBroker channels.
 	 */
 	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
 							boolean crcOk, String tagName, String sessionName, long timestamp,
 							String clientId, FinnishDataModel metadata) {
-		if (!active || client == null || channels.isEmpty()) {
-			return;
-		}
+		dispatch(new TagReadPayload(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata));
+	}
 
-		Map<String, Object> payload = new LinkedHashMap<>();
-		payload.put("uid", uid != null ? uid : "");
-		payload.put("itemId", itemId != null ? itemId : "empty");
-		payload.put("isil", isil != null ? isil : "");
-		payload.put("country", country != null ? country : "");
-		payload.put("crcOk", crcOk);
-		payload.put("isCrcValid", crcOk);
-		payload.put("crc", crcOk ? "OK" : "ERROR");
-		payload.put("tagName", tagName != null ? tagName : "");
-		payload.put("raw", rawHex != null ? rawHex : "");
-		payload.put("session", sessionName != null ? sessionName : "");
-		payload.put("timestamp", timestamp);
-		payload.put("clientId", clientId != null ? clientId : "");
+	/**
+	 * Dispatches a reader cleared payload to all configured WSBroker channels.
+	 */
+	public void dispatchEmpty(TagsClearedPayload payload) {
+		dispatch(payload);
+	}
 
-		if (metadata != null && !metadata.isEmpty()) {
-			payload.put("parts", metadata.getPartsInItem());
-			payload.put("partNo", metadata.getPartNumber());
-			payload.put("usageType", metadata.getTypeOfUsage());
-			payload.put("version", metadata.getVersion());
-		}
-
-		String summaryMsg = String.format("[TAG READ] UID: %s | ItemID: %s | ISIL: %s | Country: %s | CRC: %s",
-				uid, itemId, isil, country, (crcOk ? "OK" : "ERROR"));
-
-		for (String channel : channels) {
-			try {
-				Event event = Event.createMessage(clientName, channel, payload);
-				event.setMessage(summaryMsg);
-				client.send(event).exceptionally(ex -> {
-					logger.debug("Failed to dispatch tag to channel #{}: {}", channel, ex.getMessage());
-					return null;
-				});
-				logger.debug("[WSBroker] Dispatched UID {} to channel #{}", uid, channel);
-			} catch (Exception e) {
-				logger.warn("[WSBroker] Failed to send tag read to channel #{}: {}", channel, e.getMessage());
-			}
-		}
+	/**
+	 * Dispatches a reader cleared / all tags removed event to all configured WSBroker channels.
+	 */
+	public void dispatchEmpty(String sessionName, long timestamp, String clientId) {
+		dispatch(new TagsClearedPayload(sessionName, timestamp, clientId));
 	}
 
 	public boolean isActive() {

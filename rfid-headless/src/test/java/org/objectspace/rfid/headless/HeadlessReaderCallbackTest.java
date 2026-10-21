@@ -174,12 +174,31 @@ public class HeadlessReaderCallbackTest {
     }
 
     @Test
-    @DisplayName("Test empty callback method executes without exception")
-    public void testEmptyCallback() {
+    @DisplayName("Test empty callback method executes without exception and tracks edge transitions")
+    public void testEmptyCallback() throws Exception {
         BaseConfiguration cfg = new BaseConfiguration();
         TagScanProcessor processor = new TagScanProcessor(cfg);
         HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
 
+        // Initially no active tags
+        assertFalse(callback.hasActiveTags());
         assertDoesNotThrow(callback::empty);
+        assertEquals(0, callback.getClearedEvents());
+
+        // Scan a tag
+        FinnishDataModel model = new FinnishDataModel();
+        callback.doIt(1, 1, "NXP", "SLIX", "UID-TEST", model.getBlock(32), 4);
+        assertTrue(callback.hasActiveTags());
+
+        // Empty field
+        callback.empty();
+        assertFalse(callback.hasActiveTags());
+        assertEquals(1, callback.getClearedEvents());
+
+        // Subsequent empty calls while field remains empty
+        callback.empty();
+        assertEquals(1, callback.getClearedEvents());
+
+        callback.close();
     }
 }

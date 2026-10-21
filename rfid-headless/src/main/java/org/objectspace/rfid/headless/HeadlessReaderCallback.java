@@ -2,6 +2,7 @@ package org.objectspace.rfid.headless;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.TagCallback;
@@ -29,6 +30,8 @@ public class HeadlessReaderCallback implements TagCallback {
 	private final AtomicLong totalScans = new AtomicLong(0);
 	private final AtomicLong dispatchedScans = new AtomicLong(0);
 	private final AtomicLong debouncedScans = new AtomicLong(0);
+	private final AtomicBoolean hasActiveTags = new AtomicBoolean(false);
+	private final AtomicLong clearedEvents = new AtomicLong(0);
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, long debounceMillis) {
 		this(tagScanProcessor, null, debounceMillis);
@@ -46,6 +49,7 @@ public class HeadlessReaderCallback implements TagCallback {
 	@Override
 	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
 			long blockSize) throws Exception {
+		hasActiveTags.set(true);
 		totalScans.incrementAndGet();
 
 		long now = System.currentTimeMillis();
@@ -153,7 +157,22 @@ public class HeadlessReaderCallback implements TagCallback {
 
 	@Override
 	public void empty() {
-		// Called when no tags are detected in the reader field
+		if (hasActiveTags.compareAndSet(true, false)) {
+			clearedEvents.incrementAndGet();
+			long now = System.currentTimeMillis();
+			logger.info("[READER CLEARED] All RFID tags removed from reader field");
+
+			if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
+				try {
+					String clientId = (tagScanProcessor != null && tagScanProcessor.getWebserviceConfig() != null)
+							? tagScanProcessor.getWebserviceConfig().getClientId()
+							: "";
+					wsBrokerDispatcher.dispatchEmpty(sessionName, now, clientId);
+				} catch (Exception e) {
+					logger.error("[WSBroker Exception] Failed to dispatch reader cleared event: {}", e.getMessage(), e);
+				}
+			}
+		}
 	}
 
 	@Override
@@ -188,6 +207,15 @@ public class HeadlessReaderCallback implements TagCallback {
 
 	public void clearCache() {
 		lastSeenMap.clear();
+		hasActiveTags.set(false);
+	}
+
+	public boolean hasActiveTags() {
+		return hasActiveTags.get();
+	}
+
+	public long getClearedEvents() {
+		return clearedEvents.get();
 	}
 
 	public long getTotalScans() {
