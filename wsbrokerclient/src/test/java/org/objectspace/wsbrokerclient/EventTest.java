@@ -122,4 +122,41 @@ class EventTest {
         assertThat(legacyNtp.getEventType()).isEqualTo(EventType.CLIENT_NTP_QUERY);
         assertThat(legacyNtp.isType(EventType.CLIENT_NTP_QUERY)).isTrue();
     }
+
+    @Test
+    @DisplayName("Test Event with id, channel, and unknown fields from WSBroker")
+    void testEventWithIdChannelAndUnknownFields() {
+        String json = "{" +
+                "\"id\":\"msg-98765\"," +
+                "\"channel\":\"intern\"," +
+                "\"time\":\"2026-10-23T12:00:00Z\"," +
+                "\"source\":\"rfid:reader:01\"," +
+                "\"target\":\"all\"," +
+                "\"type\":\"message\"," +
+                "\"token\":\"tok-abc\"," +
+                "\"unknown_field_123\":true," +
+                "\"extra_future_property\":\"ignored\"" +
+                "}";
+
+        Event event = Event.fromJson(json);
+        assertThat(event.getId()).isEqualTo("msg-98765");
+        assertThat(event.getChannel()).isEqualTo("intern");
+        assertThat(event.getSource()).isEqualTo("rfid:reader:01");
+        assertThat(event.getTarget()).isEqualTo("all");
+        assertThat(event.getType()).isEqualTo("message");
+        assertThat(event.getToken()).isEqualTo("tok-abc");
+
+        Event built = Event.builder()
+                .id("custom-id")
+                .channel("general")
+                .source("sensor-2")
+                .target("all")
+                .type(EventType.CLIENT_MESSAGE)
+                .build();
+
+        assertThat(built.getId()).isEqualTo("custom-id");
+        assertThat(built.getChannel()).isEqualTo("general");
+        assertThat(built.toJson()).contains("\"id\":\"custom-id\"");
+        assertThat(built.toJson()).contains("\"channel\":\"general\"");
+    }
 }

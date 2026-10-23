@@ -194,7 +194,16 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
 							boolean crcOk, String tagName, String sessionName, long timestamp,
 							String clientId, FinnishDataModel metadata) {
-		dispatch(new TagReadPayload(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata));
+		dispatchTag(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata, null);
+	}
+
+	/**
+	 * Dispatches a scanned RFID tag with AFI to all configured WSBroker channels.
+	 */
+	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
+							boolean crcOk, String tagName, String sessionName, long timestamp,
+							String clientId, FinnishDataModel metadata, String afi) {
+		dispatch(new TagReadPayload(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata, afi));
 	}
 
 	/**

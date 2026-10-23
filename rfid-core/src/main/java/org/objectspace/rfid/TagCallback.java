@@ -52,10 +52,11 @@ public interface TagCallback {
 	 * @param UID tag identifier
 	 * @param data raw tag data
 	 * @param blockSize minimum number of bytes, which can be read or written
+	 * @param afi Application Family Identifier (AFI hex string, e.g. "07", or null if not available)
 	 * @return data block, if new data should be written onto the tag, null otherwise
 	 * @throws Exception
 	 */
-	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data, long blockSize)
+	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data, long blockSize, String afi)
 			throws Exception;
 
 	/**

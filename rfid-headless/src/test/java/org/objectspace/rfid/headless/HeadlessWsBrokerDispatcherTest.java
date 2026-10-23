@@ -419,6 +419,61 @@ public class HeadlessWsBrokerDispatcherTest {
     }
 
     @Test
+    @DisplayName("Test dispatchTag with AFI broadcasts rfid:tag_read containing afi to all channels")
+    void testDispatchTagWithAfiToMultipleChannels() {
+        List<Event> sentEvents = new ArrayList<>();
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("test-station");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "test-station",
+                "https://localhost:8765",
+                List.of("all", "channel-1"),
+                null,
+                mockClient
+        );
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-AFI-1", "CH", "001596-0", new ArrayList<>());
+
+        dispatcher.dispatchTag(
+                "E004010099887766",
+                "BOOK-AFI-1",
+                "01020304",
+                "001596-0",
+                "CH",
+                true,
+                "ISO 15693 : NXP I-Code SLIX",
+                "Session-AFI",
+                System.currentTimeMillis(),
+                "Client-1",
+                model,
+                "07"
+        );
+
+        assertEquals(2, sentEvents.size(), "Should dispatch to both configured channels");
+
+        for (Event e : sentEvents) {
+            assertEquals("rfid:tag_read", e.getData().get("event").asText());
+            assertEquals("E004010099887766", e.getData().get("uid").asText());
+            assertEquals("BOOK-AFI-1", e.getData().get("itemId").asText());
+            assertEquals("07", e.getData().get("afi").asText());
+            assertTrue(e.getMessage().contains("AFI: 07"));
+        }
+
+        dispatcher.close();
+    }
+
+    @Test
     @DisplayName("Test polymorphic dispatch with BaseRfidPayload instances")
     void testPolymorphicDispatch() {
         List<Event> sentEvents = new CopyOnWriteArrayList<>();
@@ -502,7 +557,25 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(12345L, tagPayload.getTimestamp());
         assertEquals("Client1", tagPayload.getClientId());
         assertNull(tagPayload.getParts());
+        assertNull(tagPayload.getAfi());
         assertTrue(tagPayload.getSummaryMessage().contains("UID: UID-1"));
+        assertFalse(tagPayload.getSummaryMessage().contains("AFI:"));
+
+        Event eNoAfi = Event.createMessage("Client1", "ch1", tagPayload);
+        assertFalse(eNoAfi.getData().has("afi"), "Null AFI should be omitted from JSON");
+
+        // With AFI
+        TagReadPayload tagPayloadWithAfi = new TagReadPayload(
+                "UID-1", "ITEM-1", "HEX1", "ISIL1", "DE",
+                true, "TagType", "Sess1", 12345L, "Client1",
+                (FinnishDataModel) null, "07"
+        );
+        assertEquals("07", tagPayloadWithAfi.getAfi());
+        assertTrue(tagPayloadWithAfi.getSummaryMessage().contains("AFI: 07"));
+
+        Event eWithAfi = Event.createMessage("Client1", "ch1", tagPayloadWithAfi);
+        assertTrue(eWithAfi.getData().has("afi"), "AFI should be present in JSON when set");
+        assertEquals("07", eWithAfi.getData().get("afi").asText());
 
         TagsClearedPayload clearedPayload = new TagsClearedPayload("Sess1", 12346L, "Client1");
         assertEquals("rfid:tags_cleared", clearedPayload.getEvent());

@@ -52,9 +52,18 @@ public class TagReadPayload extends BaseRfidPayload {
 	@JsonProperty("version")
 	private Integer version;
 
+	@JsonProperty("afi")
+	private final String afi;
+
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, FinnishDataModel metadata) {
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata, null);
+	}
+
+	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
+						  boolean crcOk, String tagName, String sessionName, long timestamp,
+						  String clientId, FinnishDataModel metadata, String afi) {
 		super(EVENT_NAME, sessionName, timestamp, clientId);
 		this.uid = uid != null ? uid : "";
 		this.itemId = itemId != null ? itemId : "empty";
@@ -65,6 +74,7 @@ public class TagReadPayload extends BaseRfidPayload {
 		this.crc = crcOk ? "OK" : "ERROR";
 		this.tagName = tagName != null ? tagName : "";
 		this.raw = rawHex != null ? rawHex : "";
+		this.afi = (afi != null && !afi.trim().isEmpty()) ? afi.trim() : null;
 
 		if (metadata != null && !metadata.isEmpty()) {
 			this.parts = metadata.getPartsInItem();
@@ -77,6 +87,12 @@ public class TagReadPayload extends BaseRfidPayload {
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, Integer parts, Integer partNo, Integer usageType, Integer version) {
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, parts, partNo, usageType, version, null);
+	}
+
+	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
+						  boolean crcOk, String tagName, String sessionName, long timestamp,
+						  String clientId, Integer parts, Integer partNo, Integer usageType, Integer version, String afi) {
 		super(EVENT_NAME, sessionName, timestamp, clientId);
 		this.uid = uid != null ? uid : "";
 		this.itemId = itemId != null ? itemId : "empty";
@@ -91,6 +107,7 @@ public class TagReadPayload extends BaseRfidPayload {
 		this.partNo = partNo;
 		this.usageType = usageType;
 		this.version = version;
+		this.afi = (afi != null && !afi.trim().isEmpty()) ? afi.trim() : null;
 	}
 
 	public String getUid() {
@@ -145,10 +162,18 @@ public class TagReadPayload extends BaseRfidPayload {
 		return version;
 	}
 
+	public String getAfi() {
+		return afi;
+	}
+
 	@JsonIgnore
 	@Override
 	public String getSummaryMessage() {
-		return String.format("[TAG READ] UID: %s | ItemID: %s | ISIL: %s | Country: %s | CRC: %s",
+		String base = String.format("[TAG READ] UID: %s | ItemID: %s | ISIL: %s | Country: %s | CRC: %s",
 				uid, itemId, isil, country, (crcOk ? "OK" : "ERROR"));
+		if (afi != null) {
+			base += " | AFI: " + afi;
+		}
+		return base;
 	}
 }

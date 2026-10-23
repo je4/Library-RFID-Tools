@@ -2,10 +2,12 @@ package org.objectspace.wsbrokerclient.event;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -21,9 +23,18 @@ import java.util.UUID;
  * Standard event message envelope transferred between clients and the WSBroker.
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Event {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    @JsonProperty("id")
+    private String id;
+
+    @JsonProperty("channel")
+    private String channel;
 
     @JsonProperty("time")
     @JsonFormat(shape = JsonFormat.Shape.STRING)
@@ -64,6 +75,24 @@ public class Event {
         this.type = type;
         this.source = source;
         this.target = target;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public Event setId(String id) {
+        this.id = id;
+        return this;
+    }
+
+    public String getChannel() {
+        return channel;
+    }
+
+    public Event setChannel(String channel) {
+        this.channel = channel;
+        return this;
     }
 
     public Instant getTime() {
@@ -380,7 +409,9 @@ public class Event {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof Event event)) return false;
-        return Objects.equals(time, event.time) &&
+        return Objects.equals(id, event.id) &&
+                Objects.equals(channel, event.channel) &&
+                Objects.equals(time, event.time) &&
                 Objects.equals(source, event.source) &&
                 Objects.equals(target, event.target) &&
                 Objects.equals(type, event.type) &&
@@ -394,13 +425,15 @@ public class Event {
 
     @Override
     public int hashCode() {
-        return Objects.hash(time, source, target, type, token, data, message, error, actions, subprotocols);
+        return Objects.hash(id, channel, time, source, target, type, token, data, message, error, actions, subprotocols);
     }
 
     @Override
     public String toString() {
         return "Event{" +
-                "time=" + time +
+                "id='" + id + '\'' +
+                ", channel='" + channel + '\'' +
+                ", time=" + time +
                 ", source='" + source + '\'' +
                 ", target='" + target + '\'' +
                 ", type='" + type + '\'' +
@@ -413,6 +446,16 @@ public class Event {
 
     public static class Builder {
         private final Event event = new Event();
+
+        public Builder id(String id) {
+            event.setId(id);
+            return this;
+        }
+
+        public Builder channel(String channel) {
+            event.setChannel(channel);
+            return this;
+        }
 
         public Builder time(Instant time) {
             event.setTime(time);

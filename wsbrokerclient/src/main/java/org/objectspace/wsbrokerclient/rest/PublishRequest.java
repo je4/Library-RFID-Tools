@@ -1,7 +1,9 @@
 package org.objectspace.wsbrokerclient.rest;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -10,9 +12,15 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
  * Request payload for publishing events via the WSBroker REST API.
  */
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PublishRequest {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    @JsonProperty("id")
+    private String id;
 
     @JsonProperty("source")
     private String source;
@@ -39,6 +47,15 @@ public class PublishRequest {
         this.source = source;
         this.target = target;
         this.type = type;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public PublishRequest setId(String id) {
+        this.id = id;
+        return this;
     }
 
     public String getSource() {

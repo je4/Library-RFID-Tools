@@ -73,7 +73,7 @@ WebSocket settings are defined inside the `<wsbroker>` element of `inventory.xml
         <active>true</active>
 
         <!-- Unique client name used for WSBroker authentication and routing -->
-        <name>rfid-reader-station-01</name>
+        <name>rfid:reader:01</name>
 
         <!-- Target WSBroker endpoint URL (ws://, wss://, http://, https://) -->
         <url><![CDATA[https://localhost:8765]]></url>
@@ -97,7 +97,7 @@ WebSocket settings are defined inside the `<wsbroker>` element of `inventory.xml
                 </tokenpolicies>
                 <certtype>client_cert</certtype>
                 <uris>
-                    <uri>wsbroker:client:rfid-reader-station-01</uri>
+                    <uri>wsbroker:client:rfid:reader:01</uri>
                     <uri>wsbroker:channel:all</uri>
                     <uri>wsbroker:channel:intern</uri>
                 </uris>
@@ -131,8 +131,10 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 
 ```json
 {
+  "id": "optional-message-id",
+  "channel": "intern",
   "time": "2026-10-23T12:00:00Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
   "token": "optional-correlation-token-12345",
@@ -141,6 +143,8 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 ```
 
 ### Envelope Fields:
+* **`id`** *(string, optional)*: Unique message identifier assigned by WSBroker.
+* **`channel`** *(string, optional)*: Channel name through which the message was routed/broadcast.
 * **`time`** *(string, ISO-8601)*: Timestamp when the message was generated.
 * **`source`** *(string)*: Unique client identifier of the sender.
 * **`target`** *(string)*: Target client identifier or channel name (`"all"`, `"intern"`, or specific client name).
@@ -158,7 +162,7 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 ```json
 {
   "time": "2026-10-23T12:00:01.123Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
   "data": {
@@ -176,9 +180,10 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
     "partNo": 1,
     "usageType": 1,
     "version": 1,
+    "afi": "07",
     "session": "main-scan",
     "timestamp": 1792756801123,
-    "clientId": "rfid-reader-station-01"
+    "clientId": "rfid:reader:01"
   }
 }
 ```
@@ -199,6 +204,7 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 | `partNo` | integer | Current part number (1-based index). |
 | `usageType` | integer | Type of usage as defined in ISO 28560-2 (e.g. 1 = circulating). |
 | `version` | integer | Data model format version (typically 1). |
+| `afi` | string | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). Optional / omitted (`null`) if transponder system information is not accessible or not supported. |
 | `timestamp` | long | Epoch millisecond timestamp of the scan event. |
 | `clientId` | string | Identifier of the reader client that captured the tag. |
 
@@ -217,7 +223,7 @@ To query device details (Device ID, Device Type, and initial initialization star
 {
   "time": "2026-10-23T12:00:02.000Z",
   "source": "dashboard-ui",
-  "target": "rfid-reader-station-01",
+  "target": "rfid:reader:01",
   "type": "message",
   "token": "req-98765-meta",
   "data": {
@@ -238,7 +244,7 @@ To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID t
 {
   "time": "2026-10-23T12:00:03.000Z",
   "source": "dashboard-ui",
-  "target": "rfid-reader-station-01",
+  "target": "rfid:reader:01",
   "type": "message",
   "token": "req-write-001",
   "data": {
@@ -279,7 +285,7 @@ To write or toggle the Application Family Identifier (AFI byte) independently (e
 {
   "time": "2026-10-23T12:00:04.000Z",
   "source": "dashboard-ui",
-  "target": "rfid-reader-station-01",
+  "target": "rfid:reader:01",
   "type": "message",
   "token": "req-afi-002",
   "data": {
@@ -316,7 +322,7 @@ The dispatcher accepts multiple command variations for high interoperability acr
 * **Write AFI Events**:
   * `"rfid:write_afi"` / `"write_afi"`
 * **Correlation Token**: If a `token` is included in any request, the daemon returns the exact same `token` in its response message for deterministic request-reply matching.
-* **Targeting**: Requests may be addressed directly to the reader's client name (`target: "rfid-reader-station-01"`) or to a shared channel (e.g., `target: "intern"`).
+* **Targeting**: Requests may be addressed directly to the reader's client name (`target: "rfid:reader:01"`) or to a shared channel (e.g., `target: "intern"`).
 
 ---
 
@@ -329,7 +335,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
 ```json
 {
   "time": "2026-10-23T12:00:02.045Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
   "token": "req-98765-meta",
@@ -341,7 +347,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "initDescription": "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00\nSDK: Gen3 Java v7.1.0\nInterface: USB (Native Lib: libfecom.so)\nReader initialized successfully. RF Field active.",
     "session": "",
     "timestamp": 1792756802045,
-    "clientId": "rfid-reader-station-01"
+    "clientId": "rfid:reader:01"
   }
 }
 ```
@@ -353,7 +359,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
 ```json
 {
   "time": "2026-10-23T12:00:03.350Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
   "token": "req-write-001",
@@ -370,7 +376,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "afi": "07",
     "message": "Tag written successfully",
     "timestamp": 1792756803350,
-    "clientId": "rfid-reader-station-01"
+    "clientId": "rfid:reader:01"
   }
 }
 ```
@@ -379,7 +385,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
 ```json
 {
   "time": "2026-10-23T12:00:03.350Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
   "token": "req-write-001",
@@ -391,7 +397,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "message": "Tag with UID 'E004015099887766' not found in reader field",
     "error": "Tag with UID 'E004015099887766' not found in reader field",
     "timestamp": 1792756803350,
-    "clientId": "rfid-reader-station-01"
+    "clientId": "rfid:reader:01"
   }
 }
 ```
@@ -403,7 +409,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
 ```json
 {
   "time": "2026-10-23T12:00:04.280Z",
-  "source": "rfid-reader-station-01",
+  "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
   "token": "req-afi-002",
@@ -414,7 +420,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "afi": "07",
     "message": "AFI written successfully",
     "timestamp": 1792756804280,
-    "clientId": "rfid-reader-station-01"
+    "clientId": "rfid:reader:01"
   }
 }
 ```
@@ -442,7 +448,8 @@ client.onMessage(event -> {
         if ("rfid:tag_read".equals(evtType)) {
             String itemId = event.getData().path("itemId").asText();
             String uid = event.getData().path("uid").asText();
-            System.out.printf("Scanned Item: %s (UID: %s)%n", itemId, uid);
+            String afi = event.getData().hasNonNull("afi") ? event.getData().path("afi").asText() : null;
+            System.out.printf("Scanned Item: %s (UID: %s, AFI: %s)%n", itemId, uid, afi != null ? afi : "n/a");
         } else if ("rfid:write_tag_response".equals(evtType)) {
             String status = event.getData().path("status").asText();
             String uid = event.getData().path("uid").asText();
@@ -456,7 +463,7 @@ client.onMessage(event -> {
 });
 
 // 3. Send write_tag command
-Event writeTagCmd = Event.createMessage("dashboard-app", "rfid-reader-station-01", Map.of(
+Event writeTagCmd = Event.createMessage("dashboard-app", "rfid:reader:01", Map.of(
     "event", "rfid:write_tag",
     "uid", "E004015099887766",
     "itemId", "3012345678",
@@ -470,7 +477,7 @@ writeTagCmd.setToken("req-write-001");
 client.send(writeTagCmd);
 
 // 4. Send write_afi command
-Event writeAfiCmd = Event.createMessage("dashboard-app", "rfid-reader-station-01", Map.of(
+Event writeAfiCmd = Event.createMessage("dashboard-app", "rfid:reader:01", Map.of(
     "event", "rfid:write_afi",
     "uid", "E004015099887766",
     "afi", "C2"
@@ -495,12 +502,27 @@ import (
 )
 
 type Event struct {
-	Time   string          `json:"time,omitempty"`
-	Source string          `json:"source,omitempty"`
-	Target string          `json:"target,omitempty"`
-	Type   string          `json:"type,omitempty"`
-	Token  string          `json:"token,omitempty"`
-	Data   json.RawMessage `json:"data,omitempty"`
+	ID      string          `json:"id,omitempty"`
+	Channel string          `json:"channel,omitempty"`
+	Time    string          `json:"time,omitempty"`
+	Source  string          `json:"source,omitempty"`
+	Target  string          `json:"target,omitempty"`
+	Type    string          `json:"type,omitempty"`
+	Token   string          `json:"token,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
+}
+
+type TagReadEvent struct {
+	Event     string `json:"event"`
+	UID       string `json:"uid"`
+	ItemID    string `json:"itemId"`
+	ISIL      string `json:"isil"`
+	Country   string `json:"country"`
+	AFI       string `json:"afi,omitempty"`
+	CRCOk     bool   `json:"crcOk"`
+	TagName   string `json:"tagName"`
+	Timestamp int64  `json:"timestamp"`
+	ClientID  string `json:"clientId"`
 }
 
 type WriteTagResponse struct {
@@ -537,6 +559,12 @@ func HandleEvent(evt *Event) error {
 	}
 
 	switch header.Event {
+	case "rfid:tag_read":
+		var tag TagReadEvent
+		_ = json.Unmarshal(evt.Data, &tag)
+		fmt.Printf("Tag Read: ItemID=%s | UID=%s | AFI=%s | Reader=%s\n",
+			tag.ItemID, tag.UID, tag.AFI, tag.ClientID)
+
 	case "rfid:write_tag_response":
 		var resp WriteTagResponse
 		_ = json.Unmarshal(evt.Data, &resp)
@@ -577,7 +605,7 @@ ws.onopen = () => {
     ws.send(JSON.stringify({
         type: "message",
         source: "web-ui",
-        target: "rfid-reader-station-01",
+        target: "rfid:reader:01",
         token: "web-req-write-001",
         data: {
             event: "rfid:write_tag",
@@ -595,7 +623,7 @@ ws.onopen = () => {
     ws.send(JSON.stringify({
         type: "message",
         source: "web-ui",
-        target: "rfid-reader-station-01",
+        target: "rfid:reader:01",
         token: "web-req-afi-002",
         data: {
             event: "rfid:write_afi",
@@ -609,7 +637,9 @@ ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
     if (msg.type === "message" && msg.data) {
-        if (msg.data.event === "rfid:write_tag_response") {
+        if (msg.data.event === "rfid:tag_read") {
+            console.log(`Tag Read: ItemID=${msg.data.itemId}, UID=${msg.data.uid}, AFI=${msg.data.afi || 'n/a'}`);
+        } else if (msg.data.event === "rfid:write_tag_response") {
             console.log(`Write Tag [${msg.data.status}]: UID=${msg.data.uid}, Token=${msg.token}`);
         } else if (msg.data.event === "rfid:write_afi_response") {
             console.log(`Write AFI [${msg.data.status}]: UID=${msg.data.uid}, AFI=${msg.data.afi}`);

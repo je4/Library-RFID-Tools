@@ -1,14 +1,22 @@
 package org.objectspace.wsbrokerclient.rest;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Response payload returned after an event is published via the WSBroker REST API.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PublishResponse {
+
+    @JsonProperty("id")
+    private String id;
 
     @JsonProperty("target")
     private String target;
+
+    @JsonProperty("channel")
+    private String channel;
 
     @JsonProperty("type")
     private String type;
@@ -22,12 +30,28 @@ public class PublishResponse {
     public PublishResponse() {
     }
 
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
     public String getTarget() {
         return target;
     }
 
     public void setTarget(String target) {
         this.target = target;
+    }
+
+    public String getChannel() {
+        return channel;
+    }
+
+    public void setChannel(String channel) {
+        this.channel = channel;
     }
 
     public String getType() {
@@ -57,7 +81,9 @@ public class PublishResponse {
     @Override
     public String toString() {
         return "PublishResponse{" +
-                "target='" + target + '\'' +
+                "id='" + id + '\'' +
+                ", target='" + target + '\'' +
+                ", channel='" + channel + '\'' +
                 ", type='" + type + '\'' +
                 ", sent=" + sent +
                 ", subscribers=" + subscribers +

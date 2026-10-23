@@ -1,5 +1,6 @@
 package org.objectspace.wsbrokerclient.rest;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.ArrayList;
@@ -8,6 +9,7 @@ import java.util.List;
 /**
  * Describes a WSBroker channel, subscriber count, and connected clients.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ChannelInfo {
 
     @JsonProperty("name")

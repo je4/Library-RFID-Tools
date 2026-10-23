@@ -209,7 +209,22 @@ public class ISO15693Feig implements ISO15693Reader {
 						continue;
 					}
 
-					String mfrName = (tagHandler instanceof ThIso15693) ? ((ThIso15693) tagHandler).manufacturerName() : "";
+					String mfrName = "";
+					String afi = null;
+					if (tagHandler instanceof ThIso15693) {
+						ThIso15693 isoHandler = (ThIso15693) tagHandler;
+						mfrName = isoHandler.manufacturerName();
+						try {
+							ThIso15693.SystemInfo sysInfo = new ThIso15693.SystemInfo();
+							int res = isoHandler.getSystemInformation(sysInfo, false);
+							if (res == 0 && sysInfo.isValidAfi()) {
+								afi = String.format("%02X", sysInfo.afi() & 0xFF);
+							}
+						} catch (Throwable ignored) {
+							// Safe fallback: non-fatal if system info is not supported or fails
+						}
+					}
+
 					byte[] newBlock = inventoryCallback.doIt(
 						counter,
 						totalTags,
@@ -217,7 +232,8 @@ public class ISO15693Feig implements ISO15693Reader {
 						tagName,
 						tagHandler.iddToHexString(),
 						data,
-						blocksToRead
+						blocksToRead,
+						afi
 					);
 					if (newBlock != null) {
 					}

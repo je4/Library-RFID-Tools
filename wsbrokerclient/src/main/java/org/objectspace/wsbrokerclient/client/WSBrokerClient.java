@@ -2,6 +2,7 @@ package org.objectspace.wsbrokerclient.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -39,7 +40,9 @@ import java.util.function.Consumer;
 public class WSBrokerClient implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(WSBrokerClient.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final WSClientConfig config;
     private final String clientName;
@@ -730,6 +733,14 @@ public class WSBrokerClient implements AutoCloseable {
             // Channel handlers
             if (evt.getTarget() != null) {
                 List<EventHandler> handlers = channelHandlers.get(evt.getTarget());
+                if (handlers != null) {
+                    for (EventHandler h : handlers) {
+                        invokeHandler(h, evt);
+                    }
+                }
+            }
+            if (evt.getChannel() != null && !evt.getChannel().equals(evt.getTarget())) {
+                List<EventHandler> handlers = channelHandlers.get(evt.getChannel());
                 if (handlers != null) {
                     for (EventHandler h : handlers) {
                         invokeHandler(h, evt);

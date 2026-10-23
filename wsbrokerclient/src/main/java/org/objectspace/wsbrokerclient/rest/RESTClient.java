@@ -2,6 +2,7 @@ package org.objectspace.wsbrokerclient.rest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.objectspace.certmanager.CertManager;
@@ -30,7 +31,9 @@ import java.util.Objects;
 public class RESTClient implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(RESTClient.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final HttpClient httpClient;
     private final String baseURL;

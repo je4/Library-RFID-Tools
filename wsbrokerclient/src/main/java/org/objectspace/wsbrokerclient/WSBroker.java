@@ -1,5 +1,6 @@
 package org.objectspace.wsbrokerclient;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
@@ -16,7 +17,9 @@ import java.io.InputStream;
  */
 public final class WSBroker {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private WSBroker() {
     }

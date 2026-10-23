@@ -64,7 +64,7 @@ public class HeadlessReaderCallback implements TagCallback {
 
 	@Override
 	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
-			long blockSize) throws Exception {
+			long blockSize, String afi) throws Exception {
 		hasActiveTags.set(true);
 		totalScans.incrementAndGet();
 
@@ -95,8 +95,13 @@ public class HeadlessReaderCallback implements TagCallback {
 		String country = metadata.getCountryOfOwnerLib();
 		boolean crcOk = !metadata.getCRCError();
 
-		logger.info("[TAG READ] UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
-				UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
+		if (afi != null && !afi.isEmpty()) {
+			logger.info("[TAG READ] UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | AFI: {} | TagType: {}",
+					UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), afi, tagName);
+		} else {
+			logger.info("[TAG READ] UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
+					UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
+		}
 
 		// 1. Database persistence
 		if (tagScanProcessor != null && tagScanProcessor.isDatabaseConnected()) {
@@ -157,7 +162,8 @@ public class HeadlessReaderCallback implements TagCallback {
 						sessionName,
 						now,
 						clientId,
-						metadata
+						metadata,
+						afi
 				);
 			} catch (Exception e) {
 				logger.error("[WSBroker Exception] Failed to dispatch UID {}: {}", UID, e.getMessage(), e);
@@ -179,6 +185,11 @@ public class HeadlessReaderCallback implements TagCallback {
 		}
 
 		return null;
+	}
+
+	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
+			long blockSize) throws Exception {
+		return doIt(counter, elements, manufacturerName, tagName, UID, data, blockSize, null);
 	}
 
 	@Override

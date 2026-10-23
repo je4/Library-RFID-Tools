@@ -197,11 +197,11 @@ public class InventoryCallback implements TagCallback {
 	 * (non-Javadoc)
 	 * 
 	 * @see org.objectspace.rfid.TagCallback#doIt(int, int, java.lang.String,
-	 * java.lang.String, java.lang.String, byte[], long)
+	 * java.lang.String, java.lang.String, byte[], long, java.lang.String)
 	 */
 	@Override
 	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
-			long blockSize) throws Exception {
+			long blockSize, String afi) throws Exception {
 		byte[] block = null;
 
 		c2++;
@@ -216,6 +216,9 @@ public class InventoryCallback implements TagCallback {
 		String txt = "Manufacturer Name: " + manufacturerName + "\n";
 		txt += "Tag Name: " + tagName + "\n";
 		txt += "UID: " + UID + "\n";
+		if (afi != null && !afi.isEmpty()) {
+			txt += "AFI: " + afi + "\n";
+		}
 		print(txt, c1, c2);
 
 		try {
@@ -499,7 +502,12 @@ public class InventoryCallback implements TagCallback {
 		model.setValues(1, 1, 1, itemId, "CH", "ISIL-123", null);
 		byte[] data = model.getBlock(48);
 
-		return doIt(c1, c2, "NXP Semiconductors (Test)", "ISO 15693 : NXP I-Code SLIX (Test)", mockUid, data, 4);
+		return doIt(c1, c2, "NXP Semiconductors (Test)", "ISO 15693 : NXP I-Code SLIX (Test)", mockUid, data, 4, null);
+	}
+
+	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
+			long blockSize) throws Exception {
+		return doIt(counter, elements, manufacturerName, tagName, UID, data, blockSize, null);
 	}
 
 	protected AbstractConfiguration config;
