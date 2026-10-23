@@ -13,7 +13,7 @@
 5. [Inbound Commands & Queries](#5-inbound-commands--queries)
    - [Query Device Metadata (`rfid:get_device_metadata`)](#51-query-device-metadata-rfidget_device_metadata)
    - [Write Tag Data (`rfid:write_tag`)](#52-write-tag-data-rfidwrite_tag)
-   - [Write AFI Byte (`rfid:rfid_write_afi` / `rfid:write_afi`)](#53-write-afi-byte-rfidrfid_write_afi--rfidwrite_afi)
+   - [Write AFI Byte (`rfid:write_afi`)](#53-write-afi-byte-rfidwrite_afi)
    - [Supported Query & Command Formats / Aliases](#54-supported-query--command-formats--aliases)
 6. [Outbound Responses](#6-outbound-responses)
    - [Device Metadata Response (`rfid:device_metadata_response`)](#61-device-metadata-response-rfiddevice_metadata_response)
@@ -270,9 +270,9 @@ To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID t
 
 ---
 
-### 5.3 Write AFI Byte (`rfid:rfid_write_afi` / `rfid:write_afi`)
+### 5.3 Write AFI Byte (`rfid:write_afi`)
 
-To write or toggle the Application Family Identifier (AFI byte) independently (e.g. for security gate EAS check-in / check-out), send a `message` event with event `rfid:rfid_write_afi` or `rfid:write_afi`.
+To write or toggle the Application Family Identifier (AFI byte) independently (e.g. for security gate EAS check-in / check-out), send a `message` event with event `rfid:write_afi`.
 
 #### Write AFI Request JSON:
 ```json
@@ -283,7 +283,7 @@ To write or toggle the Application Family Identifier (AFI byte) independently (e
   "type": "message",
   "token": "req-afi-002",
   "data": {
-    "event": "rfid:rfid_write_afi",
+    "event": "rfid:write_afi",
     "uid": "E004015099887766",
     "afi": "07"
   }
@@ -293,7 +293,7 @@ To write or toggle the Application Family Identifier (AFI byte) independently (e
 #### Write AFI Parameters:
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `event` | string | **Yes** | Constant identifier: `"rfid:rfid_write_afi"` or `"rfid:write_afi"`. |
+| `event` | string | **Yes** | Constant identifier: `"rfid:write_afi"`. |
 | `uid` | string | Optional | Target tag UID (hex string). If omitted, writes to the tag present in reader field. |
 | `afi` | string/int | **Yes** | AFI byte value (e.g. `"07"`, `"0x07"`, `7`, `"C2"` for checked out / secured states). |
 
@@ -314,9 +314,7 @@ The dispatcher accepts multiple command variations for high interoperability acr
   * `"rfid:write_tag"` / `"write_tag"`
   * `"rfid:writetag"` / `"writetag"`
 * **Write AFI Events**:
-  * `"rfid:rfid_write_afi"` / `"rfid_write_afi"`
   * `"rfid:write_afi"` / `"write_afi"`
-  * `"rfid:set_afi"` / `"set_afi"`
 * **Correlation Token**: If a `token` is included in any request, the daemon returns the exact same `token` in its response message for deterministic request-reply matching.
 * **Targeting**: Requests may be addressed directly to the reader's client name (`target: "rfid-reader-station-01"`) or to a shared channel (e.g., `target: "intern"`).
 
@@ -471,9 +469,9 @@ Event writeTagCmd = Event.createMessage("dashboard-app", "rfid-reader-station-01
 writeTagCmd.setToken("req-write-001");
 client.send(writeTagCmd);
 
-// 4. Send rfid_write_afi command
+// 4. Send write_afi command
 Event writeAfiCmd = Event.createMessage("dashboard-app", "rfid-reader-station-01", Map.of(
-    "event", "rfid:rfid_write_afi",
+    "event", "rfid:write_afi",
     "uid", "E004015099887766",
     "afi", "C2"
 ));
@@ -600,7 +598,7 @@ ws.onopen = () => {
         target: "rfid-reader-station-01",
         token: "web-req-afi-002",
         data: {
-            event: "rfid:rfid_write_afi",
+            event: "rfid:write_afi",
             uid: "E004015099887766",
             afi: "07"
         }

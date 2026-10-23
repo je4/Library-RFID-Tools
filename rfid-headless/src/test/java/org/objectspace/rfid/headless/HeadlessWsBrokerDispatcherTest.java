@@ -800,7 +800,7 @@ public class HeadlessWsBrokerDispatcherTest {
     }
 
     @Test
-    @DisplayName("Test dispatcher handles rfid:rfid_write_afi and rfid:write_afi commands")
+    @DisplayName("Test dispatcher handles rfid:write_afi command")
     void testWriteAfiCommandSuccess() throws Exception {
         List<Event> sentEvents = new CopyOnWriteArrayList<>();
 
@@ -851,9 +851,9 @@ public class HeadlessWsBrokerDispatcherTest {
 
         dispatcher.setReader(mockReader);
 
-        // 1. Test rfid:rfid_write_afi
+        // 1. Test rfid:write_afi with hex string
         Event afiMsg1 = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:rfid_write_afi",
+                "event", "rfid:write_afi",
                 "uid", "E004015099887766",
                 "afi", "0xC2"
         ));
@@ -874,7 +874,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals("E004015099887766", reply1.getData().get("uid").asText());
         assertEquals("C2", reply1.getData().get("afi").asText());
 
-        // 2. Test rfid:write_afi
+        // 2. Test rfid:write_afi with decimal number
         sentEvents.clear();
         Event afiMsg2 = Event.createMessage("web-ui", "rfid-station-1", Map.of(
                 "event", "rfid:write_afi",

@@ -309,12 +309,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 				handleWriteTagCommand(evt, target);
 				break;
 
-			case "rfid:rfid_write_afi":
-			case "rfid_write_afi":
 			case "rfid:write_afi":
 			case "write_afi":
-			case "rfid:set_afi":
-			case "set_afi":
 				logger.info("[WSBroker] Received write_afi command '{}' from '{}'", eventName, evt.getSource());
 				handleWriteAfiCommand(evt, target);
 				break;
