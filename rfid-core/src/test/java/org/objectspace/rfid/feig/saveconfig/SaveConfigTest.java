@@ -154,4 +154,33 @@ public class SaveConfigTest {
         reader.getFeigRFID().setHostMode(false);
         assertFalse(reader.isHostMode());
     }
+
+    @Test
+    public void testFormatIsoError() {
+        assertEquals("Command not supported", ISO15693Feig.formatIsoError(0x01));
+        assertEquals("Command not recognized / format error", ISO15693Feig.formatIsoError(0x02));
+        assertEquals("Option not supported", ISO15693Feig.formatIsoError(0x03));
+        assertEquals("Unknown error", ISO15693Feig.formatIsoError(0x0F));
+        assertEquals("Specified block not available", ISO15693Feig.formatIsoError(0x10));
+        assertEquals("Specified block already locked", ISO15693Feig.formatIsoError(0x11));
+        assertEquals("AFI or block is locked / write-protected", ISO15693Feig.formatIsoError(0x12));
+        assertEquals("Programming / write failed", ISO15693Feig.formatIsoError(0x13));
+        assertEquals("Lock failed", ISO15693Feig.formatIsoError(0x14));
+        assertEquals("None", ISO15693Feig.formatIsoError(0));
+        assertEquals("ISO error 0x99", ISO15693Feig.formatIsoError(0x99));
+    }
+
+    @Test
+    public void testWriteOperationsThrowWhenNotConnected() {
+        BaseConfiguration config = new BaseConfiguration();
+        ISO15693Feig reader = new ISO15693Feig(config);
+
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> {
+            reader.writeAfi("E00401080AFD252F", (byte) 0xC2);
+        });
+
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> {
+            reader.writeTag("E00401080AFD252F", new byte[]{0x01, 0x02, 0x03, 0x04}, 4);
+        });
+    }
 }

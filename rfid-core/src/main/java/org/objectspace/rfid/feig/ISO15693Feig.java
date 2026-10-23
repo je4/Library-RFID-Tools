@@ -45,6 +45,8 @@ import org.apache.commons.configuration2.AbstractConfiguration;
 import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.library.ISO15693Reader;
 
+import de.feig.fedm.ErrorCode;
+import de.feig.fedm.ReaderStatus;
 import de.feig.fedm.taghandler.ThBase;
 import de.feig.fedm.taghandler.ThIso15693;
 import de.feig.fedm.types.DataBuffer;
@@ -312,6 +314,41 @@ public class ISO15693Feig implements ISO15693Reader {
 
 	@Override
 	public void writeTag(String uid, byte[] data, int blockSize) throws Exception {
+		writeTagInternal(uid, data, blockSize, null);
+	}
+
+	@Override
+	public void writeTag(String uid, org.objectspace.rfid.FinnishDataModel model, Byte afi) throws Exception {
+		if (model == null) {
+			throw new IllegalArgumentException("FinnishDataModel cannot be null");
+		}
+		byte[] blockData = model.getBlock(0);
+		writeTagInternal(uid, blockData, 4, afi);
+	}
+
+	private ThBase findMatchedTagHandler(List<ThBase> tagHandlers, String uid) throws Exception {
+		if (tagHandlers == null || tagHandlers.isEmpty()) {
+			throw new Exception("No RFID tags detected in reader field");
+		}
+		String targetUid = uid != null ? uid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+		for (ThBase th : tagHandlers) {
+			if (th != null) {
+				String thUid = th.iddToHexString();
+				String normThUid = thUid != null ? thUid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+				if (targetUid.isEmpty() || targetUid.equals("*") || normThUid.equals(targetUid)) {
+					return th;
+				}
+			}
+		}
+		for (ThBase th : tagHandlers) {
+			if (th != null) {
+				try { th.close(); } catch (Throwable ignored) {}
+			}
+		}
+		throw new Exception("Tag with UID '" + uid + "' not found in reader field");
+	}
+
+	private void writeTagInternal(String uid, byte[] data, int blockSize, Byte afi) throws Exception {
 		if (!isConnected()) {
 			throw new Exception("RFID reader is not connected");
 		}
@@ -319,33 +356,8 @@ public class ISO15693Feig implements ISO15693Reader {
 			throw new IllegalArgumentException("No data provided to write to tag");
 		}
 
-		String targetUid = uid != null ? uid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
-
 		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 0);
-		if (tagHandlers == null || tagHandlers.isEmpty()) {
-			throw new Exception("No RFID tags detected in reader field");
-		}
-
-		ThBase matchedHandler = null;
-		for (ThBase th : tagHandlers) {
-			if (th != null) {
-				String thUid = th.iddToHexString();
-				String normThUid = thUid != null ? thUid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
-				if (targetUid.isEmpty() || targetUid.equals("*") || normThUid.equals(targetUid)) {
-					matchedHandler = th;
-					break;
-				}
-			}
-		}
-
-		if (matchedHandler == null) {
-			for (ThBase th : tagHandlers) {
-				if (th != null) {
-					try { th.close(); } catch (Throwable ignored) {}
-				}
-			}
-			throw new Exception("Tag with UID '" + uid + "' not found in reader field");
-		}
+		ThBase matchedHandler = findMatchedTagHandler(tagHandlers, uid);
 
 		try {
 			int actualBlockSize = blockSize > 0 ? blockSize : 4;
@@ -363,14 +375,24 @@ public class ISO15693Feig implements ISO15693Reader {
 					DataBuffer singleDb = new DataBuffer(singleBlock);
 					int singleRes = matchedHandler.writeMultipleBlocks(b, 1, actualBlockSize, singleDb);
 					if (singleRes != 0) {
-						String errMsg = (feig != null)
-								? " (FEIG Error: " + feig.getLastError() + ")"
-								: "";
-						throw new Exception("Failed to write block " + b + " (status: " + singleRes + errMsg + ")");
+						int isoErr = matchedHandler.lastIsoError();
+						int feigErr = (feig != null) ? feig.getLastError() : 0;
+						String statusDesc = FeigRFID.formatError(singleRes);
+						String isoDesc = formatIsoError(isoErr);
+						String errorDetails = "Status: " + singleRes + " (" + statusDesc + ")"
+								+ (isoErr > 0 ? ", ISO Error: 0x" + String.format("%02X", isoErr) + " (" + isoDesc + ")" : "")
+								+ (feigErr != 0 ? ", FEIG Error: " + feigErr + " (" + FeigRFID.formatError(feigErr) + ")" : "");
+						throw new Exception("Failed to write block " + b + " (" + errorDetails + ")");
 					}
 					Thread.sleep(20);
 				}
 			}
+
+			if (afi != null) {
+				Thread.sleep(20);
+				writeAfiOnHandler(matchedHandler, afi);
+			}
+
 			Thread.sleep(100);
 		} finally {
 			for (ThBase th : tagHandlers) {
@@ -378,18 +400,6 @@ public class ISO15693Feig implements ISO15693Reader {
 					try { th.close(); } catch (Throwable ignored) {}
 				}
 			}
-		}
-	}
-
-	@Override
-	public void writeTag(String uid, org.objectspace.rfid.FinnishDataModel model, Byte afi) throws Exception {
-		if (model == null) {
-			throw new IllegalArgumentException("FinnishDataModel cannot be null");
-		}
-		byte[] blockData = model.getBlock(0);
-		writeTag(uid, blockData, 4);
-		if (afi != null) {
-			writeAfi(uid, afi);
 		}
 	}
 
@@ -399,46 +409,11 @@ public class ISO15693Feig implements ISO15693Reader {
 			throw new Exception("RFID reader is not connected");
 		}
 
-		String targetUid = uid != null ? uid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
-
 		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 0);
-		if (tagHandlers == null || tagHandlers.isEmpty()) {
-			throw new Exception("No RFID tags detected in reader field");
-		}
-
-		ThBase matchedHandler = null;
-		for (ThBase th : tagHandlers) {
-			if (th != null) {
-				String thUid = th.iddToHexString();
-				String normThUid = thUid != null ? thUid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
-				if (targetUid.isEmpty() || targetUid.equals("*") || normThUid.equals(targetUid)) {
-					matchedHandler = th;
-					break;
-				}
-			}
-		}
-
-		if (matchedHandler == null) {
-			for (ThBase th : tagHandlers) {
-				if (th != null) {
-					try { th.close(); } catch (Throwable ignored) {}
-				}
-			}
-			throw new Exception("Tag with UID '" + uid + "' not found in reader field");
-		}
+		ThBase matchedHandler = findMatchedTagHandler(tagHandlers, uid);
 
 		try {
-			if (matchedHandler instanceof ThIso15693) {
-				int res = ((ThIso15693) matchedHandler).writeAFI(afi);
-				if (res != 0) {
-					String errMsg = (feig != null)
-							? " (FEIG Error: " + feig.getLastError() + ")"
-							: "";
-					throw new Exception("Failed to write AFI byte 0x" + String.format("%02X", afi) + " (status: " + res + errMsg + ")");
-				}
-			} else {
-				throw new Exception("Tag handler does not support ISO15693 AFI operations (" + matchedHandler.getClass().getName() + ")");
-			}
+			writeAfiOnHandler(matchedHandler, afi);
 			Thread.sleep(100);
 		} finally {
 			for (ThBase th : tagHandlers) {
@@ -446,6 +421,77 @@ public class ISO15693Feig implements ISO15693Reader {
 					try { th.close(); } catch (Throwable ignored) {}
 				}
 			}
+		}
+	}
+
+	private void writeAfiOnHandler(ThBase matchedHandler, byte afi) throws Exception {
+		if (!(matchedHandler instanceof ThIso15693)) {
+			throw new Exception("Tag handler does not support ISO15693 AFI operations (" + matchedHandler.getClass().getName() + ")");
+		}
+
+		ThIso15693 isoHandler = (ThIso15693) matchedHandler;
+		int res = isoHandler.writeAFI(afi);
+		if (res != 0) {
+			int isoErr = matchedHandler.lastIsoError();
+			// If AFI is permanently locked (0x12), retrying will not succeed
+			if (isoErr != 0x12) {
+				int maxRetries = 3;
+				for (int attempt = 1; attempt <= maxRetries && res != 0; attempt++) {
+					try {
+						isoHandler.resetToReady();
+					} catch (Throwable ignored) {}
+					try {
+						Thread.sleep(50L * attempt);
+					} catch (InterruptedException ie) {
+						Thread.currentThread().interrupt();
+						break;
+					}
+					res = isoHandler.writeAFI(afi);
+					if (res == 0) {
+						break;
+					}
+					isoErr = matchedHandler.lastIsoError();
+					if (isoErr == 0x12) {
+						break;
+					}
+				}
+			}
+
+			if (res != 0) {
+				isoErr = matchedHandler.lastIsoError();
+				int feigErr = (feig != null) ? feig.getLastError() : 0;
+				String statusDesc = FeigRFID.formatError(res);
+				String isoDesc = formatIsoError(isoErr);
+				String errorDetails = "status: " + res + " (" + statusDesc + ")"
+						+ (isoErr > 0 ? ", ISO Error: 0x" + String.format("%02X", isoErr) + " (" + isoDesc + ")" : "")
+						+ (feigErr != 0 ? ", FEIG Error: " + feigErr + " (" + FeigRFID.formatError(feigErr) + ")" : "");
+				throw new Exception("Failed to write AFI byte 0x" + String.format("%02X", afi) + " (" + errorDetails + ")");
+			}
+		}
+	}
+
+	public static String formatIsoError(int isoError) {
+		switch (isoError) {
+			case 0x01:
+				return "Command not supported";
+			case 0x02:
+				return "Command not recognized / format error";
+			case 0x03:
+				return "Option not supported";
+			case 0x0F:
+				return "Unknown error";
+			case 0x10:
+				return "Specified block not available";
+			case 0x11:
+				return "Specified block already locked";
+			case 0x12:
+				return "AFI or block is locked / write-protected";
+			case 0x13:
+				return "Programming / write failed";
+			case 0x14:
+				return "Lock failed";
+			default:
+				return isoError > 0 ? "ISO error 0x" + String.format("%02X", isoError) : "None";
 		}
 	}
 
