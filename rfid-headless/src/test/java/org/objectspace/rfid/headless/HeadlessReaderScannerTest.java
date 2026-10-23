@@ -74,4 +74,124 @@ public class HeadlessReaderScannerTest {
         scanner.stop();
         assertFalse(scanner.isRunning());
     }
+
+    @Test
+    @DisplayName("Test ensureHostMode does not restore configuration if reader is already in Host Mode")
+    public void testEnsureHostModeWhenAlreadyInHostMode() {
+        AtomicBoolean restoreCalled = new AtomicBoolean(false);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() throws Exception {}
+
+            @Override
+            public void init() throws Exception {}
+
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {}
+
+            @Override
+            public boolean isConnected() {
+                return true;
+            }
+
+            @Override
+            public boolean checkConnection() {
+                return true;
+            }
+
+            @Override
+            public String getDeviceInfo() {
+                return "Mock FEIG Reader";
+            }
+
+            @Override
+            public boolean isHostMode() {
+                return true;
+            }
+
+            @Override
+            public void restoreHostModeConfig(java.io.File configFile) throws Exception {
+                restoreCalled.set(true);
+            }
+
+            @Override
+            public void close() throws Exception {}
+        };
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50);
+        scanner.ensureHostMode();
+
+        assertFalse(restoreCalled.get(), "restoreHostModeConfig should not be called when already in host mode");
+    }
+
+    @Test
+    @DisplayName("Test ensureHostMode restores Host Mode configuration without backup when reader is not in Host Mode")
+    public void testEnsureHostModeWhenNotInHostMode() {
+        AtomicBoolean restoreCalled = new AtomicBoolean(false);
+        AtomicBoolean backupCalled = new AtomicBoolean(false);
+        AtomicBoolean hostModeState = new AtomicBoolean(false);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() throws Exception {}
+
+            @Override
+            public void init() throws Exception {}
+
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {}
+
+            @Override
+            public boolean isConnected() {
+                return true;
+            }
+
+            @Override
+            public boolean checkConnection() {
+                return true;
+            }
+
+            @Override
+            public String getDeviceInfo() {
+                return "Mock FEIG Reader (Scan Mode)";
+            }
+
+            @Override
+            public boolean isHostMode() {
+                return hostModeState.get();
+            }
+
+            @Override
+            public void backupConfig(java.io.File targetFile) throws Exception {
+                backupCalled.set(true);
+            }
+
+            @Override
+            public void restoreHostModeConfig(java.io.File configFile) throws Exception {
+                restoreCalled.set(true);
+                assertNotNull(configFile, "Host mode config file must not be null");
+                assertTrue(configFile.exists(), "Host mode config file must exist");
+                hostModeState.set(true);
+            }
+
+            @Override
+            public void close() throws Exception {}
+        };
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50);
+        scanner.ensureHostMode();
+
+        assertTrue(restoreCalled.get(), "restoreHostModeConfig should be called when reader is not in host mode");
+        assertFalse(backupCalled.get(), "No backup should be created before restoring host mode");
+        assertTrue(mockReader.isHostMode(), "Reader state should be updated to host mode");
+    }
 }

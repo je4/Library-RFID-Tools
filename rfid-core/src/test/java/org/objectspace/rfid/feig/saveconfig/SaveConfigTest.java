@@ -127,4 +127,31 @@ public class SaveConfigTest {
         assertNotNull(readerResolved);
         assertTrue(readerResolved.exists(), "Reader resolved host mode config file must exist");
     }
+
+    @Test
+    public void testHostModeCheckAndOverride() {
+        BaseConfiguration config = new BaseConfiguration();
+        FeigRFID feig = new FeigRFID(config);
+
+        // When not connected and no override, returns false
+        assertFalse(feig.isHostMode());
+
+        // Test override mechanism
+        feig.setHostMode(true);
+        assertTrue(feig.isHostMode());
+
+        feig.setHostMode(false);
+        assertFalse(feig.isHostMode());
+
+        feig.setHostMode(null);
+        assertFalse(feig.isHostMode());
+
+        // Test ISO15693Feig delegation
+        ISO15693Feig reader = new ISO15693Feig(config);
+        reader.getFeigRFID().setHostMode(true);
+        assertTrue(reader.isHostMode());
+
+        reader.getFeigRFID().setHostMode(false);
+        assertFalse(reader.isHostMode());
+    }
 }

@@ -120,7 +120,7 @@ public class HeadlessWsBrokerDispatcherTest {
             assertEquals("rfid-station-1", evt.getSource());
             assertEquals("message", evt.getType());
             assertNotNull(evt.getData());
-            assertEquals("tag_read", evt.getData().get("event").asText());
+            assertEquals("rfid:tag_read", evt.getData().get("event").asText());
             assertTrue(evt.getData().has("uid"));
             assertEquals("E004015099887766", evt.getData().get("uid").asText());
             assertEquals("BOOK-12345", evt.getData().get("itemId").asText());
@@ -282,7 +282,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(2, wsEvents.size(), "WSBroker events should have been sent to 2 channels");
         assertEquals("all", wsEvents.get(0).getTarget());
         assertEquals("intern", wsEvents.get(1).getTarget());
-        assertEquals("tag_read", wsEvents.get(0).getData().get("event").asText());
+        assertEquals("rfid:tag_read", wsEvents.get(0).getData().get("event").asText());
         assertEquals("ITEM-42", wsEvents.get(0).getData().get("itemId").asText());
         assertEquals("UID-42", wsEvents.get(0).getData().get("uid").asText());
 
@@ -324,7 +324,7 @@ public class HeadlessWsBrokerDispatcherTest {
             assertEquals("rfid-station-1", evt.getSource());
             assertEquals("message", evt.getType());
             assertNotNull(evt.getData());
-            assertEquals("tags_cleared", evt.getData().get("event").asText());
+            assertEquals("rfid:tags_cleared", evt.getData().get("event").asText());
             assertEquals("empty", evt.getData().get("status").asText());
             assertEquals(0, evt.getData().get("totalTags").asInt());
             assertEquals("Session-99", evt.getData().get("session").asText());
@@ -384,7 +384,7 @@ public class HeadlessWsBrokerDispatcherTest {
 
         assertTrue(callback.hasActiveTags());
         assertEquals(1, wsEvents.size(), "Should have 1 tag read event");
-        assertEquals("tag_read", wsEvents.get(0).getData().get("event").asText());
+        assertEquals("rfid:tag_read", wsEvents.get(0).getData().get("event").asText());
         assertEquals("UID-100", wsEvents.get(0).getData().get("uid").asText());
 
         // 3. Tag removed from antenna -> empty() called
@@ -392,7 +392,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertFalse(callback.hasActiveTags());
         assertEquals(1, callback.getClearedEvents());
         assertEquals(2, wsEvents.size(), "Should have received 1 tag read + 1 cleared event");
-        assertEquals("tags_cleared", wsEvents.get(1).getData().get("event").asText());
+        assertEquals("rfid:tags_cleared", wsEvents.get(1).getData().get("event").asText());
 
         // 4. Repeated empty() cycles while reader remains empty -> must NOT send duplicate cleared events
         callback.empty();
@@ -409,7 +409,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertFalse(callback.hasActiveTags());
         assertEquals(2, callback.getClearedEvents());
         assertEquals(4, wsEvents.size());
-        assertEquals("tags_cleared", wsEvents.get(3).getData().get("event").asText());
+        assertEquals("rfid:tags_cleared", wsEvents.get(3).getData().get("event").asText());
 
         callback.close();
     }
@@ -457,7 +457,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(2, sentEvents.size());
 
         Event e1 = sentEvents.get(0);
-        assertEquals("tag_read", e1.getData().get("event").asText());
+        assertEquals("rfid:tag_read", e1.getData().get("event").asText());
         assertEquals("UID-999", e1.getData().get("uid").asText());
         assertEquals("ITEM-999", e1.getData().get("itemId").asText());
         assertEquals(4, e1.getData().get("parts").asInt());
@@ -467,7 +467,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(e1.getMessage().contains("[TAG READ]"));
 
         Event e2 = sentEvents.get(1);
-        assertEquals("tags_cleared", e2.getData().get("event").asText());
+        assertEquals("rfid:tags_cleared", e2.getData().get("event").asText());
         assertEquals("empty", e2.getData().get("status").asText());
         assertEquals(0, e2.getData().get("totalTags").asInt());
         assertTrue(e2.getMessage().contains("[READER CLEARED]"));
@@ -484,7 +484,7 @@ public class HeadlessWsBrokerDispatcherTest {
                 null
         );
 
-        assertEquals("tag_read", tagPayload.getEvent());
+        assertEquals("rfid:tag_read", tagPayload.getEvent());
         assertEquals("UID-1", tagPayload.getUid());
         assertEquals("ITEM-1", tagPayload.getItemId());
         assertEquals("HEX1", tagPayload.getRaw());
@@ -501,7 +501,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(tagPayload.getSummaryMessage().contains("UID: UID-1"));
 
         TagsClearedPayload clearedPayload = new TagsClearedPayload("Sess1", 12346L, "Client1");
-        assertEquals("tags_cleared", clearedPayload.getEvent());
+        assertEquals("rfid:tags_cleared", clearedPayload.getEvent());
         assertEquals("empty", clearedPayload.getStatus());
         assertEquals(0, clearedPayload.getTotalTags());
         assertEquals("Sess1", clearedPayload.getSession());

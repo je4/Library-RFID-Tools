@@ -551,6 +551,76 @@ public class FeigRFID {
 		}
 	}
 
+	private Boolean hostModeOverride = null;
+
+	/**
+	 * Sets an override for host mode detection (used primarily for testing).
+	 *
+	 * @param hostMode host mode status or null to reset override
+	 */
+	public void setHostMode(Boolean hostMode) {
+		this.hostModeOverride = hostMode;
+	}
+
+	/**
+	 * Checks whether the connected FEIG reader is currently configured in Host Mode.
+	 * Reads CFG1 (Operating Mode parameter) from reader EEPROM or RAM.
+	 *
+	 * @return true if reader is in Host Mode, false if configured in another mode (e.g. Scan Mode or BRM)
+	 */
+	public boolean isHostMode() {
+		if (hostModeOverride != null) {
+			return hostModeOverride;
+		}
+		synchronized (readerLock) {
+			if (!connected || reader == null) {
+				return false;
+			}
+			try {
+				// Read CFG1 from EEPROM (false) or RAM (true)
+				int res = reader.config().readConfigurationPage(1, false);
+				if (res != ErrorCode.Ok) {
+					res = reader.config().readConfigurationPage(1, true);
+				}
+				if (res == ErrorCode.Ok) {
+					String[] possibleParams = {
+						"OperatingMode",
+						"Interface.OperatingMode",
+						"AirInterface.TimeMultiplex.OperatingMode",
+						"AirInterface.Multiplex.OperatingMode"
+					};
+					for (String param : possibleParams) {
+						try {
+							byte mode = reader.config().getByteConfigPara(param, false);
+							return (mode == 0);
+						} catch (Throwable ignored) {
+						}
+					}
+					// Fallback: Export to temporary XML file and inspect CFG1 b0 attribute
+					try {
+						File tempXml = File.createTempFile("feig_cfg_check_", ".xml");
+						tempXml.deleteOnExit();
+						int xmlRes = reader.config().transferReaderCfgToXmlFile(tempXml.getAbsolutePath());
+						if (xmlRes == ErrorCode.Ok && tempXml.exists()) {
+							String xml = Files.readString(tempXml.toPath());
+							tempXml.delete();
+							java.util.regex.Matcher m = java.util.regex.Pattern.compile("<CFG1[^>]*\\bb0=\"([0-9a-fA-F]+)\"").matcher(xml);
+							if (m.find()) {
+								String b0Hex = m.group(1);
+								int modeVal = Integer.parseInt(b0Hex, 16);
+								return (modeVal == 0);
+							}
+						}
+					} catch (Throwable ignored) {
+					}
+				}
+			} catch (Throwable t) {
+				log("Warnung bei Host-Mode Prüfung: " + t.getMessage());
+			}
+			return true;
+		}
+	}
+
 	/**
 	 * Resolves the reader_host_mode_config.xml configuration file from custom path,
 	 * local directory, or classpath resources.
@@ -573,6 +643,10 @@ public class FeigRFID {
 		File subFile = new File("rfid-inventory", "reader_host_mode_config.xml");
 		if (subFile.exists() && subFile.isFile()) {
 			return subFile;
+		}
+		File headlessSubFile = new File("rfid-headless", "reader_host_mode_config.xml");
+		if (headlessSubFile.exists() && headlessSubFile.isFile()) {
+			return headlessSubFile;
 		}
 		try (InputStream in = FeigRFID.class.getResourceAsStream("/reader_host_mode_config.xml")) {
 			if (in != null) {

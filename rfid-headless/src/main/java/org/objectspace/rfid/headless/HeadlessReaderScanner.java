@@ -1,5 +1,7 @@
 package org.objectspace.rfid.headless;
 
+import java.io.File;
+import org.objectspace.rfid.feig.FeigRFID;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,6 +76,7 @@ public class HeadlessReaderScanner implements Runnable {
 									logger.info("Reader Init: {}", logMsg);
 								}
 							}
+							ensureHostMode();
 						} else {
 							logger.warn("Reader connection attempt failed. Retrying in 2 seconds...");
 							Thread.sleep(2000);
@@ -117,6 +120,42 @@ public class HeadlessReaderScanner implements Runnable {
 					break;
 				}
 			}
+		}
+	}
+
+	/**
+	 * Checks whether the connected RFID reader is in Host Mode.
+	 * If not in Host Mode, writes the Host Mode configuration into the device
+	 * without creating a backup, ensuring proper timing for EEPROM writes and system reset.
+	 */
+	public void ensureHostMode() {
+		if (reader == null || !reader.isConnected()) {
+			return;
+		}
+		try {
+			logger.info("Checking reader operating mode...");
+			if (!reader.isHostMode()) {
+				logger.warn("FEIG reader is not in Host Mode! Configuring Host Mode now...");
+				File hostConfigFile = reader.resolveHostModeConfigFile();
+				if (hostConfigFile == null || !hostConfigFile.exists()) {
+					hostConfigFile = FeigRFID.resolveHostModeConfigFile(null);
+				}
+				if (hostConfigFile == null || !hostConfigFile.exists()) {
+					logger.error("Host Mode configuration file 'reader_host_mode_config.xml' could not be resolved! Cannot configure reader.");
+					return;
+				}
+				// Brief delay to allow initial connection / in-flight reader operations to settle
+				Thread.sleep(400);
+				logger.info("Writing Host Mode configuration ({}) to reader EEPROM & RAM...", hostConfigFile.getName());
+				reader.restoreHostModeConfig(hostConfigFile);
+				// Additional delay to ensure reader reboot and initialization completes cleanly
+				Thread.sleep(500);
+				logger.info("FEIG reader successfully configured in Host Mode and reinitialized.");
+			} else {
+				logger.info("FEIG reader is confirmed in Host Mode.");
+			}
+		} catch (Exception e) {
+			logger.error("Failed to check or apply Host Mode configuration on reader: {}", e.getMessage(), e);
 		}
 	}
 

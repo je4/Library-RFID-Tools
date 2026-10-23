@@ -108,6 +108,14 @@ public interface ISO15693Reader {
 	}
 
 	/**
+	 * check if the connected reader is currently configured in host mode
+	 * @return true if reader is in host mode
+	 */
+	public default boolean isHostMode() {
+		return true;
+	}
+
+	/**
 	 * check if the reader has encountered a communication or initialization error
 	 * @return true if error detected
 	 */

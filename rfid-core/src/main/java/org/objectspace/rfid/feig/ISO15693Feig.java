@@ -229,6 +229,11 @@ public class ISO15693Feig implements ISO15693Reader {
 	}
 
 	@Override
+	public boolean isHostMode() {
+		return feig != null && feig.isHostMode();
+	}
+
+	@Override
 	public boolean hasError() {
 		return feig != null && feig.hasError();
 	}
