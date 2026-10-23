@@ -480,6 +480,33 @@ public class WSBrokerClient implements AutoCloseable {
     }
 
     /**
+     * Sends a device metadata query command message (type = "message") to the specified target reader client or channel.
+     *
+     * @param target the target reader client name or channel
+     * @return CompletableFuture completing when the query message is sent
+     */
+    public CompletableFuture<Void> queryDeviceMetadata(String target) {
+        return queryDeviceMetadata(target, null);
+    }
+
+    /**
+     * Sends a device metadata query command message (type = "message") to the specified target reader client or channel with a correlation token.
+     *
+     * @param target the target reader client name or channel
+     * @param token  optional request/correlation token
+     * @return CompletableFuture completing when the query message is sent
+     */
+    public CompletableFuture<Void> queryDeviceMetadata(String target, String token) {
+        Map<String, Object> command = new HashMap<>();
+        command.put("event", "rfid:get_device_metadata");
+        Event event = Event.createMessage(clientName, target, command);
+        if (token != null && !token.isBlank()) {
+            event.setToken(token);
+        }
+        return send(event);
+    }
+
+    /**
      * Broadcasts a message payload to all connected clients.
      *
      * @param payload data payload
@@ -567,6 +594,20 @@ public class WSBrokerClient implements AutoCloseable {
         if (handler != null) {
             globalHandlers.add(handler);
         }
+    }
+
+    /**
+     * Registers a handler for incoming message events (type = "message").
+     */
+    public void onMessage(EventHandler handler) {
+        onType(EventType.CLIENT_MESSAGE, handler);
+    }
+
+    /**
+     * Registers a typed handler for incoming message events (type = "message") with automatic JSON payload deserialization.
+     */
+    public <T> void onMessage(Class<T> clazz, TypedEventHandler<T> handler) {
+        onType(EventType.CLIENT_MESSAGE, clazz, handler);
     }
 
     /**

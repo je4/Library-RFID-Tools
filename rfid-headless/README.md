@@ -14,6 +14,7 @@
 * **Continuous Scanning & Time-Based Debouncing**: Continuously queries the reader field and suppresses redundant event bursts using a configurable debounce cooldown window (default: 3000 ms).
 * **Automatic Hardware Discovery & Auto-Reconnect**: Seamlessly re-establishes connection on USB disconnects or power cycles without daemon restarts.
 * **REST Webservice & Client TLS Integration**: Dispatches scan events in real-time with HMAC-SHA256 JWT authorization tokens and dynamic TLS.
+* **WebSocket & WSBroker Integration**: Real-time bidirectional event streaming and remote reader hardware querying (`rfid:tag_read`, `rfid:get_device_metadata`, etc.) with mTLS / MiniVault support. See [WebSocket Documentation](websocket.md).
 
 ---
 
@@ -148,7 +149,34 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 
 ---
 
-## 4. Systemd Service Setup (Linux & Raspberry Pi)
+## 4. WebSocket & WSBroker Integration
+
+`rfid-headless` provides high-performance WebSocket streaming to **WSBroker** for broadcasting tag events and handling remote reader inspection commands.
+
+```xml
+    <!-- WSBroker WebSocket Connection (optional) -->
+    <wsbroker>
+        <active>true</active>
+        <name>rfid-reader-station-01</name>
+        <url><![CDATA[https://localhost:8765]]></url>
+        <channels>
+            <channel>all</channel>
+            <channel>intern</channel>
+        </channels>
+        <clienttls>
+            <type>minivault</type>
+            ...
+        </clienttls>
+    </wsbroker>
+```
+
+For complete documentation on event formats, query commands, request-reply flows, and integration examples in Java, Go, and JavaScript, please refer to the dedicated documentation:
+
+👉 **[WebSocket & WSBroker Integration Documentation (`websocket.md`)](websocket.md)**
+
+---
+
+## 5. Systemd Service Setup (Linux & Raspberry Pi)
 
 To install and run `rfid-headless` as a background systemd service:
 

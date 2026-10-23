@@ -9,8 +9,11 @@ import org.objectspace.certmanager.config.LoaderType;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.core.TagScanProcessor;
 import org.objectspace.rfid.headless.payload.BaseRfidPayload;
+import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
 import org.objectspace.rfid.headless.payload.TagReadPayload;
 import org.objectspace.rfid.headless.payload.TagsClearedPayload;
+import org.objectspace.rfid.library.ISO15693Reader;
+import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
@@ -508,5 +511,203 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(12346L, clearedPayload.getTimestamp());
         assertEquals("Client1", clearedPayload.getClientId());
         assertTrue(clearedPayload.getSummaryMessage().contains("[READER CLEARED]"));
+    }
+
+    @Test
+    @DisplayName("Test DeviceMetadataPayload model properties and summary message")
+    void testDeviceMetadataPayloadModelAndSummary() {
+        DeviceMetadataPayload payload = new DeviceMetadataPayload(
+                "0052E688",
+                "ISC.MR102-USB",
+                "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00",
+                "Session-Meta",
+                12345L,
+                "reader-01"
+        );
+
+        assertEquals("rfid:device_metadata_response", payload.getEvent());
+        assertEquals("ok", payload.getStatus());
+        assertEquals("0052E688", payload.getDeviceId());
+        assertEquals("ISC.MR102-USB", payload.getDeviceType());
+        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", payload.getInitDescription());
+        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", payload.getDescription());
+        assertEquals("Session-Meta", payload.getSession());
+        assertEquals(12345L, payload.getTimestamp());
+        assertEquals("reader-01", payload.getClientId());
+
+        String summary = payload.getSummaryMessage();
+        assertTrue(summary.contains("[DEVICE METADATA]"));
+        assertTrue(summary.contains("0052E688"));
+        assertTrue(summary.contains("ISC.MR102-USB"));
+    }
+
+    @Test
+    @DisplayName("Test dispatchDeviceMetadata sends DeviceMetadataPayload to all configured channels")
+    void testDeviceMetadataQueryAndDispatch() {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-station-1");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1",
+                "https://localhost:8765",
+                List.of("all", "intern"),
+                null,
+                mockClient
+        );
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() {}
+            @Override
+            public void init() {}
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
+            @Override
+            public boolean isConnected() { return true; }
+            @Override
+            public boolean checkConnection() { return true; }
+            @Override
+            public String getDeviceInfo() { return "FEIG ISC.MR102-USB (0052E688)"; }
+            @Override
+            public String getDeviceId() { return "0052E688"; }
+            @Override
+            public String getDeviceType() { return "ISC.MR102-USB"; }
+            @Override
+            public String getInitDescription() { return "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00"; }
+            @Override
+            public void close() {}
+        };
+
+        dispatcher.setReader(mockReader);
+        assertSame(mockReader, dispatcher.getReader());
+
+        // 1. Query device metadata directly
+        DeviceMetadataPayload metadata = dispatcher.queryDeviceMetadata();
+        assertEquals("0052E688", metadata.getDeviceId());
+        assertEquals("ISC.MR102-USB", metadata.getDeviceType());
+        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", metadata.getInitDescription());
+
+        // 2. Dispatch to channels
+        dispatcher.dispatchDeviceMetadata();
+
+        assertEquals(2, sentEvents.size(), "Should have dispatched metadata event to both channels 'all' and 'intern'");
+
+        Event e1 = sentEvents.get(0);
+        assertEquals("all", e1.getTarget());
+        assertEquals("message", e1.getType());
+        assertEquals("rfid:device_metadata_response", e1.getData().get("event").asText());
+        assertEquals("ok", e1.getData().get("status").asText());
+        assertEquals("0052E688", e1.getData().get("deviceId").asText());
+        assertEquals("ISC.MR102-USB", e1.getData().get("deviceType").asText());
+        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", e1.getData().get("initDescription").asText());
+        assertTrue(e1.getMessage().contains("[DEVICE METADATA]"));
+
+        Event e2 = sentEvents.get(1);
+        assertEquals("intern", e2.getTarget());
+        assertEquals("message", e2.getType());
+        assertEquals("rfid:device_metadata_response", e2.getData().get("event").asText());
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test dispatcher automatically responds to incoming get_device_metadata query")
+    void testDeviceMetadataAutoReplyOnActionQuery() {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-station-1");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1",
+                "https://localhost:8765",
+                List.of("all"),
+                null,
+                mockClient
+        );
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() {}
+            @Override
+            public void init() {}
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
+            @Override
+            public boolean isConnected() { return true; }
+            @Override
+            public boolean checkConnection() { return true; }
+            @Override
+            public String getDeviceInfo() { return "FEIG ISC.MR102-USB (0052E688)"; }
+            @Override
+            public String getDeviceId() { return "0052E688"; }
+            @Override
+            public String getDeviceType() { return "ISC.MR102-USB"; }
+            @Override
+            public String getInitDescription() { return "Reader initialized successfully."; }
+            @Override
+            public void close() {}
+        };
+
+        dispatcher.setReader(mockReader);
+
+        // 1. Incoming action query (backwards compatibility)
+        Event incomingAction = Event.createAction("web-dashboard", "rfid-station-1", "get_device_metadata", null);
+        incomingAction.setToken("req-token-12345");
+
+        dispatcher.handleMetadataQuery(incomingAction);
+
+        assertEquals(1, sentEvents.size());
+        Event reply1 = sentEvents.get(0);
+
+        assertEquals("rfid-station-1", reply1.getSource());
+        assertEquals("web-dashboard", reply1.getTarget());
+        assertEquals("message", reply1.getType());
+        assertEquals("req-token-12345", reply1.getToken());
+        assertEquals("rfid:device_metadata_response", reply1.getData().get("event").asText());
+        assertEquals("ok", reply1.getData().get("status").asText());
+        assertEquals("0052E688", reply1.getData().get("deviceId").asText());
+        assertEquals("ISC.MR102-USB", reply1.getData().get("deviceType").asText());
+        assertEquals("Reader initialized successfully.", reply1.getData().get("initDescription").asText());
+
+        // 2. Incoming message command (Go Controller HandleEvent compatible)
+        sentEvents.clear();
+        Event incomingMsg = Event.createMessage("web-dashboard", "rfid-station-1", java.util.Map.of("event", "rfid:get_device_metadata"));
+        incomingMsg.setToken("token-msg-999");
+
+        dispatcher.handleIncomingMessage(incomingMsg);
+
+        assertEquals(1, sentEvents.size());
+        Event reply2 = sentEvents.get(0);
+
+        assertEquals("rfid-station-1", reply2.getSource());
+        assertEquals("web-dashboard", reply2.getTarget());
+        assertEquals("message", reply2.getType());
+        assertEquals("token-msg-999", reply2.getToken());
+        assertEquals("rfid:device_metadata_response", reply2.getData().get("event").asText());
+        assertEquals("ok", reply2.getData().get("status").asText());
+        assertEquals("0052E688", reply2.getData().get("deviceId").asText());
+
+        dispatcher.close();
     }
 }

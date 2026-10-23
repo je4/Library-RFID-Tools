@@ -84,6 +84,30 @@ public interface ISO15693Reader {
 	public String getDeviceInfo();
 
 	/**
+	 * returns the device ID / serial number of the hardware reader
+	 * @return device ID string or null
+	 */
+	public default String getDeviceId() {
+		return null;
+	}
+
+	/**
+	 * returns the device type / model of the hardware reader
+	 * @return device type string or null
+	 */
+	public default String getDeviceType() {
+		return null;
+	}
+
+	/**
+	 * returns the complete initialization and startup description / report of the reader
+	 * @return complete description from init
+	 */
+	public default String getInitDescription() {
+		return getStartupLog();
+	}
+
+	/**
 	 * returns any startup logs or messages produced during discovery and initialization
 	 * @return list of startup log messages
 	 */

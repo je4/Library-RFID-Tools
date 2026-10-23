@@ -28,6 +28,9 @@ public class HeadlessReader {
 		this.tagScanProcessor = new TagScanProcessor(config);
 		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
 		this.reader = ISO15693ReaderFactory.createReader(config);
+		if (this.wsBrokerDispatcher != null) {
+			this.wsBrokerDispatcher.setReader(this.reader);
+		}
 
 		long debounce = (debounceOverride != null && debounceOverride >= 0)
 				? debounceOverride

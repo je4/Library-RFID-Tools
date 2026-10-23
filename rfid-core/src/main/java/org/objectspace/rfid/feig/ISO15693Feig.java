@@ -124,6 +124,21 @@ public class ISO15693Feig implements ISO15693Reader {
 	}
 
 	@Override
+	public String getDeviceId() {
+		return feig != null ? feig.getDeviceId() : null;
+	}
+
+	@Override
+	public String getDeviceType() {
+		return feig != null ? feig.getDeviceType() : null;
+	}
+
+	@Override
+	public String getInitDescription() {
+		return feig != null ? feig.getInitDescription() : "";
+	}
+
+	@Override
 	public List<String> getStartupLogs() {
 		return feig != null ? feig.getStartupLogs() : java.util.Collections.emptyList();
 	}

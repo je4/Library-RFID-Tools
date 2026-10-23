@@ -286,6 +286,51 @@ public class FeigRFID {
 	}
 
 	/**
+	 * Returns the device ID in hex format.
+	 * @return device ID string or null
+	 */
+	public String getDeviceId() {
+		if (currentDeviceID != 0) {
+			return String.format("%08X", currentDeviceID);
+		}
+		if (config != null) {
+			String configuredId = config.getString("device.feig.id", null);
+			if (configuredId != null && !configuredId.isBlank()) {
+				return configuredId.trim();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the device type name or model.
+	 * @return device type string
+	 */
+	public String getDeviceType() {
+		if (reader != null && reader.info() != null && reader.info().readerTypeToString() != null) {
+			return reader.info().readerTypeToString();
+		}
+		if (isMR102) {
+			return "ISC.MR102-USB";
+		}
+		if (config != null) {
+			String configuredType = config.getString("device.feig.type", null);
+			if (configuredType != null && !configuredType.isBlank()) {
+				return configuredType.trim();
+			}
+		}
+		return "FEIG";
+	}
+
+	/**
+	 * Returns the complete description and logs from initialization.
+	 * @return complete description from init
+	 */
+	public String getInitDescription() {
+		return getStartupLog();
+	}
+
+	/**
 	 * Internal safe disconnect without throwing exceptions.
 	 */
 	public synchronized void disconnectInternal() {
