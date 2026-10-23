@@ -231,7 +231,7 @@ To query device details (Device ID, Device Type, and initial initialization star
 To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID tag, send a `message` event with event name `rfid:write_tag`.
 
 > **Note on Concurrency & Timing:**
-> During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, the reader's debounce cache is automatically cleared so that subsequent scans detect the updated tag immediately.
+> During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, only the reader's debounce cooldown cache is cleared (`clearDebounceCache()`) while active tag presence is retained, allowing immediate consecutive writes and instant post-write scan reads. See [Cache Architecture Documentation](cache-architecture.md) for details.
 
 #### Write Tag Request JSON:
 ```json

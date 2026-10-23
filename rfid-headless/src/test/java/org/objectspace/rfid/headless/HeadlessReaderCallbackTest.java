@@ -243,4 +243,138 @@ public class HeadlessReaderCallbackTest {
 
         callback.close();
     }
+
+    @Test
+    @DisplayName("Test active tag presence tracking with sliding TTL and debounce independence")
+    public void testActivePresenceTrackingAndTtl() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        long debounceMillis = 1000L;
+        long presenceTtlMillis = 200L;
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, null, debounceMillis, presenceTtlMillis);
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-PRESENCE", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+        String uid = "E004010099998888";
+
+        assertFalse(callback.isTagPresent(uid));
+        assertEquals(0, callback.getPresentTagCount());
+
+        // 1. Initial scan -> tag is registered as present and dispatched
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertTrue(callback.isTagPresent(uid));
+        assertEquals(1, callback.getPresentTagCount());
+        assertTrue(callback.getPresentUids().contains(uid));
+        assertEquals(1, callback.getDispatchedScans());
+        assertEquals(0, callback.getDebouncedScans());
+
+        // 2. Second scan within debounce window (e.g. 50ms later) -> debounced from event dispatch, but presence timestamp updated
+        Thread.sleep(50);
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(1, callback.getDispatchedScans());
+        assertEquals(1, callback.getDebouncedScans());
+        assertTrue(callback.isTagPresent(uid), "Tag must remain present even when dispatch is debounced");
+        assertEquals(1, callback.getPresentTagCount());
+
+        // 3. Wait for presence TTL to expire (>200 ms) without new scans
+        Thread.sleep(250);
+        assertFalse(callback.isTagPresent(uid), "Tag should expire from presence cache after TTL without reads");
+        assertEquals(0, callback.getPresentTagCount());
+
+        callback.close();
+    }
+
+    @Test
+    @DisplayName("Test empty clears presence cache immediately for all tags")
+    public void testEmptyClearsPresenceImmediately() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, null, 3000L, 2000L);
+
+        FinnishDataModel model = new FinnishDataModel();
+        byte[] data = model.getBlock(32);
+        String uid1 = "E004010011112222";
+        String uid2 = "E004010033334444";
+
+        callback.doIt(1, 1, "NXP", "SLIX", uid1, data, 4);
+        callback.doIt(1, 1, "NXP", "SLIX", uid2, data, 4);
+
+        assertTrue(callback.isTagPresent(uid1));
+        assertTrue(callback.isTagPresent(uid2));
+        assertEquals(2, callback.getPresentTagCount());
+
+        callback.empty();
+
+        assertFalse(callback.isTagPresent(uid1), "UID1 must not be present after field cleared");
+        assertFalse(callback.isTagPresent(uid2), "UID2 must not be present after field cleared");
+        assertEquals(0, callback.getPresentTagCount());
+        assertTrue(callback.getPresentUids().isEmpty());
+
+        callback.close();
+    }
+
+    @Test
+    @DisplayName("Test clearDebounceCache resets dispatch cooldown while preserving active tag presence")
+    public void testClearDebounceCachePreservesActivePresence() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, null, 5000L, 3000L);
+
+        FinnishDataModel model = new FinnishDataModel();
+        byte[] data = model.getBlock(32);
+        String uid = "E004010055556666";
+
+        // Initial scan
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(1, callback.getDispatchedScans());
+        assertTrue(callback.isTagPresent(uid));
+
+        // Immediate write operation settles -> clear only debounce cache
+        callback.clearDebounceCache();
+
+        // Tag must still be actively present for subsequent write operations (e.g. AFI)
+        assertTrue(callback.isTagPresent(uid), "Tag must still be present after clearing debounce cache");
+        assertEquals(1, callback.getPresentTagCount());
+
+        // Next scan cycle immediately re-dispatches the updated tag metadata
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(2, callback.getDispatchedScans(), "Tag should be re-dispatched immediately after clearDebounceCache");
+
+        callback.close();
+    }
+
+    @Test
+    @DisplayName("Test RF dropout resilience keeps tag present across brief missing cycles within TTL")
+    public void testRfDropoutResilienceWithinPresenceTtl() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        long presenceTtl = 400L;
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, null, 2000L, presenceTtl);
+
+        FinnishDataModel model = new FinnishDataModel();
+        byte[] data = model.getBlock(32);
+        String uid = "E004010077778888";
+
+        // T0: Tag read
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertTrue(callback.isTagPresent(uid));
+
+        // T1 (+150ms): RF glitch / missed scan cycle -> no doIt call
+        Thread.sleep(150);
+        assertTrue(callback.isTagPresent(uid), "Tag should tolerate brief RF dropouts within TTL");
+
+        // T2 (+250ms total): Tag read again before TTL expires
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertTrue(callback.isTagPresent(uid));
+
+        // T3 (+300ms since T2): Tag is still present because timestamp was refreshed at T2
+        Thread.sleep(200);
+        assertTrue(callback.isTagPresent(uid), "Presence should be extended by renewed scan");
+
+        callback.close();
+    }
 }

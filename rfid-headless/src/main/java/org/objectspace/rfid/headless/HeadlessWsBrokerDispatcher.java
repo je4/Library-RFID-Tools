@@ -419,7 +419,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 				T res = task.run(reader);
 				Thread.sleep(150);
 				if (callback != null) {
-					callback.clearCache();
+					callback.clearDebounceCache();
 				}
 				return res;
 			}
@@ -505,6 +505,10 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 					return null;
 				});
 
+				if (callback != null && !effectiveUid.isEmpty()) {
+					callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
+				}
+
 				logger.info("[WSBroker] Successfully wrote tag: UID='{}', ItemID='{}', ISIL='{}', Country='{}', AFI='{}'",
 						effectiveUid, itemId, isil, country, afiHex);
 				return WriteTagResponsePayload.success(effectiveUid, itemId, isil, country,
@@ -552,6 +556,10 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 					r.writeAfi(effectiveUid, parsedAfi);
 					return null;
 				});
+
+				if (callback != null && !effectiveUid.isEmpty()) {
+					callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
+				}
 
 				logger.info("[WSBroker] Successfully wrote AFI='{}' (0x{}) on tag UID='{}'", parsedAfi, afiHex, effectiveUid);
 				return WriteAfiResponsePayload.success(effectiveUid, afiHex, "", clientName);
@@ -620,6 +628,60 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
+		boolean isDirect = evt.getTarget() != null && evt.getTarget().equalsIgnoreCase(clientName);
+		String reqUid = (uid != null) ? uid.trim() : "";
+		boolean isWildcard = reqUid.isEmpty() || reqUid.equals("*");
+
+		if (callback != null) {
+			if (!isDirect) {
+				// Broadcast write command: filter silently if tag is not physically present
+				if (!isWildcard) {
+					if (!callback.isTagPresent(reqUid)) {
+						logger.debug("[WSBroker] Broadcast write_tag command for UID '{}' ignored - tag not present on this station ({})",
+								reqUid, clientName);
+						return;
+					}
+				} else {
+					int presentCount = callback.getPresentTagCount();
+					if (presentCount != 1) {
+						logger.debug("[WSBroker] Broadcast wildcard write_tag command ignored - expected exactly 1 present tag, but found {} on station '{}'",
+								presentCount, clientName);
+						return;
+					}
+					uid = callback.getPresentUids().iterator().next();
+					logger.info("[WSBroker] Broadcast wildcard write_tag command matched single present tag UID '{}' on station '{}'", uid, clientName);
+				}
+			} else {
+				// Direct command addressed to this station
+				if (!isWildcard) {
+					if (!callback.isTagPresent(reqUid)) {
+						logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
+						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+								reqUid, (itemId != null ? itemId : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					}
+				} else {
+					int presentCount = callback.getPresentTagCount();
+					if (presentCount == 0) {
+						logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on station '{}'", clientName);
+						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+								"", (itemId != null ? itemId : ""), "No RFID tag present on reader station", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					} else if (presentCount > 1) {
+						logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on station '{}'", presentCount, clientName);
+						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+								"", (itemId != null ? itemId : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					} else {
+						uid = callback.getPresentUids().iterator().next();
+					}
+				}
+			}
+		}
+
 		writeTag(uid, itemId, isil, country, parts, partNo, usageType, afi, target, evt.getToken());
 	}
 
@@ -641,7 +703,75 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
+		boolean isDirect = evt.getTarget() != null && evt.getTarget().equalsIgnoreCase(clientName);
+		String reqUid = (uid != null) ? uid.trim() : "";
+		boolean isWildcard = reqUid.isEmpty() || reqUid.equals("*");
+		Byte parsedAfi = parseAfi(afi);
+		String afiHex = formatAfiHex(parsedAfi);
+
+		if (callback != null) {
+			if (!isDirect) {
+				// Broadcast write_afi command: filter silently if tag is not physically present
+				if (!isWildcard) {
+					if (!callback.isTagPresent(reqUid)) {
+						logger.debug("[WSBroker] Broadcast write_afi command for UID '{}' ignored - tag not present on this station ({})",
+								reqUid, clientName);
+						return;
+					}
+				} else {
+					int presentCount = callback.getPresentTagCount();
+					if (presentCount != 1) {
+						logger.debug("[WSBroker] Broadcast wildcard write_afi command ignored - expected exactly 1 present tag, but found {} on station '{}'",
+								presentCount, clientName);
+						return;
+					}
+					uid = callback.getPresentUids().iterator().next();
+					logger.info("[WSBroker] Broadcast wildcard write_afi command matched single present tag UID '{}' on station '{}'", uid, clientName);
+				}
+			} else {
+				// Direct command addressed to this station
+				if (!isWildcard) {
+					if (!callback.isTagPresent(reqUid)) {
+						logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
+						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
+								reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					}
+				} else {
+					int presentCount = callback.getPresentTagCount();
+					if (presentCount == 0) {
+						logger.warn("[WSBroker] Direct wildcard write_afi command failed - no tags present on station '{}'", clientName);
+						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
+								"", (afiHex != null ? afiHex : ""), "No RFID tag present on reader station", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					} else if (presentCount > 1) {
+						logger.warn("[WSBroker] Direct wildcard write_afi command failed - {} tags present on station '{}'", presentCount, clientName);
+						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
+								"", (afiHex != null ? afiHex : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
+						sendReply(target, evt.getToken(), errPayload);
+						return;
+					} else {
+						uid = callback.getPresentUids().iterator().next();
+					}
+				}
+			}
+		}
+
 		writeAfi(uid, afi, target, evt.getToken());
+	}
+
+	private CompletableFuture<Void> sendReply(String target, String token, BaseRfidPayload payload) {
+		if (active && client != null && target != null && !target.isBlank()) {
+			Event reply = Event.createMessage(clientName, target, payload);
+			if (token != null && !token.isBlank()) {
+				reply.setToken(token);
+			}
+			reply.setMessage(payload.getSummaryMessage());
+			return client.send(reply);
+		}
+		return CompletableFuture.completedFuture(null);
 	}
 
 	/**

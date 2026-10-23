@@ -11,7 +11,7 @@
   * **Windows & Linux (x64)**: Uses `FEIG.ID.SDK.Gen3.Java-v7.1.0` with 64-bit DLLs and shared `.so` libraries.
   * **Raspberry Pi (aarch64)**: Uses `FEIG.ID.SDK.Gen3.Raspi.aarch64-v7.1.0` with 64-bit ARM Linux `.so` libraries.
 * **Headless Autonomous Operation**: Runs out-of-the-box as a CLI tool, batch daemon, or managed `systemd` background service without graphical dependencies.
-* **Continuous Scanning & Time-Based Debouncing**: Continuously queries the reader field and suppresses redundant event bursts using a configurable debounce cooldown window (default: 3000 ms).
+* **Continuous Scanning & Time-Based Debouncing**: Continuously queries the reader field and suppresses redundant event bursts using a configurable debounce cooldown window (default: 3000 ms), coupled with an independent Active Tag Presence Cache for intelligent inbound write command routing. See [Cache Architecture Documentation](cache-architecture.md).
 * **Automatic Hardware Discovery & Auto-Reconnect**: Seamlessly re-establishes connection on USB disconnects or power cycles without daemon restarts.
 * **REST Webservice & Client TLS Integration**: Dispatches scan events in real-time with HMAC-SHA256 JWT authorization tokens and dynamic TLS.
 * **WebSocket & WSBroker Integration**: Real-time bidirectional event streaming and remote reader hardware querying (`rfid:tag_read`, `rfid:get_device_metadata`, etc.) with mTLS / MiniVault support. See [WebSocket Documentation](websocket.md).

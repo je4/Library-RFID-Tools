@@ -1,6 +1,10 @@
 package org.objectspace.rfid.headless;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -14,17 +18,21 @@ import org.slf4j.LoggerFactory;
 import de.feig.fedm.utility.HexConvert;
 
 /**
- * Headless RFID tag callback with time-based debounce deduplication.
- * Processes ISO 28560 metadata, persists to database, and dispatches to REST webservice.
+ * Headless RFID tag callback with time-based debounce deduplication and active presence tracking.
+ * Processes ISO 28560 metadata, persists to database, and dispatches to REST webservice and WSBroker.
  */
 public class HeadlessReaderCallback implements TagCallback {
 
 	private static final Logger logger = LoggerFactory.getLogger(HeadlessReaderCallback.class);
 
+	public static final long DEFAULT_PRESENCE_TTL_MILLIS = 1200L;
+
 	private final TagScanProcessor tagScanProcessor;
 	private final HeadlessWsBrokerDispatcher wsBrokerDispatcher;
 	private final long debounceMillis;
+	private final long presenceTtlMillis;
 	private final ConcurrentHashMap<String, Long> lastSeenMap;
+	private final ConcurrentHashMap<String, Long> activePresenceMap;
 	private final String sessionName;
 
 	private final AtomicLong totalScans = new AtomicLong(0);
@@ -34,16 +42,24 @@ public class HeadlessReaderCallback implements TagCallback {
 	private final AtomicLong clearedEvents = new AtomicLong(0);
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, long debounceMillis) {
-		this(tagScanProcessor, null, debounceMillis);
+		this(tagScanProcessor, null, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS);
 	}
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher, long debounceMillis) {
+		this(tagScanProcessor, wsBrokerDispatcher, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS);
+	}
+
+	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher,
+								  long debounceMillis, long presenceTtlMillis) {
 		this.tagScanProcessor = tagScanProcessor;
 		this.wsBrokerDispatcher = wsBrokerDispatcher;
 		this.debounceMillis = debounceMillis >= 0 ? debounceMillis : HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS;
+		this.presenceTtlMillis = presenceTtlMillis > 0 ? presenceTtlMillis : DEFAULT_PRESENCE_TTL_MILLIS;
 		this.lastSeenMap = new ConcurrentHashMap<>();
+		this.activePresenceMap = new ConcurrentHashMap<>();
 		this.sessionName = LocalDateTime.now().toString();
-		logger.info("HeadlessReaderCallback initialized with debounce window: {} ms, session: {}", this.debounceMillis, this.sessionName);
+		logger.info("HeadlessReaderCallback initialized with debounce window: {} ms, presence TTL: {} ms, session: {}",
+				this.debounceMillis, this.presenceTtlMillis, this.sessionName);
 	}
 
 	@Override
@@ -53,10 +69,15 @@ public class HeadlessReaderCallback implements TagCallback {
 		totalScans.incrementAndGet();
 
 		long now = System.currentTimeMillis();
-		Long lastSeen = lastSeenMap.get(UID);
+		String normalizedUid = (UID != null) ? UID.trim() : "";
+		if (!normalizedUid.isEmpty()) {
+			activePresenceMap.put(normalizedUid, now);
+		}
+
+		Long lastSeen = !normalizedUid.isEmpty() ? lastSeenMap.get(normalizedUid) : null;
 		if (lastSeen != null && (now - lastSeen) < debounceMillis) {
 			debouncedScans.incrementAndGet();
-			logger.debug("Tag {} ignored (cooldown active, remaining: {} ms)", UID, debounceMillis - (now - lastSeen));
+			logger.debug("Tag {} ignored (cooldown active, remaining: {} ms)", normalizedUid, debounceMillis - (now - lastSeen));
 			return null;
 		}
 
@@ -144,12 +165,17 @@ public class HeadlessReaderCallback implements TagCallback {
 		}
 
 		// 4. Update debounce cache
-		lastSeenMap.put(UID, now);
+		if (!normalizedUid.isEmpty()) {
+			lastSeenMap.put(normalizedUid, now);
+		}
 		dispatchedScans.incrementAndGet();
 
 		// Periodic cache pruning if map grows
 		if (lastSeenMap.size() > 500) {
 			pruneCache(now);
+		}
+		if (activePresenceMap.size() > 500) {
+			prunePresenceCache(now);
 		}
 
 		return null;
@@ -161,6 +187,7 @@ public class HeadlessReaderCallback implements TagCallback {
 			clearedEvents.incrementAndGet();
 			long now = System.currentTimeMillis();
 			logger.info("[READER CLEARED] All RFID tags removed from reader field");
+			activePresenceMap.clear();
 			lastSeenMap.clear();
 
 			if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
@@ -195,6 +222,87 @@ public class HeadlessReaderCallback implements TagCallback {
 		lastSeenMap.entrySet().removeIf(entry -> entry.getValue() < expiryThreshold);
 	}
 
+	private void prunePresenceCache(long now) {
+		long thresholdMillis = presenceTtlMillis > 0 ? (presenceTtlMillis * 4) : 5000L;
+		long expiryThreshold = now - thresholdMillis;
+		activePresenceMap.entrySet().removeIf(entry -> entry.getValue() < expiryThreshold);
+	}
+
+	/**
+	 * Checks if a specific tag UID is currently physically present on the reader antenna
+	 * (last read timestamp is within the active presence TTL window).
+	 *
+	 * @param uid transponder UID
+	 * @return true if the tag is actively present on the antenna, false otherwise
+	 */
+	public boolean isTagPresent(String uid) {
+		if (uid == null || uid.trim().isEmpty()) {
+			return false;
+		}
+		String normalizedUid = uid.trim();
+		Long lastSeen = activePresenceMap.get(normalizedUid);
+		if (lastSeen == null) {
+			return false;
+		}
+		long now = System.currentTimeMillis();
+		boolean present = (now - lastSeen) <= presenceTtlMillis;
+		if (!present) {
+			activePresenceMap.remove(normalizedUid, lastSeen);
+		}
+		return present;
+	}
+
+	/**
+	 * Returns the set of all UIDs currently physically present on the reader antenna.
+	 *
+	 * @return unmodifiable set of present UIDs
+	 */
+	public Set<String> getPresentUids() {
+		long now = System.currentTimeMillis();
+		Set<String> present = new HashSet<>();
+		for (Map.Entry<String, Long> entry : activePresenceMap.entrySet()) {
+			if ((now - entry.getValue()) <= presenceTtlMillis) {
+				present.add(entry.getKey());
+			} else {
+				activePresenceMap.remove(entry.getKey(), entry.getValue());
+			}
+		}
+		return Collections.unmodifiableSet(present);
+	}
+
+	/**
+	 * Alias for getPresentUids().
+	 */
+	public Set<String> getActiveUids() {
+		return getPresentUids();
+	}
+
+	/**
+	 * Returns the count of transponders currently active in the reader field.
+	 *
+	 * @return number of present tags
+	 */
+	public int getPresentTagCount() {
+		return getPresentUids().size();
+	}
+
+	/**
+	 * Returns the presence time-to-live window in milliseconds.
+	 */
+	public long getPresenceTtlMillis() {
+		return presenceTtlMillis;
+	}
+
+	/**
+	 * Clears only the dispatch debounce cooldown cache, keeping active tag presence intact.
+	 * Used after write operations so the transponder can be read immediately while remaining
+	 * registered as physically present.
+	 */
+	public void clearDebounceCache() {
+		lastSeenMap.clear();
+		logger.debug("Cleared scan debounce cache (active tag presence intact)");
+	}
+
 	public HeadlessWsBrokerDispatcher getWsBrokerDispatcher() {
 		return wsBrokerDispatcher;
 	}
@@ -207,8 +315,13 @@ public class HeadlessReaderCallback implements TagCallback {
 		return lastSeenMap;
 	}
 
+	public ConcurrentHashMap<String, Long> getActivePresenceMap() {
+		return activePresenceMap;
+	}
+
 	public void clearCache() {
 		lastSeenMap.clear();
+		activePresenceMap.clear();
 		hasActiveTags.set(false);
 	}
 

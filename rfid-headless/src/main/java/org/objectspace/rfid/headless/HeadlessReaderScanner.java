@@ -200,8 +200,8 @@ public class HeadlessReaderScanner implements Runnable {
 			// Transponder / EEPROM write settling delay
 			Thread.sleep(150);
 			if (callback != null) {
-				callback.clearCache();
-				logger.info("Cleared scan debounce cache after write operation");
+				callback.clearDebounceCache();
+				logger.info("Cleared scan debounce cache after write operation (active tag presence preserved)");
 			}
 			return result;
 		} finally {
