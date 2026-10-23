@@ -17,6 +17,8 @@ import org.objectspace.rfid.headless.payload.BaseRfidPayload;
 import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
 import org.objectspace.rfid.headless.payload.TagReadPayload;
 import org.objectspace.rfid.headless.payload.TagsClearedPayload;
+import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
+import org.objectspace.rfid.headless.payload.WriteTagResponsePayload;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.WSBroker;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
@@ -43,6 +45,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	private final WSBrokerClient client;
 	private final boolean active;
 	private volatile ISO15693Reader reader;
+	private volatile HeadlessReaderScanner scanner;
+	private volatile HeadlessReaderCallback callback;
 
 	/**
 	 * Creates a new HeadlessWsBrokerDispatcher from configuration.
@@ -208,28 +212,17 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	}
 
 	/**
-	 * Registers default message, action and event handlers for device metadata queries.
+	 * Registers default message and event handlers for device metadata queries and tag write operations.
 	 */
 	private void registerDefaultHandlers() {
 		if (client == null) {
 			return;
 		}
 
-		EventHandler metadataHandler = this::handleMetadataQuery;
-
 		// 1. Primary handler: onMessage compatible with wsbrokerdisplay Controller pattern
 		client.onType(EventType.CLIENT_MESSAGE, this::handleIncomingMessage);
 
-		// 2. Action handlers for backwards compatibility with type="action"
-		client.onAction("get_device_metadata", metadataHandler);
-		client.onAction("get_device_info", metadataHandler);
-		client.onAction("device_metadata", metadataHandler);
-		client.onAction("device_info", metadataHandler);
-		client.onAction("get_metadata", metadataHandler);
-		client.onAction("query_device", metadataHandler);
-		client.onAction("info", metadataHandler);
-
-		// 3. General event listener fallback for non-message targeted queries
+		// 2. General event listener fallback for non-message targeted queries
 		client.onEvent(this::handleGeneralEvent);
 	}
 
@@ -259,9 +252,6 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			eventName = dataNode.asText();
 		}
 
-		if ((eventName == null || eventName.isBlank()) && evt.getActions() != null && !evt.getActions().isEmpty()) {
-			eventName = evt.getActions().get(0);
-		}
 		if ((eventName == null || eventName.isBlank()) && evt.getMessage() != null) {
 			eventName = evt.getMessage();
 		}
@@ -308,6 +298,27 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 					return null;
 				});
 				break;
+
+			case "rfid:write_tag":
+			case "write_tag":
+			case "rfid:writetag":
+			case "writetag":
+			case "rfid:write":
+			case "write":
+				logger.info("[WSBroker] Received write_tag command '{}' from '{}'", eventName, evt.getSource());
+				handleWriteTagCommand(evt, target);
+				break;
+
+			case "rfid:rfid_write_afi":
+			case "rfid_write_afi":
+			case "rfid:write_afi":
+			case "write_afi":
+			case "rfid:set_afi":
+			case "set_afi":
+				logger.info("[WSBroker] Received write_afi command '{}' from '{}'", eventName, evt.getSource());
+				handleWriteAfiCommand(evt, target);
+				break;
+
 			default:
 				logger.debug("[WSBroker] Ignored unrecognized command '{}' from '{}'", eventName, evt.getSource());
 				break;
@@ -328,7 +339,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		}
 		boolean isTargeted = evt.getTarget() != null && evt.getTarget().equalsIgnoreCase(clientName);
 		if (isTargeted) {
-			if (evt.isType(EventType.CLIENT_INFO) || evt.isType(EventType.CLIENT_ACTION)) {
+			if (evt.isType(EventType.CLIENT_INFO)) {
 				handleMetadataQuery(evt);
 			} else if (evt.getMessage() != null && (evt.getMessage().equalsIgnoreCase("get_device_metadata")
 					|| evt.getMessage().equalsIgnoreCase("get_device_info")
@@ -340,7 +351,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	}
 
 	/**
-	 * Sets the connected RFID reader instance for metadata queries.
+	 * Sets the connected RFID reader instance for metadata queries and write operations.
 	 *
 	 * @param reader ISO15693 reader instance
 	 */
@@ -355,6 +366,286 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 */
 	public ISO15693Reader getReader() {
 		return reader;
+	}
+
+	/**
+	 * Sets the background scanner loop instance for coordinating write pausing.
+	 *
+	 * @param scanner scanner instance
+	 */
+	public void setScanner(HeadlessReaderScanner scanner) {
+		this.scanner = scanner;
+	}
+
+	/**
+	 * Returns the currently configured scanner loop instance.
+	 *
+	 * @return scanner instance or null
+	 */
+	public HeadlessReaderScanner getScanner() {
+		return scanner;
+	}
+
+	/**
+	 * Sets the headless reader callback for clearing the debounce cache after write operations.
+	 *
+	 * @param callback callback instance
+	 */
+	public void setCallback(HeadlessReaderCallback callback) {
+		this.callback = callback;
+	}
+
+	/**
+	 * Returns the currently configured callback instance.
+	 *
+	 * @return callback instance or null
+	 */
+	public HeadlessReaderCallback getCallback() {
+		return callback;
+	}
+
+	/**
+	 * Executes an exclusive task on the RFID reader.
+	 * If a scanner instance is present, delegating to scanner.executeExclusive() guarantees that
+	 * the scanning loop is safely paused, timing delays are respected, and the debounce cache is cleared.
+	 *
+	 * @param task task to execute
+	 * @param <T>  result type
+	 * @return task result
+	 * @throws Exception if execution fails
+	 */
+	public <T> T executeExclusive(HeadlessReaderScanner.ScannerTask<T> task) throws Exception {
+		if (scanner != null) {
+			return scanner.executeExclusive(task);
+		} else if (reader != null) {
+			synchronized (reader) {
+				Thread.sleep(100);
+				T res = task.run(reader);
+				Thread.sleep(150);
+				if (callback != null) {
+					callback.clearCache();
+				}
+				return res;
+			}
+		} else {
+			throw new IllegalStateException("No RFID reader configured for write operation");
+		}
+	}
+
+	/**
+	 * Flexible parser for AFI byte parameters (supports Integer, hex string e.g. '07' or '0x07', decimal string).
+	 *
+	 * @param afiObj AFI parameter object or null
+	 * @return parsed Byte or null if missing/empty
+	 */
+	public static Byte parseAfi(Object afiObj) {
+		if (afiObj == null) {
+			return null;
+		}
+		if (afiObj instanceof Number) {
+			return ((Number) afiObj).byteValue();
+		}
+		String s = afiObj.toString().trim();
+		if (s.isEmpty()) {
+			return null;
+		}
+		if (s.startsWith("0x") || s.startsWith("0X")) {
+			return (byte) Integer.parseInt(s.substring(2), 16);
+		}
+		try {
+			return (byte) Integer.parseInt(s);
+		} catch (NumberFormatException e) {
+			return (byte) Integer.parseInt(s, 16);
+		}
+	}
+
+	/**
+	 * Formats an AFI byte into a 2-digit uppercase hex string (e.g. '07', 'C2').
+	 *
+	 * @param afi AFI byte value
+	 * @return hex string or null
+	 */
+	public static String formatAfiHex(Byte afi) {
+		if (afi == null) {
+			return null;
+		}
+		return String.format("%02X", afi.byteValue() & 0xFF);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata (item ID, ISIL, country, parts) and optionally AFI to an RFID tag by UID.
+	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 *
+	 * @param uid       target tag UID (or empty/wildcard for single tag in field)
+	 * @param itemId    primary item identifier
+	 * @param isil      library ISIL identifier
+	 * @param country   country code
+	 * @param parts     total parts count (default 1)
+	 * @param partNo    current part number (default 1)
+	 * @param usageType usage type (default 1)
+	 * @param afiObj    optional AFI byte or hex string
+	 * @param target    target client or channel to send response message to
+	 * @param token     correlation token
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
+															   int parts, int partNo, int usageType, Object afiObj,
+															   String target, String token) {
+		CompletableFuture<WriteTagResponsePayload> future = CompletableFuture.supplyAsync(() -> {
+			String effectiveUid = (uid != null) ? uid.trim() : "";
+			Byte parsedAfi = parseAfi(afiObj);
+			String afiHex = formatAfiHex(parsedAfi);
+
+			try {
+				FinnishDataModel model = new FinnishDataModel();
+				int effParts = parts > 0 ? parts : 1;
+				int effPartNo = partNo > 0 ? partNo : 1;
+				int effUsage = usageType > 0 ? usageType : 1;
+				model.setValues(effUsage, effParts, effPartNo, (itemId != null ? itemId : ""),
+						(country != null ? country : ""), (isil != null ? isil : ""), null);
+
+				executeExclusive(r -> {
+					r.writeTag(effectiveUid, model, parsedAfi);
+					return null;
+				});
+
+				logger.info("[WSBroker] Successfully wrote tag: UID='{}', ItemID='{}', ISIL='{}', Country='{}', AFI='{}'",
+						effectiveUid, itemId, isil, country, afiHex);
+				return WriteTagResponsePayload.success(effectiveUid, itemId, isil, country,
+						effParts, effPartNo, effUsage, afiHex, "", clientName);
+			} catch (Exception e) {
+				logger.error("[WSBroker] Error writing tag UID='{}': {}", effectiveUid, e.getMessage(), e);
+				return WriteTagResponsePayload.error(effectiveUid, itemId, e.getMessage(), "", clientName);
+			}
+		});
+
+		return future.thenCompose(payload -> {
+			if (active && client != null && target != null && !target.isBlank()) {
+				Event reply = Event.createMessage(clientName, target, payload);
+				if (token != null && !token.isBlank()) {
+					reply.setToken(token);
+				}
+				reply.setMessage(payload.getSummaryMessage());
+				return client.send(reply).thenApply(v -> payload);
+			}
+			return CompletableFuture.completedFuture(payload);
+		});
+	}
+
+	/**
+	 * Writes Application Family Identifier (AFI) byte to an RFID tag by UID.
+	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 *
+	 * @param uid    target tag UID
+	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @return CompletableFuture with WriteAfiResponsePayload
+	 */
+	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token) {
+		CompletableFuture<WriteAfiResponsePayload> future = CompletableFuture.supplyAsync(() -> {
+			String effectiveUid = (uid != null) ? uid.trim() : "";
+			Byte parsedAfi = parseAfi(afiObj);
+			if (parsedAfi == null) {
+				return WriteAfiResponsePayload.error(effectiveUid, null, "AFI parameter is missing or invalid", "", clientName);
+			}
+			String afiHex = formatAfiHex(parsedAfi);
+
+			try {
+				executeExclusive(r -> {
+					r.writeAfi(effectiveUid, parsedAfi);
+					return null;
+				});
+
+				logger.info("[WSBroker] Successfully wrote AFI='{}' (0x{}) on tag UID='{}'", parsedAfi, afiHex, effectiveUid);
+				return WriteAfiResponsePayload.success(effectiveUid, afiHex, "", clientName);
+			} catch (Exception e) {
+				logger.error("[WSBroker] Error writing AFI on tag UID='{}': {}", effectiveUid, e.getMessage(), e);
+				return WriteAfiResponsePayload.error(effectiveUid, afiHex, e.getMessage(), "", clientName);
+			}
+		});
+
+		return future.thenCompose(payload -> {
+			if (active && client != null && target != null && !target.isBlank()) {
+				Event reply = Event.createMessage(clientName, target, payload);
+				if (token != null && !token.isBlank()) {
+					reply.setToken(token);
+				}
+				reply.setMessage(payload.getSummaryMessage());
+				return client.send(reply).thenApply(v -> payload);
+			}
+			return CompletableFuture.completedFuture(payload);
+		});
+	}
+
+	private void handleWriteTagCommand(Event evt, String target) {
+		JsonNode data = evt.getData();
+		String uid = null;
+		String itemId = null;
+		String isil = null;
+		String country = null;
+		int parts = 1;
+		int partNo = 1;
+		int usageType = 1;
+		Object afi = null;
+
+		if (data != null && data.isObject()) {
+			if (data.hasNonNull("uid")) uid = data.get("uid").asText();
+			else if (data.hasNonNull("UID")) uid = data.get("UID").asText();
+
+			if (data.hasNonNull("itemId")) itemId = data.get("itemId").asText();
+			else if (data.hasNonNull("imtemId")) itemId = data.get("imtemId").asText();
+			else if (data.hasNonNull("primaryItemId")) itemId = data.get("primaryItemId").asText();
+			else if (data.hasNonNull("item_id")) itemId = data.get("item_id").asText();
+			else if (data.hasNonNull("barcode")) itemId = data.get("barcode").asText();
+
+			if (data.hasNonNull("isil")) isil = data.get("isil").asText();
+			else if (data.hasNonNull("ISIL")) isil = data.get("ISIL").asText();
+
+			if (data.hasNonNull("country")) country = data.get("country").asText();
+			else if (data.hasNonNull("countryOfOwnerLib")) country = data.get("countryOfOwnerLib").asText();
+
+			if (data.hasNonNull("parts")) parts = data.get("parts").asInt(1);
+			else if (data.hasNonNull("partsInItem")) parts = data.get("partsInItem").asInt(1);
+
+			if (data.hasNonNull("partno")) partNo = data.get("partno").asInt(1);
+			else if (data.hasNonNull("partNo")) partNo = data.get("partNo").asInt(1);
+			else if (data.hasNonNull("partNumber")) partNo = data.get("partNumber").asInt(1);
+
+			if (data.hasNonNull("usageType")) usageType = data.get("usageType").asInt(1);
+			else if (data.hasNonNull("typeOfUsage")) usageType = data.get("typeOfUsage").asInt(1);
+
+			if (data.hasNonNull("afi")) {
+				JsonNode afiNode = data.get("afi");
+				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
+			} else if (data.hasNonNull("AFI")) {
+				JsonNode afiNode = data.get("AFI");
+				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
+			}
+		}
+
+		writeTag(uid, itemId, isil, country, parts, partNo, usageType, afi, target, evt.getToken());
+	}
+
+	private void handleWriteAfiCommand(Event evt, String target) {
+		JsonNode data = evt.getData();
+		String uid = null;
+		Object afi = null;
+
+		if (data != null && data.isObject()) {
+			if (data.hasNonNull("uid")) uid = data.get("uid").asText();
+			else if (data.hasNonNull("UID")) uid = data.get("UID").asText();
+
+			if (data.hasNonNull("afi")) {
+				JsonNode afiNode = data.get("afi");
+				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
+			} else if (data.hasNonNull("AFI")) {
+				JsonNode afiNode = data.get("AFI");
+				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
+			}
+		}
+
+		writeAfi(uid, afi, target, evt.getToken());
 	}
 
 	/**
@@ -425,8 +716,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		if (clientName != null && clientName.equalsIgnoreCase(incomingEvent.getSource())) {
 			return;
 		}
-		logger.info("[WSBroker] Received device metadata query from '{}' (action='{}')",
-				incomingEvent.getSource(), incomingEvent.getActions());
+		logger.info("[WSBroker] Received device metadata query from '{}'", incomingEvent.getSource());
 		String target = incomingEvent.getSource();
 		if (target == null || target.isBlank()) {
 			target = channels.isEmpty() ? null : channels.get(0);

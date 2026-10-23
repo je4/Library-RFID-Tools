@@ -199,6 +199,38 @@ public interface ISO15693Reader {
 	}
 
 	/**
+	 * writes data blocks to a specific tag by UID
+	 * @param uid target transponder UID (hex string), or null / wildcard for single tag in field
+	 * @param data byte array containing block data to write
+	 * @param blockSize block size in bytes (e.g. 4), or 0 for auto-detection
+	 * @throws Exception if writing fails or tag is not found
+	 */
+	public default void writeTag(String uid, byte[] data, int blockSize) throws Exception {
+		throw new UnsupportedOperationException("writeTag not supported on this reader");
+	}
+
+	/**
+	 * writes encoded ISO 28560 / Finnish Data Model to a specific tag by UID and optionally sets AFI
+	 * @param uid target transponder UID (hex string), or null / wildcard for single tag in field
+	 * @param model FinnishDataModel containing item metadata
+	 * @param afi optional AFI byte value (null to leave AFI untouched)
+	 * @throws Exception if writing fails or tag is not found
+	 */
+	public default void writeTag(String uid, org.objectspace.rfid.FinnishDataModel model, Byte afi) throws Exception {
+		throw new UnsupportedOperationException("writeTag not supported on this reader");
+	}
+
+	/**
+	 * writes Application Family Identifier (AFI) byte to a specific tag by UID
+	 * @param uid target transponder UID (hex string), or null / wildcard for single tag in field
+	 * @param afi AFI byte value
+	 * @throws Exception if writing AFI fails or tag is not found
+	 */
+	public default void writeAfi(String uid, byte afi) throws Exception {
+		throw new UnsupportedOperationException("writeAfi not supported on this reader");
+	}
+
+	/**
 	 * cleanup
 	 * @throws Exception
 	 */

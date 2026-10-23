@@ -225,7 +225,7 @@ public class WSClientMtlsExample {
 
 ---
 
-### 2. Typed Event Handlers & Action Invocations
+### 2. Typed Event Handlers
 
 ```java
 record BookScanPayload(String epc, String barcode, String branchId) {}
@@ -234,14 +234,6 @@ record BookScanPayload(String epc, String barcode, String branchId) {}
 client.onChannel("library/books", BookScanPayload.class, (event, payload) -> {
     System.out.println("Scanned Book: " + payload.barcode() + " at branch " + payload.branchId());
 });
-
-// Register action invocation handler
-client.onAction("inventory_trigger", (event) -> {
-    System.out.println("Remote inventory scan requested by " + event.getSource());
-});
-
-// Dispatch an action to a remote worker node
-client.sendAction("rfid-gate-02", "open_barrier", Map.of("timeoutSeconds", 10)).join();
 ```
 
 ---

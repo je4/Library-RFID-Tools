@@ -294,6 +294,145 @@ public class ISO15693Feig implements ISO15693Reader {
 		return FeigRFID.resolveHostModeConfigFile(config);
 	}
 
+	@Override
+	public void writeTag(String uid, byte[] data, int blockSize) throws Exception {
+		if (!isConnected()) {
+			throw new Exception("RFID reader is not connected");
+		}
+		if (data == null || data.length == 0) {
+			throw new IllegalArgumentException("No data provided to write to tag");
+		}
+
+		String targetUid = uid != null ? uid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+
+		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 0);
+		if (tagHandlers == null || tagHandlers.isEmpty()) {
+			throw new Exception("No RFID tags detected in reader field");
+		}
+
+		ThBase matchedHandler = null;
+		for (ThBase th : tagHandlers) {
+			if (th != null) {
+				String thUid = th.iddToHexString();
+				String normThUid = thUid != null ? thUid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+				if (targetUid.isEmpty() || targetUid.equals("*") || normThUid.equals(targetUid)) {
+					matchedHandler = th;
+					break;
+				}
+			}
+		}
+
+		if (matchedHandler == null) {
+			for (ThBase th : tagHandlers) {
+				if (th != null) {
+					try { th.close(); } catch (Throwable ignored) {}
+				}
+			}
+			throw new Exception("Tag with UID '" + uid + "' not found in reader field");
+		}
+
+		try {
+			int actualBlockSize = blockSize > 0 ? blockSize : 4;
+			int blockCount = (data.length + actualBlockSize - 1) / actualBlockSize;
+			byte[] paddedData = new byte[blockCount * actualBlockSize];
+			System.arraycopy(data, 0, paddedData, 0, data.length);
+
+			DataBuffer db = new DataBuffer(paddedData);
+			int res = matchedHandler.writeMultipleBlocks(0, blockCount, actualBlockSize, db);
+			if (res != 0) {
+				// Fallback: write block-by-block if bulk write failed
+				for (int b = 0; b < blockCount; b++) {
+					byte[] singleBlock = new byte[actualBlockSize];
+					System.arraycopy(paddedData, b * actualBlockSize, singleBlock, 0, actualBlockSize);
+					DataBuffer singleDb = new DataBuffer(singleBlock);
+					int singleRes = matchedHandler.writeMultipleBlocks(b, 1, actualBlockSize, singleDb);
+					if (singleRes != 0) {
+						String errMsg = (feig != null)
+								? " (FEIG Error: " + feig.getLastError() + ")"
+								: "";
+						throw new Exception("Failed to write block " + b + " (status: " + singleRes + errMsg + ")");
+					}
+					Thread.sleep(20);
+				}
+			}
+			Thread.sleep(100);
+		} finally {
+			for (ThBase th : tagHandlers) {
+				if (th != null) {
+					try { th.close(); } catch (Throwable ignored) {}
+				}
+			}
+		}
+	}
+
+	@Override
+	public void writeTag(String uid, org.objectspace.rfid.FinnishDataModel model, Byte afi) throws Exception {
+		if (model == null) {
+			throw new IllegalArgumentException("FinnishDataModel cannot be null");
+		}
+		byte[] blockData = model.getBlock(0);
+		writeTag(uid, blockData, 4);
+		if (afi != null) {
+			writeAfi(uid, afi);
+		}
+	}
+
+	@Override
+	public void writeAfi(String uid, byte afi) throws Exception {
+		if (!isConnected()) {
+			throw new Exception("RFID reader is not connected");
+		}
+
+		String targetUid = uid != null ? uid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+
+		List<ThBase> tagHandlers = feig.tagInventory(true, (byte) 0, (byte) 0);
+		if (tagHandlers == null || tagHandlers.isEmpty()) {
+			throw new Exception("No RFID tags detected in reader field");
+		}
+
+		ThBase matchedHandler = null;
+		for (ThBase th : tagHandlers) {
+			if (th != null) {
+				String thUid = th.iddToHexString();
+				String normThUid = thUid != null ? thUid.replaceAll("[^a-fA-F0-9]", "").toUpperCase() : "";
+				if (targetUid.isEmpty() || targetUid.equals("*") || normThUid.equals(targetUid)) {
+					matchedHandler = th;
+					break;
+				}
+			}
+		}
+
+		if (matchedHandler == null) {
+			for (ThBase th : tagHandlers) {
+				if (th != null) {
+					try { th.close(); } catch (Throwable ignored) {}
+				}
+			}
+			throw new Exception("Tag with UID '" + uid + "' not found in reader field");
+		}
+
+		try {
+			if (matchedHandler instanceof ThIso15693) {
+				int res = ((ThIso15693) matchedHandler).writeAFI(afi);
+				if (res != 0) {
+					String errMsg = (feig != null)
+							? " (FEIG Error: " + feig.getLastError() + ")"
+							: "";
+					throw new Exception("Failed to write AFI byte 0x" + String.format("%02X", afi) + " (status: " + res + errMsg + ")");
+				}
+			} else {
+				throw new Exception("Tag handler does not support ISO15693 AFI operations (" + matchedHandler.getClass().getName() + ")");
+			}
+			Thread.sleep(100);
+		} finally {
+			for (ThBase th : tagHandlers) {
+				if (th != null) {
+					try { th.close(); } catch (Throwable ignored) {}
+				}
+			}
+		}
+	}
+
 	public FeigRFID getFeigRFID() {
 		return feig;
 	}

@@ -28,9 +28,6 @@ public class HeadlessReader {
 		this.tagScanProcessor = new TagScanProcessor(config);
 		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
 		this.reader = ISO15693ReaderFactory.createReader(config);
-		if (this.wsBrokerDispatcher != null) {
-			this.wsBrokerDispatcher.setReader(this.reader);
-		}
 
 		long debounce = (debounceOverride != null && debounceOverride >= 0)
 				? debounceOverride
@@ -46,6 +43,11 @@ public class HeadlessReader {
 
 		this.callback = new HeadlessReaderCallback(tagScanProcessor, wsBrokerDispatcher, debounce);
 		this.scanner = new HeadlessReaderScanner(reader, callback, numBlocks, sleepInterval);
+		if (this.wsBrokerDispatcher != null) {
+			this.wsBrokerDispatcher.setReader(this.reader);
+			this.wsBrokerDispatcher.setScanner(this.scanner);
+			this.wsBrokerDispatcher.setCallback(this.callback);
+		}
 	}
 
 	public void start() {

@@ -50,7 +50,6 @@ class WSBrokerClientTest {
             client.onEvent(evt -> handlerTriggered.set(true));
             client.onType(EventType.CLIENT_MESSAGE, evt -> {});
             client.onChannel("rfid/events", evt -> {});
-            client.onAction("scan", evt -> {});
 
             // Subscriptions
             client.subscribe("rfid/events");

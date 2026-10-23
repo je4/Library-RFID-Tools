@@ -60,7 +60,6 @@ public class WSBrokerClient implements AutoCloseable {
     private final List<EventHandler> globalHandlers = new CopyOnWriteArrayList<>();
     private final Map<String, List<EventHandler>> typeHandlers = new ConcurrentHashMap<>();
     private final Map<String, List<EventHandler>> channelHandlers = new ConcurrentHashMap<>();
-    private final Map<String, List<EventHandler>> actionHandlers = new ConcurrentHashMap<>();
 
     private final ConcurrentLinkedQueue<CompletableFuture<NTPResponse>> pendingNtpQueries = new ConcurrentLinkedQueue<>();
 
@@ -662,27 +661,6 @@ public class WSBrokerClient implements AutoCloseable {
         }
     }
 
-    /**
-     * Registers a handler for events containing a specific action name in their action list.
-     */
-    public void onAction(String action, EventHandler handler) {
-        if (action != null && handler != null) {
-            actionHandlers.computeIfAbsent(action.trim().toLowerCase(), k -> new CopyOnWriteArrayList<>()).add(handler);
-        }
-    }
-
-    /**
-     * Registers a typed handler for events containing a specific action name.
-     */
-    public <T> void onAction(String action, Class<T> clazz, TypedEventHandler<T> handler) {
-        if (action != null && handler != null && clazz != null) {
-            onAction(action, evt -> {
-                T payload = evt.getDataAs(clazz);
-                handler.onEvent(evt, payload);
-            });
-        }
-    }
-
     private void handleIncomingEvent(Event evt) {
         log.debug("Received event: type='{}', source='{}', target='{}'", evt.getType(), evt.getSource(), evt.getTarget());
 
@@ -755,18 +733,6 @@ public class WSBrokerClient implements AutoCloseable {
                 if (handlers != null) {
                     for (EventHandler h : handlers) {
                         invokeHandler(h, evt);
-                    }
-                }
-            }
-
-            // Action handlers
-            if (evt.getActions() != null) {
-                for (String act : evt.getActions()) {
-                    List<EventHandler> handlers = actionHandlers.get(act.toLowerCase());
-                    if (handlers != null) {
-                        for (EventHandler h : handlers) {
-                            invokeHandler(h, evt);
-                        }
                     }
                 }
             }

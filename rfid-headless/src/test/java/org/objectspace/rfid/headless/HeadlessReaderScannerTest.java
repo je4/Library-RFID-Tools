@@ -194,4 +194,54 @@ public class HeadlessReaderScannerTest {
         assertFalse(backupCalled.get(), "No backup should be created before restoring host mode");
         assertTrue(mockReader.isHostMode(), "Reader state should be updated to host mode");
     }
+
+    @Test
+    @DisplayName("Test executeExclusive pauses scanning loop, runs exclusive task, and clears cache")
+    public void testExecuteExclusivePausesAndClearsCache() throws Exception {
+        AtomicBoolean writeExecuted = new AtomicBoolean(false);
+        AtomicInteger inventoryCallsDuringWrite = new AtomicInteger(0);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() throws Exception {}
+            @Override
+            public void init() throws Exception {}
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {
+                if (writeExecuted.get()) {
+                    inventoryCallsDuringWrite.incrementAndGet();
+                }
+            }
+            @Override
+            public boolean isConnected() { return true; }
+            @Override
+            public boolean checkConnection() { return true; }
+            @Override
+            public String getDeviceInfo() { return "Mock FEIG Reader"; }
+            @Override
+            public void close() throws Exception {}
+        };
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+        callback.getLastSeenMap().put("E004010011223344", System.currentTimeMillis());
+        assertTrue(callback.getLastSeenMap().containsKey("E004010011223344"), "Tag should be cached prior to write");
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 10);
+        scanner.start();
+
+        String result = scanner.executeExclusive(r -> {
+            writeExecuted.set(true);
+            assertTrue(scanner.isPaused(), "Scanner must report paused during executeExclusive");
+            Thread.sleep(100);
+            return "SUCCESS";
+        });
+
+        assertEquals("SUCCESS", result);
+        assertFalse(scanner.isPaused(), "Scanner must resume after executeExclusive");
+        assertFalse(callback.getLastSeenMap().containsKey("E004010011223344"), "Debounce cache must be cleared after executeExclusive");
+
+        scanner.stop();
+    }
 }
