@@ -22,7 +22,7 @@
 	<!-- Database connection (optional) -->
 	<database>
 		<active>false</active>
-		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=XXX]]></dsn>
+		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=XXXXXX]]></dsn>
 		<driver>com.mysql.cj.jdbc.Driver</driver>
 	</database>
 
@@ -51,7 +51,7 @@
 			<!-- Base URL of the MiniVault REST API endpoint -->
 			<baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
 			<!-- Initial parent authentication token (or env:VAULT_PARENT_TOKEN) -->
-			<parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
+			<parenttoken><![CDATA[pa.xxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxx]]></parenttoken>
 			<!-- Token type to request from MiniVault (e.g. client_cert) -->
 			<tokentype>client_cert</tokentype>
 			<!-- MiniVault policies granted to child tokens -->

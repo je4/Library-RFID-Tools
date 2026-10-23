@@ -86,7 +86,23 @@ public class HeadlessConfigHelper {
 		if (config == null) {
 			return DEFAULT_DEBOUNCE_MILLIS;
 		}
-		return config.getLong("debounce", DEFAULT_DEBOUNCE_MILLIS);
+		String[] keys = new String[] {
+				"debounce",
+				"inventory.debounce",
+				"resend_interval",
+				"resend_time",
+				"tag_resend_time",
+				"cooldown"
+		};
+		for (String key : keys) {
+			if (config.containsKey(key)) {
+				long val = config.getLong(key, -1L);
+				if (val >= 0) {
+					return val;
+				}
+			}
+		}
+		return DEFAULT_DEBOUNCE_MILLIS;
 	}
 
 	public static boolean isWsBrokerActive(AbstractConfiguration config) {

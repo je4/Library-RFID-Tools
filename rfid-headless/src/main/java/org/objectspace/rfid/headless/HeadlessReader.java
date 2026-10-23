@@ -29,7 +29,7 @@ public class HeadlessReader {
 		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
 		this.reader = ISO15693ReaderFactory.createReader(config);
 
-		long debounce = (debounceOverride != null && debounceOverride > 0)
+		long debounce = (debounceOverride != null && debounceOverride >= 0)
 				? debounceOverride
 				: HeadlessConfigHelper.getDebounceMillis(config);
 

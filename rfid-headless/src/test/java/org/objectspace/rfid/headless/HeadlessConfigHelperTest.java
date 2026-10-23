@@ -163,4 +163,49 @@ public class HeadlessConfigHelperTest {
         assertEquals("reader-unit-2", HeadlessConfigHelper.getClientName(config));
         assertEquals("https://broker.local:8765", HeadlessConfigHelper.getWsBrokerEndpoint(config));
     }
+
+    @Test
+    @DisplayName("Test debounce interval parsing with alias keys and precedence")
+    public void testDebounceKeyAliasesAndPrecedence() throws Exception {
+        // 1. Direct <debounce>
+        BaseConfiguration cfg1 = new BaseConfiguration();
+        cfg1.setProperty("debounce", 5000L);
+        assertEquals(5000L, HeadlessConfigHelper.getDebounceMillis(cfg1));
+
+        // 2. <inventory.debounce>
+        BaseConfiguration cfg2 = new BaseConfiguration();
+        cfg2.setProperty("inventory.debounce", 2500L);
+        assertEquals(2500L, HeadlessConfigHelper.getDebounceMillis(cfg2));
+
+        // 3. <resend_interval>
+        BaseConfiguration cfg3 = new BaseConfiguration();
+        cfg3.setProperty("resend_interval", 4000L);
+        assertEquals(4000L, HeadlessConfigHelper.getDebounceMillis(cfg3));
+
+        // 4. <resend_time>
+        BaseConfiguration cfg4 = new BaseConfiguration();
+        cfg4.setProperty("resend_time", 3500L);
+        assertEquals(3500L, HeadlessConfigHelper.getDebounceMillis(cfg4));
+
+        // 5. <tag_resend_time>
+        BaseConfiguration cfg5 = new BaseConfiguration();
+        cfg5.setProperty("tag_resend_time", 4500L);
+        assertEquals(4500L, HeadlessConfigHelper.getDebounceMillis(cfg5));
+
+        // 6. <cooldown>
+        BaseConfiguration cfg6 = new BaseConfiguration();
+        cfg6.setProperty("cooldown", 2000L);
+        assertEquals(2000L, HeadlessConfigHelper.getDebounceMillis(cfg6));
+
+        // 7. Precedence test: debounce overrides resend_interval
+        BaseConfiguration cfgPrecedence = new BaseConfiguration();
+        cfgPrecedence.setProperty("debounce", 1500L);
+        cfgPrecedence.setProperty("resend_interval", 6000L);
+        assertEquals(1500L, HeadlessConfigHelper.getDebounceMillis(cfgPrecedence));
+
+        // 8. Negative/invalid value falls back to default
+        BaseConfiguration cfgInvalid = new BaseConfiguration();
+        cfgInvalid.setProperty("debounce", -100L);
+        assertEquals(HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS, HeadlessConfigHelper.getDebounceMillis(cfgInvalid));
+    }
 }

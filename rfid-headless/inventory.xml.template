@@ -22,7 +22,7 @@
 	<!-- Database connection (optional) -->
 	<database>
 		<active>false</active>
-		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=YOUR_PASSWORD]]></dsn>
+		<dsn><![CDATA[jdbc:mysql://localhost/rfid?user=rfid&password=XXXXXX]]></dsn>
 		<driver>com.mysql.cj.jdbc.Driver</driver>
 	</database>
 
@@ -65,7 +65,7 @@
 
 			<minivault>
 				<baseurl><![CDATA[https://localhost:8759/api/v1]]></baseurl>
-				<parenttoken><![CDATA[pa.22f09dfd1cbfbe9f.c17b29cb2b730533]]></parenttoken>
+				<parenttoken><![CDATA[pa.xxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxx]]></parenttoken>
 				<tokentype>client_cert</tokentype>
 				<tokenpolicies>
 					<policy>wsbroker.client</policy>
@@ -87,6 +87,9 @@
 
 	<!-- Number of blocks to read from RFID tag (default: 12) -->
 	<numblocks>12</numblocks>
+
+	<!-- Minimum delay in milliseconds before an identical NFC/RFID tag is resent (debounce window) -->
+	<debounce>3000</debounce>
 
 	<!-- Technical tag details and memory configuration -->
 	<tagfeatures>

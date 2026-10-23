@@ -189,15 +189,57 @@ public class HeadlessReaderCallbackTest {
         FinnishDataModel model = new FinnishDataModel();
         callback.doIt(1, 1, "NXP", "SLIX", "UID-TEST", model.getBlock(32), 4);
         assertTrue(callback.hasActiveTags());
+        assertEquals(1, callback.getLastSeenMap().size());
 
-        // Empty field
+        // Second immediate scan of same tag without clearing -> debounced
+        callback.doIt(1, 1, "NXP", "SLIX", "UID-TEST", model.getBlock(32), 4);
+        assertEquals(1, callback.getDispatchedScans());
+        assertEquals(1, callback.getDebouncedScans());
+
+        // Empty field (reader cleared) -> resets active tags and clears debounce cache
         callback.empty();
         assertFalse(callback.hasActiveTags());
         assertEquals(1, callback.getClearedEvents());
+        assertEquals(0, callback.getLastSeenMap().size(), "Debounce cache should be cleared on reader empty event");
+
+        // Scan the same tag immediately after empty -> must be dispatched again
+        callback.doIt(1, 1, "NXP", "SLIX", "UID-TEST", model.getBlock(32), 4);
+        assertEquals(2, callback.getDispatchedScans(), "Tag should be dispatched immediately after reader cleared");
+        assertEquals(1, callback.getDebouncedScans());
+        assertTrue(callback.hasActiveTags());
 
         // Subsequent empty calls while field remains empty
         callback.empty();
-        assertEquals(1, callback.getClearedEvents());
+        assertEquals(2, callback.getClearedEvents());
+        callback.empty();
+        assertEquals(2, callback.getClearedEvents());
+
+        callback.close();
+    }
+
+    @Test
+    @DisplayName("Test zero debounce window disables suppression and dispatches every scan")
+    public void testZeroDebounceWindow() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 0L);
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-ZERO", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+        String uid = "E004010099998888";
+
+        // Multiple immediate scans of identical tag
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+
+        assertEquals(3, callback.getTotalScans());
+        assertEquals(3, callback.getDispatchedScans());
+        assertEquals(0, callback.getDebouncedScans());
 
         callback.close();
     }

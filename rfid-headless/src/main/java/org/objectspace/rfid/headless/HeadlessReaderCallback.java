@@ -40,7 +40,7 @@ public class HeadlessReaderCallback implements TagCallback {
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher, long debounceMillis) {
 		this.tagScanProcessor = tagScanProcessor;
 		this.wsBrokerDispatcher = wsBrokerDispatcher;
-		this.debounceMillis = debounceMillis > 0 ? debounceMillis : HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS;
+		this.debounceMillis = debounceMillis >= 0 ? debounceMillis : HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS;
 		this.lastSeenMap = new ConcurrentHashMap<>();
 		this.sessionName = LocalDateTime.now().toString();
 		logger.info("HeadlessReaderCallback initialized with debounce window: {} ms, session: {}", this.debounceMillis, this.sessionName);
@@ -161,6 +161,7 @@ public class HeadlessReaderCallback implements TagCallback {
 			clearedEvents.incrementAndGet();
 			long now = System.currentTimeMillis();
 			logger.info("[READER CLEARED] All RFID tags removed from reader field");
+			lastSeenMap.clear();
 
 			if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
 				try {
@@ -189,7 +190,8 @@ public class HeadlessReaderCallback implements TagCallback {
 	}
 
 	private void pruneCache(long now) {
-		long expiryThreshold = now - (debounceMillis * 2);
+		long thresholdMillis = debounceMillis > 0 ? (debounceMillis * 2) : 1000L;
+		long expiryThreshold = now - thresholdMillis;
 		lastSeenMap.entrySet().removeIf(entry -> entry.getValue() < expiryThreshold);
 	}
 
