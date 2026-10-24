@@ -244,4 +244,111 @@ public class HeadlessReaderScannerTest {
 
         scanner.stop();
     }
+
+    @Test
+    @DisplayName("Test reader disconnect during inventory scan triggers empty callback and clears active tags")
+    public void testReaderDisconnectDuringInventoryScanTriggersEmptyCallback() throws Exception {
+        AtomicBoolean connected = new AtomicBoolean(true);
+        AtomicBoolean closed = new AtomicBoolean(false);
+        AtomicInteger scanCycles = new AtomicInteger(0);
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override
+            public void connect() throws Exception {
+                connected.set(true);
+            }
+
+            @Override
+            public void init() throws Exception {}
+
+            @Override
+            public void inventory(TagCallback inventoryCallback, int numBlocks) throws Exception {
+                int cycle = scanCycles.incrementAndGet();
+                if (cycle == 1) {
+                    // First cycle: scan a tag
+                    inventoryCallback.doIt(1, 1, "NXP", "SLIX", "E004010099887766", new byte[32], 4L, null);
+                } else {
+                    // Reader gets disconnected
+                    connected.set(false);
+                    throw new Exception("USB Communication failure: device disconnected");
+                }
+            }
+
+            @Override
+            public boolean isConnected() {
+                return connected.get();
+            }
+
+            @Override
+            public boolean checkConnection() {
+                return connected.get();
+            }
+
+            @Override
+            public String getDeviceInfo() {
+                return "Mock FEIG Reader";
+            }
+
+            @Override
+            public void close() throws Exception {
+                closed.set(true);
+                connected.set(false);
+            }
+        };
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 10);
+        scanner.start();
+
+        // Wait for scanner to process first cycle and encounter disconnection in second cycle
+        long start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < 2000) {
+            if (closed.get() && !callback.hasActiveTags()) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+
+        assertTrue(closed.get(), "Reader should be closed when connection loss is detected");
+        assertFalse(callback.hasActiveTags(), "Active tags must be cleared upon reader disconnection");
+        assertEquals(1, callback.getClearedEvents(), "Cleared event count must be incremented");
+
+        scanner.stop();
+    }
+
+    @Test
+    @DisplayName("Test scanner stop triggers empty callback and clears active tags")
+    public void testScannerStopClearsActiveTags() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+
+        // Preload an active tag
+        callback.doIt(1, 1, "NXP", "SLIX", "E004010099887766", new byte[32], 4);
+        assertTrue(callback.hasActiveTags(), "Tag should be active");
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback inventoryCallback, int numBlocks) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Mock"; }
+            @Override public void close() {}
+        };
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 100);
+        scanner.start();
+        scanner.stop();
+
+        assertFalse(callback.hasActiveTags(), "Active tags must be cleared when scanner is stopped");
+        assertEquals(1, callback.getClearedEvents(), "Plate cleared event should be triggered upon stop");
+    }
 }

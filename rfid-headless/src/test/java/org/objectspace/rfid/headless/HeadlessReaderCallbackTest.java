@@ -377,4 +377,40 @@ public class HeadlessReaderCallbackTest {
 
         callback.close();
     }
+
+    @Test
+    @DisplayName("Test onReaderDisconnected clears presence map, debounce cache, and marks plate not active")
+    public void testOnReaderDisconnectedClearsPresenceAndDebounce() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-DISCONNECT-1", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+        String uid = "E0040100ABCD1234";
+
+        callback.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertTrue(callback.hasActiveTags());
+        assertTrue(callback.isTagPresent(uid));
+        assertTrue(callback.getLastSeenMap().containsKey(uid));
+        assertEquals(0, callback.getClearedEvents());
+
+        // Invoke reader disconnected event
+        callback.onReaderDisconnected();
+
+        assertFalse(callback.hasActiveTags(), "hasActiveTags must be false after disconnect");
+        assertFalse(callback.isTagPresent(uid), "Tag must not be present after disconnect");
+        assertFalse(callback.getLastSeenMap().containsKey(uid), "lastSeenMap must be cleared after disconnect");
+        assertEquals(1, callback.getClearedEvents(), "Cleared event count must increment");
+
+        // Subsequent disconnect while empty should be idempotent and not trigger duplicate event
+        callback.onReaderDisconnected();
+        assertEquals(1, callback.getClearedEvents(), "Redundant disconnect must not duplicate cleared event");
+
+        callback.close();
+    }
 }

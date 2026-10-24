@@ -9,7 +9,9 @@
 1. [Architecture & Overview](#1-architecture--overview)
 2. [Configuration (`inventory.xml`)](#2-configuration-inventoryxml)
 3. [Message Envelope Format](#3-message-envelope-format)
-4. [Outbound Events: Tag Read (`rfid:tag_read`)](#4-outbound-events-tag-read-rfidtag_read)
+4. [Outbound Events](#4-outbound-events)
+   - [Tag Read (`rfid:tag_read`)](#41-tag-read-rfidtag_read)
+   - [Reader / Plate Cleared (`rfid:tags_cleared`)](#42-reader--plate-cleared-rfidtags_cleared)
 5. [Inbound Commands & Queries](#5-inbound-commands--queries)
    - [Query Device Metadata (`rfid:get_device_metadata`)](#51-query-device-metadata-rfidget_device_metadata)
    - [Write Tag Data (`rfid:write_tag`)](#52-write-tag-data-rfidwrite_tag)
@@ -154,11 +156,15 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 
 ---
 
-## 4. Outbound Events: Tag Read (`rfid:tag_read`)
+## 4. Outbound Events
+
+`rfid-headless` continuously publishes real-time outbound events to configured WSBroker channels (e.g., `all`, `intern`) to notify downstream consumers of physical transponder scans and reader status changes.
+
+### 4.1 Tag Read (`rfid:tag_read`)
 
 When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headless` sends a `rfid:tag_read` event to all configured channels.
 
-### Tag Read JSON Example:
+#### Tag Read JSON Example:
 ```json
 {
   "time": "2026-10-23T12:00:01.123Z",
@@ -188,7 +194,7 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 }
 ```
 
-### Payload Fields:
+#### Payload Fields:
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `event` | string | Constant identifier: `"rfid:tag_read"`. |
@@ -207,6 +213,45 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 | `afi` | string | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). Optional / omitted (`null`) if transponder system information is not accessible or not supported. |
 | `timestamp` | long | Epoch millisecond timestamp of the scan event. |
 | `clientId` | string | Identifier of the reader client that captured the tag. |
+
+---
+
+### 4.2 Reader / Plate Cleared (`rfid:tags_cleared`)
+
+When transponders are no longer detected on the reader antenna, or when the reader hardware disconnects, `rfid-headless` immediately broadcasts a `rfid:tags_cleared` event. This guarantees that client UIs, automated sorter PLCs, and ILS systems clear displayed items instantly and do not retain stale state.
+
+#### Trigger Conditions:
+1. **Physical Tag Removal**: When all tags are removed from the RF field (detected by the inventory cycle encountering an empty plate).
+2. **Hardware Disconnection**: When the RFID reader is unplugged, loses power, or suffers communication failure during scanning cycles.
+3. **Daemon Shutdown**: When `rfid-headless` or `HeadlessReaderScanner` is cleanly stopped or terminated via SIGINT/SIGTERM.
+
+#### Cleared Event JSON Example:
+```json
+{
+  "time": "2026-10-23T12:00:05.100Z",
+  "source": "rfid:reader:01",
+  "target": "all",
+  "type": "message",
+  "data": {
+    "event": "rfid:tags_cleared",
+    "status": "empty",
+    "totalTags": 0,
+    "session": "main-scan",
+    "timestamp": 1792756805100,
+    "clientId": "rfid:reader:01"
+  }
+}
+```
+
+#### Payload Fields:
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `event` | string | Constant identifier: `"rfid:tags_cleared"`. |
+| `status` | string | Clearance status indicator (`"empty"`). |
+| `totalTags` | integer | Total count of active tags remaining on the plate (`0`). |
+| `session` | string | Name of the active reader inventory session. |
+| `timestamp` | long | Epoch millisecond timestamp when the plate was cleared or reader disconnected. |
+| `clientId` | string | Identifier of the reader client that emitted the event. |
 
 ---
 
@@ -525,7 +570,7 @@ import org.objectspace.wsbrokerclient.event.Event;
 WSBrokerClient client = new WSBrokerClient("wss://localhost:8765", "dashboard-app", sslContext);
 client.connect().join();
 
-// 2. Listen for tag read and write response events
+// 2. Listen for tag read, plate cleared, and write response events
 client.onMessage(event -> {
     if (event.getData() != null) {
         String evtType = event.getData().path("event").asText();
@@ -534,6 +579,10 @@ client.onMessage(event -> {
             String uid = event.getData().path("uid").asText();
             String afi = event.getData().hasNonNull("afi") ? event.getData().path("afi").asText() : null;
             System.out.printf("Scanned Item: %s (UID: %s, AFI: %s)%n", itemId, uid, afi != null ? afi : "n/a");
+        } else if ("rfid:tags_cleared".equals(evtType)) {
+            String status = event.getData().path("status").asText();
+            int total = event.getData().path("totalTags").asInt();
+            System.out.printf("Plate Cleared [%s]: totalTags=%d%n", status, total);
         } else if ("rfid:write_tag_response".equals(evtType)) {
             String status = event.getData().path("status").asText();
             String uid = event.getData().path("uid").asText();
@@ -609,6 +658,15 @@ type TagReadEvent struct {
 	ClientID  string `json:"clientId"`
 }
 
+type TagsClearedEvent struct {
+	Event     string `json:"event"`
+	Status    string `json:"status"`
+	TotalTags int    `json:"totalTags"`
+	Session   string `json:"session"`
+	Timestamp int64  `json:"timestamp"`
+	ClientID  string `json:"clientId"`
+}
+
 type WriteTagResponse struct {
 	Event   string `json:"event"`
 	Status  string `json:"status"`
@@ -658,6 +716,12 @@ func HandleEvent(evt *Event) error {
 		_ = json.Unmarshal(evt.Data, &tag)
 		fmt.Printf("Tag Read: ItemID=%s | UID=%s | AFI=%s | Reader=%s\n",
 			tag.ItemID, tag.UID, tag.AFI, tag.ClientID)
+
+	case "rfid:tags_cleared":
+		var cleared TagsClearedEvent
+		_ = json.Unmarshal(evt.Data, &cleared)
+		fmt.Printf("Plate Cleared: status=%s | totalTags=%d | Reader=%s\n",
+			cleared.Status, cleared.TotalTags, cleared.ClientID)
 
 	case "rfid:write_tag_response":
 		var resp WriteTagResponse
@@ -733,6 +797,8 @@ ws.onmessage = (event) => {
     if (msg.type === "message" && msg.data) {
         if (msg.data.event === "rfid:tag_read") {
             console.log(`Tag Read: ItemID=${msg.data.itemId}, UID=${msg.data.uid}, AFI=${msg.data.afi || 'n/a'}`);
+        } else if (msg.data.event === "rfid:tags_cleared") {
+            console.log(`Plate Cleared: Status=${msg.data.status}, TotalTags=${msg.data.totalTags}`);
         } else if (msg.data.event === "rfid:write_tag_response") {
             console.log(`Write Tag [${msg.data.status}]: UID=${msg.data.uid}, Token=${msg.token}`);
         } else if (msg.data.event === "rfid:write_afi_response") {

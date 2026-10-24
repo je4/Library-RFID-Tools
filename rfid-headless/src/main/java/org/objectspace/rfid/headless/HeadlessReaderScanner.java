@@ -62,6 +62,13 @@ public class HeadlessReaderScanner implements Runnable {
 			}
 			workerThread = null;
 		}
+		if (callback != null) {
+			try {
+				callback.empty();
+			} catch (Exception e) {
+				logger.warn("Error invoking callback.empty() during scanner stop: {}", e.getMessage());
+			}
+		}
 		logger.info("HeadlessReaderScanner stopped");
 	}
 
@@ -82,6 +89,9 @@ public class HeadlessReaderScanner implements Runnable {
 
 					// 1. Connection check and auto-recovery
 					if (reader != null && !reader.isConnected()) {
+						if (callback != null) {
+							callback.empty();
+						}
 						logger.info("Reader not connected. Attempting connection...");
 						try {
 							reader.connect();
@@ -113,10 +123,13 @@ public class HeadlessReaderScanner implements Runnable {
 						} catch (Exception e) {
 							logger.warn("Inventory read error: {}", e.getMessage());
 							if (!reader.checkConnection()) {
-								logger.warn("Reader connection lost. Resetting connection...");
+								logger.warn("Reader connection lost. Resetting connection and clearing active plate tags...");
 								try {
 									reader.close();
 								} catch (Exception ignored) {}
+								if (callback != null) {
+									callback.empty();
+								}
 							}
 						}
 					}

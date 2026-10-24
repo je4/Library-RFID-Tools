@@ -69,6 +69,13 @@ public class HeadlessReader {
 				logger.warn("Error stopping scanner: {}", e.getMessage());
 			}
 			try {
+				if (callback != null) {
+					callback.empty();
+				}
+			} catch (Exception e) {
+				logger.warn("Error clearing plate state on shutdown: {}", e.getMessage());
+			}
+			try {
 				if (reader != null && reader.isConnected()) {
 					reader.close();
 					logger.info("RFID Reader closed/disconnected");

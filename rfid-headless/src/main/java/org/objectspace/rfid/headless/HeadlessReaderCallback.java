@@ -214,6 +214,14 @@ public class HeadlessReaderCallback implements TagCallback {
 		}
 	}
 
+	/**
+	 * Invoked when the RFID reader disconnects or connection is lost.
+	 * Signals that the plate is now empty and dispatches the cleared notification.
+	 */
+	public void onReaderDisconnected() {
+		empty();
+	}
+
 	@Override
 	public void close() throws Exception {
 		if (wsBrokerDispatcher != null) {

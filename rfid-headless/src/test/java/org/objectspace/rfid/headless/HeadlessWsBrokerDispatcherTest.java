@@ -1869,4 +1869,59 @@ public class HeadlessWsBrokerDispatcherTest {
 
         dispatcher.close();
     }
+
+    @Test
+    @DisplayName("Test active tag scan followed by reader disconnect dispatches rfid:tags_cleared to WSBroker")
+    public void testTagScanFollowedByReaderDisconnectDispatchesClearedEvent() throws Exception {
+        List<Event> wsEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid:station:01");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                wsEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher wsDispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid:station:01",
+                "https://localhost:8765",
+                List.of("all"),
+                null,
+                mockClient
+        );
+
+        BaseConfiguration cfg = new BaseConfiguration();
+        cfg.setProperty("database.active", false);
+        cfg.setProperty("webservice.active", false);
+
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, wsDispatcher, 3000L);
+
+        // 1. Scan a tag -> broadcasts rfid:tag_read
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "ITEM-DISCONNECT-99", "DE", "DE-101", new ArrayList<>());
+        callback.doIt(1, 1, "NXP", "SLIX", "E004019988776655", model.getBlock(32), 4);
+
+        assertTrue(callback.hasActiveTags());
+        assertEquals(1, wsEvents.size());
+        assertEquals("rfid:tag_read", wsEvents.get(0).getData().get("event").asText());
+        assertEquals("E004019988776655", wsEvents.get(0).getData().get("uid").asText());
+
+        // 2. Reader disconnect occurs
+        callback.onReaderDisconnected();
+
+        assertFalse(callback.hasActiveTags());
+        assertEquals(2, wsEvents.size());
+        Event clearedEvent = wsEvents.get(1);
+        assertEquals("rfid:tags_cleared", clearedEvent.getData().get("event").asText());
+        assertEquals("empty", clearedEvent.getData().get("status").asText());
+        assertEquals(0, clearedEvent.getData().get("totalTags").asInt());
+
+        wsDispatcher.close();
+    }
 }
