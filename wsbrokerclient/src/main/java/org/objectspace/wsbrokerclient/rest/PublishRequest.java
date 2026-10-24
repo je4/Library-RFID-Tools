@@ -22,6 +22,9 @@ public class PublishRequest {
     @JsonProperty("id")
     private String id;
 
+    @JsonProperty("ref_id")
+    private String refId;
+
     @JsonProperty("source")
     private String source;
 
@@ -55,6 +58,15 @@ public class PublishRequest {
 
     public PublishRequest setId(String id) {
         this.id = id;
+        return this;
+    }
+
+    public String getRefId() {
+        return refId;
+    }
+
+    public PublishRequest setRefId(String refId) {
+        this.refId = refId;
         return this;
     }
 

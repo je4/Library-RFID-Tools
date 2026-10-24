@@ -12,6 +12,9 @@ public class PublishResponse {
     @JsonProperty("id")
     private String id;
 
+    @JsonProperty("ref_id")
+    private String refId;
+
     @JsonProperty("target")
     private String target;
 
@@ -36,6 +39,14 @@ public class PublishResponse {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getRefId() {
+        return refId;
+    }
+
+    public void setRefId(String refId) {
+        this.refId = refId;
     }
 
     public String getTarget() {
@@ -82,6 +93,7 @@ public class PublishResponse {
     public String toString() {
         return "PublishResponse{" +
                 "id='" + id + '\'' +
+                ", refId='" + refId + '\'' +
                 ", target='" + target + '\'' +
                 ", channel='" + channel + '\'' +
                 ", type='" + type + '\'' +

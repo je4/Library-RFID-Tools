@@ -413,16 +413,19 @@ public class WSBrokerClient implements AutoCloseable {
      */
     public CompletableFuture<Void> send(Event event) {
         Objects.requireNonNull(event, "Event cannot be null");
-        WebSocket ws = activeWebSocket.get();
-        if (ws == null || !isConnected()) {
-            return CompletableFuture.failedFuture(new IllegalStateException("WebSocket is not connected"));
+        if (event.getId() == null || event.getId().isBlank()) {
+            event.setId(Event.generateEventId());
         }
-
         if (event.getSource() == null || event.getSource().isBlank()) {
             event.setSource(clientName);
         }
         if (event.getTime() == null) {
             event.setTime(Instant.now());
+        }
+
+        WebSocket ws = activeWebSocket.get();
+        if (ws == null || !isConnected()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("WebSocket is not connected"));
         }
 
         String json = event.toJson();
@@ -534,7 +537,7 @@ public class WSBrokerClient implements AutoCloseable {
      * @return CompletableFuture
      */
     public CompletableFuture<Void> sendPong(String target) {
-        return send(Event.createPong(clientName, target != null ? target : "wsbroker"));
+        return sendPong(target, null, null);
     }
 
     /**
@@ -545,7 +548,19 @@ public class WSBrokerClient implements AutoCloseable {
      * @return CompletableFuture
      */
     public CompletableFuture<Void> sendPong(String target, String token) {
-        return send(Event.createPong(clientName, target != null ? target : "wsbroker", token));
+        return sendPong(target, token, null);
+    }
+
+    /**
+     * Sends a heartbeat pong reply event with token and refId correlation.
+     *
+     * @param target destination client or broker
+     * @param token  optional token
+     * @param refId  correlated request event ID
+     * @return CompletableFuture
+     */
+    public CompletableFuture<Void> sendPong(String target, String token, String refId) {
+        return send(Event.createPong(clientName, target != null ? target : "wsbroker", token, refId));
     }
 
     // --- NTP Time Synchronization over WebSocket ---
@@ -664,7 +679,7 @@ public class WSBrokerClient implements AutoCloseable {
         }
     }
 
-    private void handleIncomingEvent(Event evt) {
+    void handleIncomingEvent(Event evt) {
         log.debug("Received event: type='{}', source='{}', target='{}'", evt.getType(), evt.getSource(), evt.getTarget());
 
         // Heartbeat auto-reply
@@ -673,7 +688,7 @@ public class WSBrokerClient implements AutoCloseable {
             if (target == null || target.isBlank()) {
                 target = "wsbroker";
             }
-            sendPong(target, evt.getToken()).exceptionally(err -> {
+            sendPong(target, evt.getToken(), evt.getId()).exceptionally(err -> {
                 log.debug("Auto-pong response failed: {}", err.getMessage());
                 return null;
             });

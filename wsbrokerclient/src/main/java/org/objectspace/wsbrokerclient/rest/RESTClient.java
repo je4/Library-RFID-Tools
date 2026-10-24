@@ -120,6 +120,8 @@ public class RESTClient implements AutoCloseable {
     public PublishResponse publish(Event event) throws IOException, InterruptedException {
         Objects.requireNonNull(event, "Event cannot be null");
         PublishRequest req = new PublishRequest()
+                .setId(event.getId())
+                .setRefId(event.getRefId())
                 .setSource(event.getSource())
                 .setTarget(event.getTarget())
                 .setType(event.getType())

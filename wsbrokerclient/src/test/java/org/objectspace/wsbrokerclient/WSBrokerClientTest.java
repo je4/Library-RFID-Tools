@@ -113,4 +113,41 @@ class WSBrokerClientTest {
         assertThat(deserialized.getType()).isEqualTo("message");
         assertThat(deserialized.getData().get("event").asText()).isEqualTo("rfid:get_device_metadata");
     }
+
+    @Test
+    @DisplayName("Test WSBrokerClient.send automatically assigns event ID if missing")
+    void testSendEnsuresEventId() {
+        WSClientConfig config = WSClientConfig.builder()
+                .endpoint("ws://localhost:9999/ws")
+                .clientName("test-sender")
+                .autoReconnect(false)
+                .build();
+
+        try (WSBrokerClient client = WSBroker.createClient(config)) {
+            Event eventWithoutId = new Event();
+            eventWithoutId.setId(null);
+            eventWithoutId.setType(EventType.CLIENT_MESSAGE);
+            eventWithoutId.setTarget("target-receiver");
+
+            assertThat(eventWithoutId.getId()).isNull();
+
+            // Calling send will populate id even if ws is disconnected
+            client.send(eventWithoutId);
+
+            assertThat(eventWithoutId.getId()).isNotNull().hasSize(32);
+            assertThat(eventWithoutId.getSource()).isEqualTo("test-sender");
+        }
+    }
+
+    @Test
+    @DisplayName("Test Event createPong overloads with ref_id correlation")
+    void testSendPongWithRefId() {
+        Event pong = Event.createPong("client-1", "client-2", "tok-abc", "ping-id-999");
+        assertThat(pong.getType()).isEqualTo("pong");
+        assertThat(pong.getSource()).isEqualTo("client-1");
+        assertThat(pong.getTarget()).isEqualTo("client-2");
+        assertThat(pong.getToken()).isEqualTo("tok-abc");
+        assertThat(pong.getRefId()).isEqualTo("ping-id-999");
+        assertThat(pong.getId()).isNotNull().hasSize(32);
+    }
 }

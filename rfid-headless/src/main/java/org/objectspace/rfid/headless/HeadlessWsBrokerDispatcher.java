@@ -302,7 +302,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			case "device_info":
 			case "info":
 				logger.info("[WSBroker] Received device metadata command '{}' from '{}'", eventName, evt.getSource());
-				sendDeviceMetadata(target, evt.getToken()).exceptionally(ex -> {
+				sendDeviceMetadata(target, evt.getToken(), evt.getId()).exceptionally(ex -> {
 					logger.warn("[WSBroker] Failed to send device metadata response: {}", ex.getMessage());
 					return null;
 				});
@@ -496,6 +496,29 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
 															   int parts, int partNo, int usageType, Object afiObj,
 															   String target, String token) {
+		return writeTag(uid, itemId, isil, country, parts, partNo, usageType, afiObj, target, token, null);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata (item ID, ISIL, country, parts) and optionally AFI to an RFID tag by UID with RefID correlation.
+	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 *
+	 * @param uid       target tag UID (or empty/wildcard for single tag in field)
+	 * @param itemId    primary item identifier
+	 * @param isil      library ISIL identifier
+	 * @param country   country code
+	 * @param parts     total parts count (default 1)
+	 * @param partNo    current part number (default 1)
+	 * @param usageType usage type (default 1)
+	 * @param afiObj    optional AFI byte or hex string
+	 * @param target    target client or channel to send response message to
+	 * @param token     correlation token
+	 * @param refId     correlated request event ID
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
+															   int parts, int partNo, int usageType, Object afiObj,
+															   String target, String token, String refId) {
 		CompletableFuture<WriteTagResponsePayload> future = CompletableFuture.supplyAsync(() -> {
 			String effectiveUid = (uid != null) ? uid.trim() : "";
 			Byte parsedAfi = parseAfi(afiObj);
@@ -534,6 +557,9 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 				if (token != null && !token.isBlank()) {
 					reply.setToken(token);
 				}
+				if (refId != null && !refId.isBlank()) {
+					reply.setRefId(refId);
+				}
 				reply.setMessage(payload.getSummaryMessage());
 				return client.send(reply).thenApply(v -> payload);
 			}
@@ -552,6 +578,21 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 * @return CompletableFuture with WriteAfiResponsePayload
 	 */
 	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token) {
+		return writeAfi(uid, afiObj, target, token, null);
+	}
+
+	/**
+	 * Writes Application Family Identifier (AFI) byte to an RFID tag by UID with RefID correlation.
+	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 *
+	 * @param uid    target tag UID
+	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @param refId  correlated request event ID
+	 * @return CompletableFuture with WriteAfiResponsePayload
+	 */
+	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token, String refId) {
 		CompletableFuture<WriteAfiResponsePayload> future = CompletableFuture.supplyAsync(() -> {
 			String effectiveUid = (uid != null) ? uid.trim() : "";
 			Byte parsedAfi = parseAfi(afiObj);
@@ -583,6 +624,9 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 				Event reply = Event.createMessage(clientName, target, payload);
 				if (token != null && !token.isBlank()) {
 					reply.setToken(token);
+				}
+				if (refId != null && !refId.isBlank()) {
+					reply.setRefId(refId);
 				}
 				reply.setMessage(payload.getSummaryMessage());
 				return client.send(reply).thenApply(v -> payload);
@@ -667,7 +711,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
 						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 								reqUid, (itemId != null ? itemId : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					}
 				} else {
@@ -676,13 +720,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on station '{}'", clientName);
 						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 								"", (itemId != null ? itemId : ""), "No RFID tag present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					} else if (presentCount > 1) {
 						logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on station '{}'", presentCount, clientName);
 						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 								"", (itemId != null ? itemId : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					} else {
 						uid = callback.getPresentUids().iterator().next();
@@ -691,7 +735,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
-		writeTag(uid, itemId, isil, country, parts, partNo, usageType, afi, target, evt.getToken());
+		writeTag(uid, itemId, isil, country, parts, partNo, usageType, afi, target, evt.getToken(), evt.getId());
 	}
 
 	private void handleWriteAfiCommand(Event evt, String target) {
@@ -744,7 +788,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
 						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 								reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					}
 				} else {
@@ -753,13 +797,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - no tags present on station '{}'", clientName);
 						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 								"", (afiHex != null ? afiHex : ""), "No RFID tag present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					} else if (presentCount > 1) {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - {} tags present on station '{}'", presentCount, clientName);
 						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 								"", (afiHex != null ? afiHex : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
-						sendReply(target, evt.getToken(), errPayload);
+						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					} else {
 						uid = callback.getPresentUids().iterator().next();
@@ -768,14 +812,21 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
-		writeAfi(uid, afi, target, evt.getToken());
+		writeAfi(uid, afi, target, evt.getToken(), evt.getId());
 	}
 
 	private CompletableFuture<Void> sendReply(String target, String token, BaseRfidPayload payload) {
+		return sendReply(target, token, null, payload);
+	}
+
+	private CompletableFuture<Void> sendReply(String target, String token, String refId, BaseRfidPayload payload) {
 		if (active && client != null && target != null && !target.isBlank()) {
 			Event reply = Event.createMessage(clientName, target, payload);
 			if (token != null && !token.isBlank()) {
 				reply.setToken(token);
+			}
+			if (refId != null && !refId.isBlank()) {
+				reply.setRefId(refId);
 			}
 			reply.setMessage(payload.getSummaryMessage());
 			return client.send(reply);
@@ -820,6 +871,18 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 * @return CompletableFuture completing when the message is sent
 	 */
 	public CompletableFuture<Void> sendDeviceMetadata(String target, String token) {
+		return sendDeviceMetadata(target, token, null);
+	}
+
+	/**
+	 * Sends device metadata directly as a reply message (type="message") to a target client or channel with RefID correlation.
+	 *
+	 * @param target destination client name or channel
+	 * @param token  optional request/correlation token
+	 * @param refId  correlated request event ID
+	 * @return CompletableFuture completing when the message is sent
+	 */
+	public CompletableFuture<Void> sendDeviceMetadata(String target, String token, String refId) {
 		if (!active || client == null) {
 			return CompletableFuture.completedFuture(null);
 		}
@@ -828,13 +891,16 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		if (token != null && !token.isBlank()) {
 			event.setToken(token);
 		}
+		if (refId != null && !refId.isBlank()) {
+			event.setRefId(refId);
+		}
 		event.setMessage(payload.getSummaryMessage());
 		if (token != null && !token.isBlank()) {
-			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', token: '{}')",
-					target, payload.getDeviceId(), payload.getDeviceType(), token);
+			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', token: '{}', refId: '{}')",
+					target, payload.getDeviceId(), payload.getDeviceType(), token, refId);
 		} else {
-			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}')",
-					target, payload.getDeviceId(), payload.getDeviceType());
+			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', refId: '{}')",
+					target, payload.getDeviceId(), payload.getDeviceType(), refId);
 		}
 		return client.send(event);
 	}
@@ -856,7 +922,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		if (target == null || target.isBlank()) {
 			target = channels.isEmpty() ? null : channels.get(0);
 		}
-		sendDeviceMetadata(target, incomingEvent.getToken()).exceptionally(ex -> {
+		sendDeviceMetadata(target, incomingEvent.getToken(), incomingEvent.getId()).exceptionally(ex -> {
 			logger.warn("[WSBroker] Failed to send device metadata response: {}", ex.getMessage());
 			return null;
 		});

@@ -1494,4 +1494,130 @@ public class HeadlessWsBrokerDispatcherTest {
 
         dispatcher.close();
     }
+
+    @Test
+    @DisplayName("Test RefID correlation across metadata queries, tag write, AFI write and error replies")
+    void testRefIdCorrelationInDispatcher() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-station-1");
+        cfg.setEndpoint("https://localhost:8765");
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
+                new WSBrokerClient(cfg) {
+                    @Override public CompletableFuture<Void> send(Event e) { sentEvents.add(e); return CompletableFuture.completedFuture(null); }
+                });
+
+        dispatcher.setReader(new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "DEV-999"; }
+            @Override public String getDeviceType() { return "OBID-LRU1002"; }
+            @Override public String getInitDescription() { return "Feig LRU1002 Initialized"; }
+            @Override public String getDeviceInfo() { return "Reader-1"; }
+            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) {}
+            @Override public void writeAfi(String uid, byte afi) {}
+            @Override public void close() {}
+        });
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
+        dispatcher.setCallback(callback);
+
+        String tagUid = "UID-CORRELATION-TEST";
+        callback.doIt(1, 1, "NXP", "SLIX", tagUid, new FinnishDataModel().getBlock(32), 4);
+        sentEvents.clear();
+
+        // 1. Device metadata command with specific ID
+        Event metaCmd = Event.createMessage("dashboard", "rfid-station-1", Map.of("event", "rfid:get_device_metadata"));
+        metaCmd.setId("meta-req-id-11111111111111111111");
+        metaCmd.setToken("meta-tok");
+        dispatcher.handleIncomingMessage(metaCmd);
+
+        Thread.sleep(200);
+        assertEquals(1, sentEvents.size());
+        Event metaResp = sentEvents.get(0);
+        assertEquals("meta-req-id-11111111111111111111", metaResp.getRefId());
+        assertEquals("meta-tok", metaResp.getToken());
+        assertEquals("rfid:device_metadata_response", metaResp.getData().get("event").asText());
+        assertNotNull(metaResp.getId());
+
+        // 2. Write tag command with specific ID
+        sentEvents.clear();
+        Event writeTagCmd = Event.createMessage("dashboard", "all", Map.of(
+                "event", "rfid:write_tag",
+                "uid", tagUid,
+                "itemId", "ITEM-REFID-1"
+        ));
+        writeTagCmd.setId("write-tag-id-2222222222222222");
+        writeTagCmd.setToken("write-tag-tok");
+        dispatcher.handleIncomingMessage(writeTagCmd);
+
+        Thread.sleep(300);
+        assertEquals(1, sentEvents.size());
+        Event writeTagResp = sentEvents.get(0);
+        assertEquals("write-tag-id-2222222222222222", writeTagResp.getRefId());
+        assertEquals("write-tag-tok", writeTagResp.getToken());
+        assertEquals("rfid:write_tag_response", writeTagResp.getData().get("event").asText());
+        assertEquals("ok", writeTagResp.getData().get("status").asText());
+
+        // 3. Write AFI command with specific ID
+        sentEvents.clear();
+        Event writeAfiCmd = Event.createMessage("dashboard", "all", Map.of(
+                "event", "rfid:write_afi",
+                "uid", tagUid,
+                "afi", "07"
+        ));
+        writeAfiCmd.setId("write-afi-id-3333333333333333");
+        writeAfiCmd.setToken("write-afi-tok");
+        dispatcher.handleIncomingMessage(writeAfiCmd);
+
+        Thread.sleep(300);
+        assertEquals(1, sentEvents.size());
+        Event writeAfiResp = sentEvents.get(0);
+        assertEquals("write-afi-id-3333333333333333", writeAfiResp.getRefId());
+        assertEquals("write-afi-tok", writeAfiResp.getToken());
+        assertEquals("rfid:write_afi_response", writeAfiResp.getData().get("event").asText());
+        assertEquals("ok", writeAfiResp.getData().get("status").asText());
+
+        // 4. Direct write command error reply when tag not present
+        sentEvents.clear();
+        Event directMissingWrite = Event.createMessage("dashboard", "rfid-station-1", Map.of(
+                "event", "rfid:write_tag",
+                "uid", "NON-EXISTENT-UID",
+                "itemId", "ITEM-FAIL"
+        ));
+        directMissingWrite.setId("error-req-id-44444444444444");
+        directMissingWrite.setToken("err-tok");
+        dispatcher.handleIncomingMessage(directMissingWrite);
+
+        Thread.sleep(200);
+        assertEquals(1, sentEvents.size());
+        Event errResp = sentEvents.get(0);
+        assertEquals("error-req-id-44444444444444", errResp.getRefId());
+        assertEquals("err-tok", errResp.getToken());
+        assertEquals("error", errResp.getData().get("status").asText());
+
+        // 5. handleMetadataQuery via CLIENT_INFO / non-message query
+        sentEvents.clear();
+        Event infoQuery = Event.builder()
+                .id("info-query-id-55555555555555")
+                .source("external-service")
+                .target("rfid-station-1")
+                .type(org.objectspace.wsbrokerclient.event.EventType.CLIENT_INFO)
+                .token("info-tok")
+                .build();
+        dispatcher.handleMetadataQuery(infoQuery);
+
+        Thread.sleep(200);
+        assertEquals(1, sentEvents.size());
+        Event infoResp = sentEvents.get(0);
+        assertEquals("info-query-id-55555555555555", infoResp.getRefId());
+        assertEquals("info-tok", infoResp.getToken());
+
+        dispatcher.close();
+    }
 }

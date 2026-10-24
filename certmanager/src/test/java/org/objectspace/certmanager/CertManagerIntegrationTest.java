@@ -79,10 +79,9 @@ public class CertManagerIntegrationTest {
 
         assertThat(vaultConfig.getTokenPolicies()).contains("wsbroker.client");
         assertThat(vaultConfig.getUris()).contains(
-                "wsbroker:client:display01",
+                "wsbroker:client:test-java",
                 "wsbroker:channel:all",
-                "wsbroker:channel:intern",
-                "wsbroker:channel:display"
+                "wsbroker:channel:intern"
         );
         assertThat(vaultConfig.getCa()).contains("certs/minivault.ca.pem");
     }

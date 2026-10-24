@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.io.IOException;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +31,28 @@ public class Event {
             .registerModule(new JavaTimeModule())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /**
+     * Generates a cryptographically secure, random 16-byte (32-character hexadecimal) unique event identifier.
+     *
+     * @return 32-character lowercase hex string
+     */
+    public static String generateEventId() {
+        byte[] bytes = new byte[16];
+        SECURE_RANDOM.nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(32);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
     @JsonProperty("id")
     private String id;
+
+    @JsonProperty("ref_id")
+    private String refId;
 
     @JsonProperty("channel")
     private String channel;
@@ -68,9 +89,11 @@ public class Event {
     private List<String> subprotocols;
 
     public Event() {
+        this.id = generateEventId();
     }
 
     public Event(String type, String source, String target) {
+        this.id = generateEventId();
         this.time = Instant.now();
         this.type = type;
         this.source = source;
@@ -83,6 +106,15 @@ public class Event {
 
     public Event setId(String id) {
         this.id = id;
+        return this;
+    }
+
+    public String getRefId() {
+        return refId;
+    }
+
+    public Event setRefId(String refId) {
+        this.refId = refId;
         return this;
     }
 
@@ -293,20 +325,20 @@ public class Event {
     }
 
     public static Event createPong(String source, String target) {
-        return builder()
-                .type(EventType.CLIENT_PONG)
-                .source(source)
-                .target(target != null && !target.isBlank() ? target : "wsbroker")
-                .data("pong")
-                .build();
+        return createPong(source, target, null, null);
     }
 
     public static Event createPong(String source, String target, String token) {
+        return createPong(source, target, token, null);
+    }
+
+    public static Event createPong(String source, String target, String token, String refId) {
         return builder()
                 .type(EventType.CLIENT_PONG)
                 .source(source)
                 .target(target != null && !target.isBlank() ? target : "wsbroker")
                 .token(token)
+                .refId(refId)
                 .data("pong")
                 .build();
     }
@@ -384,6 +416,76 @@ public class Event {
     }
 
     /**
+     * Creates a reply Event correlated with this request Event.
+     * Sets {@code id} to a newly generated unique identifier, {@code ref_id} to this event's {@code id},
+     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
+     *
+     * @param replyType event type of the reply
+     * @param payload   data payload for the reply
+     * @return reply Event instance
+     */
+    public Event createReply(EventType replyType, Object payload) {
+        return createReply(replyType != null ? replyType.getValue() : null, payload);
+    }
+
+    /**
+     * Creates a reply Event correlated with this request Event.
+     * Sets {@code id} to a newly generated unique identifier, {@code ref_id} to this event's {@code id},
+     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
+     *
+     * @param replyType string representation of event type
+     * @param payload   data payload for the reply
+     * @return reply Event instance
+     */
+    public Event createReply(String replyType, Object payload) {
+        String replyTarget = this.source;
+        if (replyTarget == null || replyTarget.isBlank()) {
+            replyTarget = this.channel;
+        }
+        if (replyTarget == null || replyTarget.isBlank()) {
+            replyTarget = this.target;
+        }
+        return builder()
+                .type(replyType)
+                .target(replyTarget)
+                .channel(this.channel)
+                .token(this.token)
+                .refId(this.id)
+                .data(payload)
+                .build();
+    }
+
+    /**
+     * Static helper to create a reply correlated with a given request Event.
+     *
+     * @param request   the initiating request event
+     * @param replyType event type of the reply
+     * @param payload   data payload for the reply
+     * @return reply Event instance
+     */
+    public static Event createReply(Event request, EventType replyType, Object payload) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request event cannot be null");
+        }
+        return request.createReply(replyType, payload);
+    }
+
+    /**
+     * Static helper to create a reply correlated with a given request Event.
+     *
+     * @param request   the initiating request event
+     * @param replyType string representation of event type
+     * @param payload   data payload for the reply
+     * @return reply Event instance
+     */
+    public static Event createReply(Event request, String replyType, Object payload) {
+        if (request == null) {
+            throw new IllegalArgumentException("Request event cannot be null");
+        }
+        return request.createReply(replyType, payload);
+    }
+
+    /**
      * Serializes this Event instance to JSON string.
      */
     public String toJson() {
@@ -410,6 +512,7 @@ public class Event {
         if (this == o) return true;
         if (!(o instanceof Event event)) return false;
         return Objects.equals(id, event.id) &&
+                Objects.equals(refId, event.refId) &&
                 Objects.equals(channel, event.channel) &&
                 Objects.equals(time, event.time) &&
                 Objects.equals(source, event.source) &&
@@ -425,13 +528,14 @@ public class Event {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, channel, time, source, target, type, token, data, message, error, actions, subprotocols);
+        return Objects.hash(id, refId, channel, time, source, target, type, token, data, message, error, actions, subprotocols);
     }
 
     @Override
     public String toString() {
         return "Event{" +
                 "id='" + id + '\'' +
+                ", refId='" + refId + '\'' +
                 ", channel='" + channel + '\'' +
                 ", time=" + time +
                 ", source='" + source + '\'' +
@@ -449,6 +553,11 @@ public class Event {
 
         public Builder id(String id) {
             event.setId(id);
+            return this;
+        }
+
+        public Builder refId(String refId) {
+            event.setRefId(refId);
             return this;
         }
 

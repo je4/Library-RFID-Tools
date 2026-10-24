@@ -159,4 +159,96 @@ class EventTest {
         assertThat(built.toJson()).contains("\"id\":\"custom-id\"");
         assertThat(built.toJson()).contains("\"channel\":\"general\"");
     }
+
+    @Test
+    @DisplayName("Test Event ID generation format and entropy")
+    void testGenerateEventId() {
+        String id1 = Event.generateEventId();
+        String id2 = Event.generateEventId();
+
+        assertThat(id1).isNotNull().hasSize(32).matches("^[0-9a-f]{32}$");
+        assertThat(id2).isNotNull().hasSize(32).matches("^[0-9a-f]{32}$");
+        assertThat(id1).isNotEqualTo(id2);
+
+        Event defaultConstructed = new Event();
+        assertThat(defaultConstructed.getId()).isNotNull().hasSize(32).matches("^[0-9a-f]{32}$");
+
+        Event ping = Event.createPing("src-node");
+        assertThat(ping.getId()).isNotNull().hasSize(32).matches("^[0-9a-f]{32}$");
+    }
+
+    @Test
+    @DisplayName("Test RefID JSON serialization, inclusion and deserialization roundtrip")
+    void testRefIdSerialization() {
+        Event event = Event.builder()
+                .source("source-1")
+                .target("target-1")
+                .type(EventType.CLIENT_MESSAGE)
+                .refId("parent-event-id-12345")
+                .build();
+
+        String jsonWithRefId = event.toJson();
+        assertThat(jsonWithRefId).contains("\"ref_id\":\"parent-event-id-12345\"");
+
+        Event deserialized = Event.fromJson(jsonWithRefId);
+        assertThat(deserialized.getRefId()).isEqualTo("parent-event-id-12345");
+
+        Event eventWithoutRef = Event.builder()
+                .source("source-2")
+                .target("target-2")
+                .type(EventType.CLIENT_MESSAGE)
+                .build();
+
+        String jsonWithoutRefId = eventWithoutRef.toJson();
+        assertThat(jsonWithoutRefId).doesNotContain("\"ref_id\"");
+
+        Event pongWithRef = Event.createPong("me", "sender", "token-99", "ping-id-777");
+        assertThat(pongWithRef.getRefId()).isEqualTo("ping-id-777");
+        assertThat(pongWithRef.toJson()).contains("\"ref_id\":\"ping-id-777\"");
+    }
+
+    @Test
+    @DisplayName("Test createReply correlations for source, channel, token, ref_id and id")
+    void testCreateReply() {
+        Event request = Event.builder()
+                .id("req-1234567890abcdef1234567890abcdef")
+                .source("client-alpha")
+                .target("rfid-reader")
+                .channel("rfid-events")
+                .token("auth-token-xyz")
+                .type(EventType.CLIENT_ACTION)
+                .data(Map.of("command", "get_status"))
+                .build();
+
+        Event reply = request.createReply(EventType.CLIENT_MESSAGE, Map.of("status", "OK"));
+
+        assertThat(reply.getId()).isNotNull().hasSize(32).isNotEqualTo(request.getId());
+        assertThat(reply.getRefId()).isEqualTo(request.getId());
+        assertThat(reply.getTarget()).isEqualTo("client-alpha");
+        assertThat(reply.getChannel()).isEqualTo("rfid-events");
+        assertThat(reply.getToken()).isEqualTo("auth-token-xyz");
+        assertThat(reply.getType()).isEqualTo(EventType.CLIENT_MESSAGE.getValue());
+
+        // Test fallback to channel when source is missing
+        Event requestNoSource = Event.builder()
+                .id("req-no-source")
+                .channel("announcements")
+                .type(EventType.CLIENT_BROADCAST)
+                .build();
+
+        Event replyNoSource = requestNoSource.createReply(EventType.CLIENT_MESSAGE, "ack");
+        assertThat(replyNoSource.getTarget()).isEqualTo("announcements");
+        assertThat(replyNoSource.getRefId()).isEqualTo("req-no-source");
+
+        // Test fallback to target when both source and channel are empty
+        Event requestOnlyTarget = Event.builder()
+                .id("req-only-target")
+                .target("default-destination")
+                .type(EventType.CLIENT_PING)
+                .build();
+
+        Event replyOnlyTarget = Event.createReply(requestOnlyTarget, EventType.CLIENT_PONG, "pong");
+        assertThat(replyOnlyTarget.getTarget()).isEqualTo("default-destination");
+        assertThat(replyOnlyTarget.getRefId()).isEqualTo("req-only-target");
+    }
 }
