@@ -1175,9 +1175,13 @@ public class HeadlessWsBrokerDispatcherTest {
 
         // Station 1 must have executed write and replied
         assertTrue(st1Written.get(), "Station 1 holding UID-1111 should execute writeTag");
-        assertEquals(1, st1Events.size(), "Station 1 should send write_tag_response");
-        assertEquals("ok", st1Events.get(0).getData().get("status").asText());
-        assertEquals("bcast-tok-1", st1Events.get(0).getToken());
+        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
+        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(st1Cleared, "Station 1 should send tags_cleared event after write operation");
+        assertNotNull(st1Reply, "Station 1 should send write_tag_response");
+        assertEquals("ok", st1Reply.getData().get("status").asText());
+        assertEquals("bcast-tok-1", st1Reply.getToken());
 
         // Stations 2 and 3 must silently ignore the broadcast
         assertFalse(st2Written.get(), "Station 2 (holding UID-2222) should ignore broadcast for UID-1111");
@@ -1271,9 +1275,13 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(0, st1Events.size());
 
         assertTrue(st2AfiWritten.get(), "Station 2 holding UID-BBBB should execute write_afi");
-        assertEquals(1, st2Events.size());
-        assertEquals("ok", st2Events.get(0).getData().get("status").asText());
-        assertEquals("UID-BBBB", st2Events.get(0).getData().get("uid").asText());
+        assertEquals(2, st2Events.size(), "Station 2 should send tags_cleared and write_afi_response");
+        Event st2Cleared = st2Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        Event st2Reply = st2Events.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(st2Cleared, "Station 2 should send tags_cleared event after write_afi operation");
+        assertNotNull(st2Reply, "Station 2 should send write_afi_response");
+        assertEquals("ok", st2Reply.getData().get("status").asText());
+        assertEquals("UID-BBBB", st2Reply.getData().get("uid").asText());
 
         d1.close();
         d2.close();
@@ -1420,8 +1428,12 @@ public class HeadlessWsBrokerDispatcherTest {
         Thread.sleep(400);
 
         assertTrue(st1Written.get(), "Station 1 with single tag should execute wildcard write");
-        assertEquals(1, st1Events.size());
-        assertEquals("UID-SOLO", st1Events.get(0).getData().get("uid").asText());
+        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
+        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(st1Cleared, "Station 1 should send tags_cleared notification");
+        assertNotNull(st1Reply, "Station 1 should send write_tag_response");
+        assertEquals("UID-SOLO", st1Reply.getData().get("uid").asText());
 
         assertFalse(st2Written.get(), "Station 2 with multiple tags should ignore wildcard write");
         assertEquals(0, st2Events.size());
@@ -1477,9 +1489,16 @@ public class HeadlessWsBrokerDispatcherTest {
 
         Thread.sleep(400);
         assertTrue(writeTagDone.get(), "First write_tag should succeed");
-        assertEquals(1, sentEvents.size());
+        assertEquals(2, sentEvents.size(), "Should have received tags_cleared and write_tag_response");
+        Event cleared1 = sentEvents.stream().filter(e -> "rfid:tags_cleared".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        Event reply1 = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(cleared1, "tags_cleared event must be sent after write_tag");
+        assertNotNull(reply1, "write_tag_response must be sent");
 
-        // 2. Immediate second broadcast write_afi for same tag without waiting for background scan
+        // Background scanner detects written tag on antenna
+        callback.doIt(1, 1, "NXP", "SLIX", uid, new FinnishDataModel().getBlock(32), 4);
+
+        // 2. Immediate second broadcast write_afi for same tag
         Event writeAfiEvt = Event.createMessage("web-ui", "all", Map.of(
                 "event", "rfid:write_afi",
                 "uid", uid,
@@ -1490,8 +1509,9 @@ public class HeadlessWsBrokerDispatcherTest {
 
         Thread.sleep(400);
         assertTrue(writeAfiDone.get(), "Chained write_afi should immediately succeed on same tag");
-        assertEquals(2, sentEvents.size());
-        assertEquals("ok", sentEvents.get(1).getData().get("status").asText());
+        Event reply2 = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(reply2, "write_afi_response must be sent");
+        assertEquals("ok", reply2.getData().get("status").asText());
 
         dispatcher.close();
     }
@@ -1558,12 +1578,15 @@ public class HeadlessWsBrokerDispatcherTest {
         dispatcher.handleIncomingMessage(writeTagCmd);
 
         Thread.sleep(300);
-        assertEquals(1, sentEvents.size());
-        Event writeTagResp = sentEvents.get(0);
+        Event writeTagResp = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(writeTagResp, "write_tag_response must be present");
         assertEquals("write-tag-id-2222222222222222", writeTagResp.getRefId());
         assertEquals("write-tag-tok", writeTagResp.getToken());
         assertEquals("rfid:write_tag_response", writeTagResp.getData().get("event").asText());
         assertEquals("ok", writeTagResp.getData().get("status").asText());
+
+        // Background scanner detects written tag again on antenna
+        callback.doIt(1, 1, "NXP", "SLIX", tagUid, new FinnishDataModel().getBlock(32), 4);
 
         // 3. Write AFI command with specific ID
         sentEvents.clear();
@@ -1577,8 +1600,8 @@ public class HeadlessWsBrokerDispatcherTest {
         dispatcher.handleIncomingMessage(writeAfiCmd);
 
         Thread.sleep(300);
-        assertEquals(1, sentEvents.size());
-        Event writeAfiResp = sentEvents.get(0);
+        Event writeAfiResp = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
+        assertNotNull(writeAfiResp, "write_afi_response must be present");
         assertEquals("write-afi-id-3333333333333333", writeAfiResp.getRefId());
         assertEquals("write-afi-tok", writeAfiResp.getToken());
         assertEquals("rfid:write_afi_response", writeAfiResp.getData().get("event").asText());

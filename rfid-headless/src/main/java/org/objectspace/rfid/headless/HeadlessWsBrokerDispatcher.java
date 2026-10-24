@@ -412,7 +412,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	/**
 	 * Executes an exclusive task on the RFID reader.
 	 * If a scanner instance is present, delegating to scanner.executeExclusive() guarantees that
-	 * the scanning loop is safely paused, timing delays are respected, and the debounce cache is cleared.
+	 * the scanning loop is safely paused, timing delays are respected, and the tags cleared notification is sent.
 	 *
 	 * @param task task to execute
 	 * @param <T>  result type
@@ -428,7 +428,11 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 				T res = task.run(reader);
 				Thread.sleep(150);
 				if (callback != null) {
-					callback.clearDebounceCache();
+					try {
+						callback.empty();
+					} catch (Exception e) {
+						logger.warn("Error invoking callback.empty() after write operation: {}", e.getMessage());
+					}
 				}
 				return res;
 			}
@@ -536,10 +540,6 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 					r.writeTag(effectiveUid, model, parsedAfi);
 					return null;
 				});
-
-				if (callback != null && !effectiveUid.isEmpty()) {
-					callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
-				}
 
 				logger.info("[WSBroker] Successfully wrote tag: UID='{}', ItemID='{}', ISIL='{}', Country='{}', AFI='{}'",
 						effectiveUid, itemId, isil, country, afiHex);
@@ -662,9 +662,6 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						try {
 							r.writeAfi(effectiveUid, parsedAfi);
 							successfulUids.add(effectiveUid);
-							if (callback != null && !effectiveUid.isEmpty()) {
-								callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
-							}
 							logger.info("[WSBroker] Successfully wrote AFI='{}' (0x{}) on tag UID='{}'", parsedAfi, afiHex, effectiveUid);
 						} catch (Exception e) {
 							logger.error("[WSBroker] Error writing AFI on tag UID='{}': {}", effectiveUid, e.getMessage(), e);

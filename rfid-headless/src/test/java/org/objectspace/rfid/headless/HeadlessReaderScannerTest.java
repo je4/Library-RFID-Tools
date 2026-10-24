@@ -225,7 +225,8 @@ public class HeadlessReaderScannerTest {
         BaseConfiguration cfg = new BaseConfiguration();
         TagScanProcessor processor = new TagScanProcessor(cfg);
         HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
-        callback.getLastSeenMap().put("E004010011223344", System.currentTimeMillis());
+        callback.doIt(1, 1, "NXP", "SLIX", "E004010011223344", new byte[32], 4);
+        assertTrue(callback.hasActiveTags(), "Tags should be active prior to write");
         assertTrue(callback.getLastSeenMap().containsKey("E004010011223344"), "Tag should be cached prior to write");
 
         HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 10);
@@ -240,6 +241,8 @@ public class HeadlessReaderScannerTest {
 
         assertEquals("SUCCESS", result);
         assertFalse(scanner.isPaused(), "Scanner must resume after executeExclusive");
+        assertFalse(callback.hasActiveTags(), "Active tags flag must be reset after executeExclusive");
+        assertEquals(1, callback.getClearedEvents(), "Cleared event count must increment after executeExclusive");
         assertFalse(callback.getLastSeenMap().containsKey("E004010011223344"), "Debounce cache must be cleared after executeExclusive");
 
         scanner.stop();

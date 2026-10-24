@@ -51,7 +51,7 @@ Der Debounce-Cache steuert ausschließlich das **ausgehende Event-Dispatching** 
 
 ### Lebenszyklus & Reset
 * **Bei leerem Feld (`empty()`)**: Wird das Antennenfeld geräumt (0 Tags gemeldet), wird `lastSeenMap.clear()` ausgeführt, sodass ein neu aufgelegtes Medium sofort beim ersten Scan erfasst und gemeldet wird.
-* **Nach Schreibvorgängen (`clearDebounceCache()`)**: Sobald neue Daten oder ein neuer AFI-Status auf das Tag geschrieben wurden, wird gezielt nur der Debounce-Cache geleert. Der nächste Scanzyklus liest das Tag unmittelbar ein und publiziert den neuen Stand per WebSocket/REST.
+* **Nach Schreibvorgängen (`empty()`)**: Sobald neue Daten oder ein neuer AFI-Status auf das Tag geschrieben wurden, wird vor dem Neustart des Scan-Loops die Bereinigungsbenachrichtigung (`rfid:tags_cleared`) gesendet und der Cache geleert. Der nächste Scanzyklus liest das Tag unmittelbar frisch ein und publiziert den neuen Stand per WebSocket/REST.
 
 ---
 
@@ -110,8 +110,8 @@ sequenceDiagram
         StationA->>StationA: isTagPresent("E004...") -> true
         StationA->>StationA: Pause Scan & Acquire Exclusive Lock
         StationA->>StationA: Write ISO 28560 Blocks to EEPROM
-        StationA->>StationA: clearDebounceCache() (Presence bleibt erhalten)
-        StationA->>StationA: Release Lock & Refresh Presence Timestamp
+        StationA->>StationA: empty() (Sendet rfid:tags_cleared & leert Cache)
+        StationA->>StationA: Release Lock & Scanning Loop Resumes
         StationA->>Broker: rfid:write_tag_response (status: "ok")
         Broker->>Client: Forward OK Response
     end
@@ -138,6 +138,6 @@ sequenceDiagram
 | **Datenrichtung** | Outbound (`rfid:tag_read`, REST-POST, DB) | Inbound (`rfid:write_tag`, `rfid:write_afi`) |
 | **Zeitfenster (TTL)** | Lang (`3000 ms` bis `30000 ms`) | Kurz (`1200 ms`, ca. 3–4 Scanzyklen) |
 | **Aktualisierung** | Nur nach Ablauf des Cooldowns bei neuem Dispatch | Bei **jedem** einzelnen Hardware-Scanzyklus |
-| **Reset nach Schreibbefehl** | **Wird geleert** (`clearDebounceCache()`), damit neue Daten sofort gemeldet werden | **Bleibt erhalten**, damit Folgeoperationen (z. B. AFI-Setzen) sofort greifen |
+| **Reset nach Schreibbefehl** | **Wird geleert** (`empty()`), Bereinigungsnachricht wird gesendet | **Wird geleert** (`empty()`), wird beim nächsten Scanzyklus neu initialisiert |
 | **Reset bei leerem Feld** | Wird sofort geleert (`empty()`) | Wird sofort geleert (`empty()`) |
 | **Systemnutzen** | Spart Bandbreite, CPU und Datenbank-I/O | Verhindert Reader-Lock-Konflikte und Fehlermeldungs-Stürme bei Broadcasts |

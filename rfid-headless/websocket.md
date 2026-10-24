@@ -224,6 +224,7 @@ When transponders are no longer detected on the reader antenna, or when the read
 1. **Physical Tag Removal**: When all tags are removed from the RF field (detected by the inventory cycle encountering an empty plate).
 2. **Hardware Disconnection**: When the RFID reader is unplugged, loses power, or suffers communication failure during scanning cycles.
 3. **Daemon Shutdown**: When `rfid-headless` or `HeadlessReaderScanner` is cleanly stopped or terminated via SIGINT/SIGTERM.
+4. **Post-Write Operation Notification**: After exclusive transponder write operations (`rfid:write_tag`, `rfid:write_afi`), before the reader resumes scanning, a `rfid:tags_cleared` event is dispatched so downstream clients clear previous tag state before receiving fresh scans of updated transponders.
 
 #### Cleared Event JSON Example:
 ```json
@@ -282,7 +283,7 @@ To query device details (Device ID, Device Type, and initial initialization star
 To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID tag, send a `message` event with event name `rfid:write_tag`.
 
 > **Note on Concurrency & Timing:**
-> During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, only the reader's debounce cooldown cache is cleared (`clearDebounceCache()`) while active tag presence is retained, allowing immediate consecutive writes and instant post-write scan reads. See [Cache Architecture Documentation](cache-architecture.md) for details.
+> During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, a `rfid:tags_cleared` notification is dispatched and the reader cache is cleared before background scanning resumes, allowing clean downstream state resets and immediate detection of the newly written transponders. See [Cache Architecture Documentation](cache-architecture.md) for details.
 
 #### Write Tag Request JSON:
 ```json

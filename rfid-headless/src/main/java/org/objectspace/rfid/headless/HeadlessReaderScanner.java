@@ -194,7 +194,7 @@ public class HeadlessReaderScanner implements Runnable {
 	 * 2. Allows a brief settling delay before writing to the transponder.
 	 * 3. Executes the reader task (e.g. write tag blocks or AFI).
 	 * 4. Waits for EEPROM / transponder write completion.
-	 * 5. Clears the reader debounce cache so the written tag is scanned immediately.
+	 * 5. Dispatches a tags cleared notification and clears the cache so the written tag is scanned cleanly.
 	 * 6. Resumes the scanning loop in all cases (including exceptions).
 	 *
 	 * @param task task to execute with exclusive reader access
@@ -213,8 +213,12 @@ public class HeadlessReaderScanner implements Runnable {
 			// Transponder / EEPROM write settling delay
 			Thread.sleep(150);
 			if (callback != null) {
-				callback.clearDebounceCache();
-				logger.info("Cleared scan debounce cache after write operation (active tag presence preserved)");
+				try {
+					callback.empty();
+				} catch (Exception e) {
+					logger.warn("Error invoking callback.empty() after write operation: {}", e.getMessage());
+				}
+				logger.info("Dispatched tags cleared message after write operation");
 			}
 			return result;
 		} finally {
