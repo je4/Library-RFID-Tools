@@ -12,6 +12,7 @@ import org.objectspace.rfid.headless.payload.BaseRfidPayload;
 import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
 import org.objectspace.rfid.headless.payload.TagReadPayload;
 import org.objectspace.rfid.headless.payload.TagsClearedPayload;
+import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.webservice.WebserviceConfig;
@@ -1617,6 +1618,254 @@ public class HeadlessWsBrokerDispatcherTest {
         Event infoResp = sentEvents.get(0);
         assertEquals("info-query-id-55555555555555", infoResp.getRefId());
         assertEquals("info-tok", infoResp.getToken());
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test multi-UID batch write AFI when all transponders succeed")
+    void testBatchWriteAfiAllSuccess() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-station-1");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
+        );
+
+        List<String> writtenUids = new CopyOnWriteArrayList<>();
+        AtomicInteger exclusiveLocks = new AtomicInteger(0);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Reader-Batch"; }
+            @Override
+            public void writeAfi(String uid, byte afi) throws Exception {
+                assertEquals((byte) 0x07, afi);
+                writtenUids.add(uid);
+            }
+            @Override public void close() {}
+        };
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, null, 100, 4) {
+            @Override
+            public <T> T executeExclusive(ScannerTask<T> task) throws Exception {
+                exclusiveLocks.incrementAndGet();
+                return super.executeExclusive(task);
+            }
+        };
+
+        dispatcher.setReader(mockReader);
+        dispatcher.setScanner(scanner);
+
+        List<String> requestedUids = List.of("E004010001", "E004010002", "E004010003");
+        WriteAfiResponsePayload resp = dispatcher.writeAfi(requestedUids, "07", "web-ui", "req-batch-all-ok", "ref-batch-001").join();
+
+        assertEquals("ok", resp.getStatus());
+        assertTrue(resp.isSuccess());
+        assertFalse(resp.isPartial());
+        assertEquals("07", resp.getAfi());
+        assertEquals(requestedUids, resp.getUids());
+        assertEquals(requestedUids, resp.getSuccessfulUids());
+        assertTrue(resp.getFailedUids() == null || resp.getFailedUids().isEmpty());
+        assertEquals(3, resp.getResults().size());
+        assertTrue(resp.getResults().stream().allMatch(WriteAfiResponsePayload.TagAfiResult::isSuccess));
+        assertEquals(3, writtenUids.size());
+        assertEquals(1, exclusiveLocks.get(), "Batch write should acquire exclusive scanner lock exactly once for all UIDs");
+
+        assertEquals(1, sentEvents.size());
+        Event reply = sentEvents.get(0);
+        assertEquals("req-batch-all-ok", reply.getToken());
+        assertEquals("ref-batch-001", reply.getRefId());
+        assertEquals("rfid:write_afi_response", reply.getData().get("event").asText());
+        assertEquals("ok", reply.getData().get("status").asText());
+        assertEquals(3, reply.getData().get("uids").size());
+        assertEquals(3, reply.getData().get("successfulUids").size());
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test multi-UID batch write AFI with partial failure reports exact successes and errors")
+    void testBatchWriteAfiPartialFailure() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-station-1");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
+        );
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Reader-Batch"; }
+            @Override
+            public void writeAfi(String uid, byte afi) throws Exception {
+                if ("E00401-LOCKED".equals(uid)) {
+                    throw new Exception("Tag AFI lock bit set (ISO error 0x12)");
+                }
+            }
+            @Override public void close() {}
+        };
+
+        dispatcher.setReader(mockReader);
+
+        List<String> requestedUids = List.of("E00401-OK1", "E00401-LOCKED", "E00401-OK2");
+        WriteAfiResponsePayload resp = dispatcher.writeAfi(requestedUids, "0xC2", "web-ui", "req-batch-partial", "ref-partial-002").join();
+
+        assertEquals("partial", resp.getStatus());
+        assertFalse(resp.isSuccess());
+        assertTrue(resp.isPartial());
+        assertEquals("C2", resp.getAfi());
+        assertEquals(requestedUids, resp.getUids());
+        assertEquals(List.of("E00401-OK1", "E00401-OK2"), resp.getSuccessfulUids());
+        assertNotNull(resp.getFailedUids());
+        assertEquals(1, resp.getFailedUids().size());
+        assertTrue(resp.getFailedUids().get("E00401-LOCKED").contains("Tag AFI lock bit set"));
+
+        assertEquals(3, resp.getResults().size());
+        assertTrue(resp.getResults().get(0).isSuccess());
+        assertFalse(resp.getResults().get(1).isSuccess());
+        assertEquals("E00401-LOCKED", resp.getResults().get(1).getUid());
+        assertTrue(resp.getResults().get(1).getError().contains("Tag AFI lock bit set"));
+        assertTrue(resp.getResults().get(2).isSuccess());
+
+        assertEquals(1, sentEvents.size());
+        Event reply = sentEvents.get(0);
+        assertEquals("partial", reply.getData().get("status").asText());
+        assertEquals(2, reply.getData().get("successfulUids").size());
+        assertTrue(reply.getData().get("failedUids").has("E00401-LOCKED"));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test multi-UID batch write AFI when all transponders fail")
+    void testBatchWriteAfiAllFailure() throws Exception {
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-station-1");
+        cfg.setEndpoint("https://localhost:8765");
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1", "https://localhost:8765", List.of("all"), null, new WSBrokerClient(cfg)
+        );
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Reader-Batch"; }
+            @Override
+            public void writeAfi(String uid, byte afi) throws Exception {
+                throw new Exception("Tag not in field");
+            }
+            @Override public void close() {}
+        };
+
+        dispatcher.setReader(mockReader);
+
+        List<String> requestedUids = List.of("UID-FAIL-1", "UID-FAIL-2");
+        WriteAfiResponsePayload resp = dispatcher.writeAfi(requestedUids, "07", null, null).join();
+
+        assertEquals("error", resp.getStatus());
+        assertFalse(resp.isSuccess());
+        assertFalse(resp.isPartial());
+        assertTrue(resp.getSuccessfulUids().isEmpty());
+        assertEquals(2, resp.getFailedUids().size());
+        assertTrue(resp.getFailedUids().get("UID-FAIL-1").contains("Tag not in field"));
+        assertTrue(resp.getFailedUids().get("UID-FAIL-2").contains("Tag not in field"));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test incoming rfid:write_afi message with uids array triggers batch processing")
+    void testIncomingMessageWithUidsArray() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-station-1");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
+        );
+
+        List<String> written = new CopyOnWriteArrayList<>();
+        dispatcher.setReader(new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Reader"; }
+            @Override
+            public void writeAfi(String uid, byte afi) throws Exception {
+                written.add(uid);
+            }
+            @Override public void close() {}
+        });
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
+        dispatcher.setCallback(callback);
+
+        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-1", new FinnishDataModel().getBlock(32), 4);
+        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-2", new FinnishDataModel().getBlock(32), 4);
+        sentEvents.clear();
+
+        // Broadcast message with uids array
+        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
+                "event", "rfid:write_afi",
+                "uids", List.of("E00401-TAG-1", "E00401-TAG-2"),
+                "afi", "C2"
+        ));
+        batchMsg.setToken("req-batch-array");
+
+        dispatcher.handleIncomingMessage(batchMsg);
+        Thread.sleep(400);
+
+        assertEquals(2, written.size());
+        assertEquals(1, sentEvents.size());
+        Event reply = sentEvents.get(0);
+        assertEquals("req-batch-array", reply.getToken());
+        assertEquals("ok", reply.getData().get("status").asText());
+        assertEquals("C2", reply.getData().get("afi").asText());
+        assertEquals(2, reply.getData().get("successfulUids").size());
 
         dispatcher.close();
     }

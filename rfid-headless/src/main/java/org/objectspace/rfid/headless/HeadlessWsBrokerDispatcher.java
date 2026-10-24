@@ -569,7 +569,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	/**
 	 * Writes Application Family Identifier (AFI) byte to an RFID tag by UID.
-	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 * Delegates to {@link #writeAfi(List, Object, String, String, String)}.
 	 *
 	 * @param uid    target tag UID
 	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
@@ -583,7 +583,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	/**
 	 * Writes Application Family Identifier (AFI) byte to an RFID tag by UID with RefID correlation.
-	 * Pauses scanning loop during write and clears the scan debounce cache.
+	 * Delegates to {@link #writeAfi(List, Object, String, String, String)}.
 	 *
 	 * @param uid    target tag UID
 	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
@@ -593,29 +593,104 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 * @return CompletableFuture with WriteAfiResponsePayload
 	 */
 	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token, String refId) {
+		List<String> uids = (uid != null && !uid.isBlank()) ? List.of(uid.trim()) : Collections.emptyList();
+		return writeAfi(uids, afiObj, target, token, refId);
+	}
+
+	/**
+	 * Writes Application Family Identifier (AFI) byte to one or more RFID tags by UID list.
+	 * Pauses scanning loop during batch write and clears the scan debounce cache once for the entire batch.
+	 *
+	 * @param uids   list of target tag UIDs
+	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @return CompletableFuture with WriteAfiResponsePayload
+	 */
+	public CompletableFuture<WriteAfiResponsePayload> writeAfi(List<String> uids, Object afiObj, String target, String token) {
+		return writeAfi(uids, afiObj, target, token, null);
+	}
+
+	/**
+	 * Writes Application Family Identifier (AFI) byte to one or more RFID tags by UID list with RefID correlation.
+	 * Pauses scanning loop during batch write and clears the scan debounce cache once for the entire batch.
+	 *
+	 * @param uids   list of target tag UIDs
+	 * @param afiObj AFI byte or hex string (e.g. '07', '0x07', 7)
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @param refId  correlated request event ID
+	 * @return CompletableFuture with WriteAfiResponsePayload
+	 */
+	public CompletableFuture<WriteAfiResponsePayload> writeAfi(List<String> uids, Object afiObj, String target, String token, String refId) {
 		CompletableFuture<WriteAfiResponsePayload> future = CompletableFuture.supplyAsync(() -> {
-			String effectiveUid = (uid != null) ? uid.trim() : "";
+			List<String> targetUids = new ArrayList<>();
+			if (uids != null) {
+				for (String u : uids) {
+					if (u != null && !u.isBlank()) {
+						String trimmed = u.trim();
+						if (!targetUids.contains(trimmed)) {
+							targetUids.add(trimmed);
+						}
+					}
+				}
+			}
+
 			Byte parsedAfi = parseAfi(afiObj);
 			if (parsedAfi == null) {
-				return WriteAfiResponsePayload.error(effectiveUid, null, "AFI parameter is missing or invalid", "", clientName);
+				String primaryUid = !targetUids.isEmpty() ? targetUids.get(0) : "";
+				return WriteAfiResponsePayload.error(primaryUid, null, "AFI parameter is missing or invalid", "", clientName);
 			}
 			String afiHex = formatAfiHex(parsedAfi);
 
+			if (targetUids.isEmpty()) {
+				// Wildcard / single tag if not specified
+				if (callback != null && callback.getPresentTagCount() > 0) {
+					targetUids.addAll(callback.getPresentUids());
+				} else {
+					targetUids.add(""); // Empty string for wildcard tag search on reader
+				}
+			}
+
+			List<String> successfulUids = new ArrayList<>();
+			Map<String, String> failedUids = new LinkedHashMap<>();
+
 			try {
 				executeExclusive(r -> {
-					r.writeAfi(effectiveUid, parsedAfi);
+					for (int i = 0; i < targetUids.size(); i++) {
+						String effectiveUid = targetUids.get(i);
+						try {
+							r.writeAfi(effectiveUid, parsedAfi);
+							successfulUids.add(effectiveUid);
+							if (callback != null && !effectiveUid.isEmpty()) {
+								callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
+							}
+							logger.info("[WSBroker] Successfully wrote AFI='{}' (0x{}) on tag UID='{}'", parsedAfi, afiHex, effectiveUid);
+						} catch (Exception e) {
+							logger.error("[WSBroker] Error writing AFI on tag UID='{}': {}", effectiveUid, e.getMessage(), e);
+							failedUids.put(effectiveUid, e.getMessage() != null ? e.getMessage() : "Write failed");
+						}
+						if (i < targetUids.size() - 1) {
+							// Ensure settling delay between consecutive transponder writes
+							try {
+								Thread.sleep(50);
+							} catch (InterruptedException ie) {
+								Thread.currentThread().interrupt();
+							}
+						}
+					}
 					return null;
 				});
 
-				if (callback != null && !effectiveUid.isEmpty()) {
-					callback.getActivePresenceMap().put(effectiveUid, System.currentTimeMillis());
-				}
-
-				logger.info("[WSBroker] Successfully wrote AFI='{}' (0x{}) on tag UID='{}'", parsedAfi, afiHex, effectiveUid);
-				return WriteAfiResponsePayload.success(effectiveUid, afiHex, "", clientName);
+				return WriteAfiResponsePayload.batchResult(targetUids, successfulUids, failedUids, afiHex, "", clientName);
 			} catch (Exception e) {
-				logger.error("[WSBroker] Error writing AFI on tag UID='{}': {}", effectiveUid, e.getMessage(), e);
-				return WriteAfiResponsePayload.error(effectiveUid, afiHex, e.getMessage(), "", clientName);
+				logger.error("[WSBroker] Error executing exclusive batch write AFI: {}", e.getMessage(), e);
+				for (String effectiveUid : targetUids) {
+					if (!successfulUids.contains(effectiveUid) && !failedUids.containsKey(effectiveUid)) {
+						failedUids.put(effectiveUid, e.getMessage() != null ? e.getMessage() : "Reader error");
+					}
+				}
+				return WriteAfiResponsePayload.batchResult(targetUids, successfulUids, failedUids, afiHex, "", clientName);
 			}
 		});
 
@@ -740,12 +815,29 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	private void handleWriteAfiCommand(Event evt, String target) {
 		JsonNode data = evt.getData();
-		String uid = null;
+		List<String> targetUids = new ArrayList<>();
 		Object afi = null;
 
 		if (data != null && data.isObject()) {
-			if (data.hasNonNull("uid")) uid = data.get("uid").asText();
-			else if (data.hasNonNull("UID")) uid = data.get("UID").asText();
+			if (data.hasNonNull("uids") && data.get("uids").isArray()) {
+				for (JsonNode uNode : data.get("uids")) {
+					if (uNode.isTextual() && !uNode.asText().isBlank()) {
+						targetUids.add(uNode.asText().trim());
+					}
+				}
+			} else if (data.hasNonNull("UIDs") && data.get("UIDs").isArray()) {
+				for (JsonNode uNode : data.get("UIDs")) {
+					if (uNode.isTextual() && !uNode.asText().isBlank()) {
+						targetUids.add(uNode.asText().trim());
+					}
+				}
+			} else if (data.hasNonNull("uid")) {
+				String u = data.get("uid").asText();
+				if (u != null && !u.isBlank()) targetUids.add(u.trim());
+			} else if (data.hasNonNull("UID")) {
+				String u = data.get("UID").asText();
+				if (u != null && !u.isBlank()) targetUids.add(u.trim());
+			}
 
 			if (data.hasNonNull("afi")) {
 				JsonNode afiNode = data.get("afi");
@@ -757,8 +849,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		}
 
 		boolean isDirect = evt.getTarget() != null && evt.getTarget().equalsIgnoreCase(clientName);
-		String reqUid = (uid != null) ? uid.trim() : "";
-		boolean isWildcard = reqUid.isEmpty() || reqUid.equals("*");
+		boolean isWildcard = targetUids.isEmpty() || (targetUids.size() == 1 && (targetUids.get(0).isEmpty() || targetUids.get(0).equals("*")));
 		Byte parsedAfi = parseAfi(afi);
 		String afiHex = formatAfiHex(parsedAfi);
 
@@ -766,11 +857,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			if (!isDirect) {
 				// Broadcast write_afi command: filter silently if tag is not physically present
 				if (!isWildcard) {
-					if (!callback.isTagPresent(reqUid)) {
-						logger.debug("[WSBroker] Broadcast write_afi command for UID '{}' ignored - tag not present on this station ({})",
-								reqUid, clientName);
+					List<String> presentUids = targetUids.stream().filter(callback::isTagPresent).toList();
+					if (presentUids.isEmpty()) {
+						logger.debug("[WSBroker] Broadcast write_afi command for UIDs {} ignored - none present on this station ({})",
+								targetUids, clientName);
 						return;
 					}
+					targetUids = new ArrayList<>(presentUids);
 				} else {
 					int presentCount = callback.getPresentTagCount();
 					if (presentCount != 1) {
@@ -778,18 +871,22 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 								presentCount, clientName);
 						return;
 					}
-					uid = callback.getPresentUids().iterator().next();
-					logger.info("[WSBroker] Broadcast wildcard write_afi command matched single present tag UID '{}' on station '{}'", uid, clientName);
+					String singleUid = callback.getPresentUids().iterator().next();
+					targetUids = List.of(singleUid);
+					logger.info("[WSBroker] Broadcast wildcard write_afi command matched single present tag UID '{}' on station '{}'", singleUid, clientName);
 				}
 			} else {
 				// Direct command addressed to this station
 				if (!isWildcard) {
-					if (!callback.isTagPresent(reqUid)) {
-						logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
-						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
-								reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
-						return;
+					if (targetUids.size() == 1) {
+						String reqUid = targetUids.get(0);
+						if (!callback.isTagPresent(reqUid)) {
+							logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
+							WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
+									reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
+							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							return;
+						}
 					}
 				} else {
 					int presentCount = callback.getPresentTagCount();
@@ -806,13 +903,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						sendReply(target, evt.getToken(), evt.getId(), errPayload);
 						return;
 					} else {
-						uid = callback.getPresentUids().iterator().next();
+						targetUids = List.of(callback.getPresentUids().iterator().next());
 					}
 				}
 			}
 		}
 
-		writeAfi(uid, afi, target, evt.getToken(), evt.getId());
+		writeAfi(targetUids, afi, target, evt.getToken(), evt.getId());
 	}
 
 	private CompletableFuture<Void> sendReply(String target, String token, BaseRfidPayload payload) {

@@ -280,7 +280,9 @@ To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID t
 
 To write or toggle the Application Family Identifier (AFI byte) independently (e.g. for security gate EAS check-in / check-out), send a `message` event with event `rfid:write_afi`.
 
-#### Write AFI Request JSON:
+Both single-UID writes and batch multi-UID writes are supported. When a list of UIDs is supplied, the background scan loop is paused once (`executeExclusive`), programming all specified transponders in a single exclusive reader session with precise settling times and error tracking per UID.
+
+#### Single Tag Write AFI Request JSON:
 ```json
 {
   "time": "2026-10-23T12:00:04.000Z",
@@ -296,12 +298,29 @@ To write or toggle the Application Family Identifier (AFI byte) independently (e
 }
 ```
 
+#### Batch Multi-Tag Write AFI Request JSON:
+```json
+{
+  "time": "2026-10-23T12:00:04.100Z",
+  "source": "dashboard-ui",
+  "target": "rfid:reader:01",
+  "type": "message",
+  "token": "req-afi-batch-003",
+  "data": {
+    "event": "rfid:write_afi",
+    "uids": ["E004015099887766", "E004015099887777"],
+    "afi": "C2"
+  }
+}
+```
+
 #### Write AFI Parameters:
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `event` | string | **Yes** | Constant identifier: `"rfid:write_afi"`. |
-| `uid` | string | Optional | Target tag UID (hex string). If omitted, writes to the tag present in reader field. |
-| `afi` | string/int | **Yes** | AFI byte value (e.g. `"07"`, `"0x07"`, `7`, `"C2"` for checked out / secured states). |
+| `uid` / `UID` | string | Optional | Single target tag UID (hex string). If omitted and `uids` is omitted, writes to the tag present in reader field. |
+| `uids` / `UIDs` | array of strings | Optional | Array of target tag UIDs for batch programming within a single scanner pause cycle. |
+| `afi` / `AFI` | string/int | **Yes** | AFI byte value (e.g. `"07"`, `"0x07"`, `7`, `"C2"` for checked out / secured states). |
 
 ---
 
@@ -406,6 +425,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
 
 ### 6.3 Write AFI Response (`rfid:write_afi_response`)
 
+#### Single Tag Success Response:
 ```json
 {
   "time": "2026-10-23T12:00:04.280Z",
@@ -417,9 +437,73 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "event": "rfid:write_afi_response",
     "status": "ok",
     "uid": "E004015099887766",
+    "uids": ["E004015099887766"],
+    "successfulUids": ["E004015099887766"],
+    "results": [
+      {
+        "uid": "E004015099887766",
+        "status": "ok"
+      }
+    ],
     "afi": "07",
     "message": "AFI written successfully",
     "timestamp": 1792756804280,
+    "clientId": "rfid:reader:01"
+  }
+}
+```
+
+#### Batch Write Success Response:
+```json
+{
+  "time": "2026-10-23T12:00:04.350Z",
+  "source": "rfid:reader:01",
+  "target": "dashboard-ui",
+  "type": "message",
+  "token": "req-afi-batch-003",
+  "data": {
+    "event": "rfid:write_afi_response",
+    "status": "ok",
+    "uid": "E004015099887766",
+    "uids": ["E004015099887766", "E004015099887777"],
+    "successfulUids": ["E004015099887766", "E004015099887777"],
+    "results": [
+      {"uid": "E004015099887766", "status": "ok"},
+      {"uid": "E004015099887777", "status": "ok"}
+    ],
+    "afi": "C2",
+    "message": "AFI written to 2/2 tags successfully",
+    "timestamp": 1792756804350,
+    "clientId": "rfid:reader:01"
+  }
+}
+```
+
+#### Batch Partial Failure Response:
+```json
+{
+  "time": "2026-10-23T12:00:04.420Z",
+  "source": "rfid:reader:01",
+  "target": "dashboard-ui",
+  "type": "message",
+  "token": "req-afi-batch-004",
+  "data": {
+    "event": "rfid:write_afi_response",
+    "status": "partial",
+    "uid": "E004015099887766",
+    "uids": ["E004015099887766", "E004015099887777"],
+    "successfulUids": ["E004015099887766"],
+    "failedUids": {
+      "E004015099887777": "Tag AFI lock bit set (ISO error 0x12)"
+    },
+    "results": [
+      {"uid": "E004015099887766", "status": "ok"},
+      {"uid": "E004015099887777", "status": "error", "error": "Tag AFI lock bit set (ISO error 0x12)"}
+    ],
+    "afi": "C2",
+    "message": "AFI written to 1/2 tags (1 failed)",
+    "error": "1 of 2 tags failed",
+    "timestamp": 1792756804420,
     "clientId": "rfid:reader:01"
   }
 }
@@ -537,13 +621,23 @@ type WriteTagResponse struct {
 	Error   string `json:"error"`
 }
 
+type TagAfiResult struct {
+	UID    string `json:"uid"`
+	Status string `json:"status"` // "ok" | "error"
+	Error  string `json:"error,omitempty"`
+}
+
 type WriteAfiResponse struct {
-	Event   string `json:"event"`
-	Status  string `json:"status"`
-	UID     string `json:"uid"`
-	AFI     string `json:"afi"`
-	Message string `json:"message"`
-	Error   string `json:"error"`
+	Event          string            `json:"event"`
+	Status         string            `json:"status"` // "ok" | "partial" | "error"
+	UID            string            `json:"uid,omitempty"`
+	UIDs           []string          `json:"uids,omitempty"`
+	SuccessfulUIDs []string          `json:"successfulUids,omitempty"`
+	FailedUIDs     map[string]string `json:"failedUids,omitempty"`
+	Results        []TagAfiResult    `json:"results,omitempty"`
+	AFI            string            `json:"afi"`
+	Message        string            `json:"message"`
+	Error          string            `json:"error,omitempty"`
 }
 
 func HandleEvent(evt *Event) error {
@@ -619,16 +713,16 @@ ws.onopen = () => {
         }
     }));
 
-    // 3. Send Write AFI Command
+    // 3. Send Write AFI Command (single or batch)
     ws.send(JSON.stringify({
         type: "message",
         source: "web-ui",
         target: "rfid:reader:01",
-        token: "web-req-afi-002",
+        token: "web-req-afi-batch-003",
         data: {
             event: "rfid:write_afi",
-            uid: "E004015099887766",
-            afi: "07"
+            uids: ["E004015099887766", "E004015099887777"],
+            afi: "C2"
         }
     }));
 };
@@ -642,7 +736,7 @@ ws.onmessage = (event) => {
         } else if (msg.data.event === "rfid:write_tag_response") {
             console.log(`Write Tag [${msg.data.status}]: UID=${msg.data.uid}, Token=${msg.token}`);
         } else if (msg.data.event === "rfid:write_afi_response") {
-            console.log(`Write AFI [${msg.data.status}]: UID=${msg.data.uid}, AFI=${msg.data.afi}`);
+            console.log(`Write AFI [${msg.data.status}]: Successful=${msg.data.successfulUids?.length || 0}, AFI=${msg.data.afi}`);
         }
     }
 };
