@@ -280,12 +280,18 @@ To query device details (Device ID, Device Type, and initial initialization star
 
 ### 5.2 Write Tag Data (`rfid:write_tag`)
 
-To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID tag, send a `message` event with event name `rfid:write_tag`.
+To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID tag or multiple RFID tags, send a `message` event with event name `rfid:write_tag`.
+
+Both single-tag writing and multi-tag batch writing with individual data per transponder UID are supported:
+- **Single Tag**: Direct payload with single UID and item data (or wildcard for single transponder on plate).
+- **Multi-Tag Array**: Payload with `tags` / `items` list containing per-transponder specifications (`uid`, `itemId`, `partNo`, `parts`, `afi`, etc.).
+- **Multi-Tag Map**: Payload with `tags` / `items` map or root-level map (`UID -> { itemId, partNo, afi, ... }` or `UID -> "itemId"`).
+- **Parallel Arrays**: Payload with `uids`, `itemIds`, and optional `afis`.
 
 > **Note on Concurrency & Timing:**
 > During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, a `rfid:tags_cleared` notification is dispatched and the reader cache is cleared before background scanning resumes, allowing clean downstream state resets and immediate detection of the newly written transponders. See [Cache Architecture Documentation](cache-architecture.md) for details.
 
-#### Write Tag Request JSON:
+#### Single Tag Write Request JSON:
 ```json
 {
   "time": "2026-10-23T12:00:03.000Z",
@@ -297,7 +303,7 @@ To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID t
     "event": "rfid:write_tag",
     "uid": "E004015099887766",
     "itemId": "3012345678",
-    "isil": "CH-000001-1",
+    "isil": "000001-1",
     "country": "CH",
     "parts": 1,
     "partno": 1,
@@ -307,13 +313,48 @@ To write ISO 28560-2 library metadata (and optionally the AFI byte) to an RFID t
 }
 ```
 
+#### Multi-Tag Batch Write Request JSON (List of Tags with Individual Data & AFI):
+```json
+{
+  "time": "2026-10-23T12:00:03.100Z",
+  "source": "dashboard-ui",
+  "target": "rfid:reader:01",
+  "type": "message",
+  "token": "req-write-batch-001",
+  "data": {
+    "event": "rfid:write_tag",
+    "tags": [
+      {
+        "uid": "E004015099887766",
+        "itemId": "3012345678",
+        "isil": "000001-1",
+        "country": "CH",
+        "parts": 2,
+        "partNo": 1,
+        "afi": "07"
+      },
+      {
+        "uid": "E004015099887777",
+        "itemId": "3012345679",
+        "isil": "000001-1",
+        "country": "CH",
+        "parts": 2,
+        "partNo": 2,
+        "afi": "C2"
+      }
+    ]
+  }
+}
+```
+
 #### Write Tag Parameters:
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `event` | string | **Yes** | Constant identifier: `"rfid:write_tag"`. |
-| `uid` | string | Optional | Target tag UID (hex string, e.g. `E004015099887766`). If omitted or empty, writes to the transponder currently in the RF field. |
-| `itemId` / `imtemId` | string | **Yes** | Primary item barcode / identifier to encode into ISO 28560 block format. |
-| `isil` | string | Optional | Library ISIL identifier (e.g. `CH-000001-1`). |
+| `uid` / `UID` | string | Optional | Target tag UID (hex string, e.g. `E004015099887766`). If omitted or empty in single-write mode, writes to the transponder currently in the RF field. |
+| `tags` / `items` | array or map | Optional | List or Map of transponder write specifications (`uid`, `itemId`, `partNo`, `afi`, etc.) for batch writing where each UID has its own data. |
+| `itemId` / `barcode` | string | Optional | Primary item barcode / identifier to encode into ISO 28560 block format (per item or default). |
+| `isil` | string | Optional | Library ISIL identifier (e.g. `000001-1`). |
 | `country` | string | Optional | ISO country code (e.g. `CH`, `DE`). |
 | `parts` | integer | Optional | Total count of parts in item set (default: `1`). |
 | `partno` / `partNo` | integer | Optional | Current part number in item set (1-based index, default: `1`). |
@@ -433,7 +474,7 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "status": "ok",
     "uid": "E004015099887766",
     "itemId": "3012345678",
-    "isil": "CH-000001-1",
+    "isil": "000001-1",
     "country": "CH",
     "parts": 1,
     "partNo": 1,
@@ -601,7 +642,7 @@ Event writeTagCmd = Event.createMessage("dashboard-app", "rfid:reader:01", Map.o
     "event", "rfid:write_tag",
     "uid", "E004015099887766",
     "itemId", "3012345678",
-    "isil", "CH-000001-1",
+    "isil", "000001-1",
     "country", "CH",
     "parts", 1,
     "partno", 1,
@@ -770,7 +811,7 @@ ws.onopen = () => {
             event: "rfid:write_tag",
             uid: "E004015099887766",
             itemId: "3012345678",
-            isil: "CH-000001-1",
+            isil: "000001-1",
             country: "CH",
             parts: 1,
             partno: 1,

@@ -3,6 +3,7 @@ package org.objectspace.rfid.headless;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,9 +17,11 @@ import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.headless.payload.BaseRfidPayload;
 import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
 import org.objectspace.rfid.headless.payload.TagReadPayload;
+import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.TagsClearedPayload;
 import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
 import org.objectspace.rfid.headless.payload.WriteTagResponsePayload;
+import org.objectspace.rfid.headless.payload.WriteTagResponsePayload.TagWriteResult;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.WSBroker;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
@@ -483,6 +486,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	/**
 	 * Writes ISO 28560 metadata (item ID, ISIL, country, parts) and optionally AFI to an RFID tag by UID.
+	 * Delegates to {@link #writeTags(List, String, String, String)}.
 	 * Pauses scanning loop during write and clears the scan debounce cache.
 	 *
 	 * @param uid       target tag UID (or empty/wildcard for single tag in field)
@@ -505,6 +509,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	/**
 	 * Writes ISO 28560 metadata (item ID, ISIL, country, parts) and optionally AFI to an RFID tag by UID with RefID correlation.
+	 * Delegates to {@link #writeTags(List, String, String, String)}.
 	 * Pauses scanning loop during write and clears the scan debounce cache.
 	 *
 	 * @param uid       target tag UID (or empty/wildcard for single tag in field)
@@ -523,31 +528,173 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
 															   int parts, int partNo, int usageType, Object afiObj,
 															   String target, String token, String refId) {
+		TagWriteItem item = new TagWriteItem(uid, itemId, isil, country, parts, partNo, usageType, afiObj);
+		return writeTags(List.of(item), target, token, refId);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata and optional AFI to multiple RFID tags by list of {@link TagWriteItem} specifications.
+	 * Delegates to {@link #writeTags(List, String, String, String)}.
+	 *
+	 * @param items  list of tag write items
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTag(List<TagWriteItem> items, String target, String token) {
+		return writeTags(items, target, token, null);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata and optional AFI to multiple RFID tags by list of {@link TagWriteItem} specifications with RefID correlation.
+	 * Delegates to {@link #writeTags(List, String, String, String)}.
+	 *
+	 * @param items  list of tag write items
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @param refId  correlated request event ID
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTag(List<TagWriteItem> items, String target, String token, String refId) {
+		return writeTags(items, target, token, refId);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata and optional AFI to multiple RFID tags by list of {@link TagWriteItem} specifications.
+	 * Pauses scanning loop during batch write and clears the scan debounce cache once for the entire batch.
+	 *
+	 * @param items  list of tag write items
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTags(List<TagWriteItem> items, String target, String token) {
+		return writeTags(items, target, token, null);
+	}
+
+	/**
+	 * Writes ISO 28560 metadata and optional AFI to multiple RFID tags by list of {@link TagWriteItem} specifications with RefID correlation.
+	 * Pauses scanning loop during batch write and clears the scan debounce cache once for the entire batch.
+	 *
+	 * @param items  list of tag write items
+	 * @param target target client or channel to send response message to
+	 * @param token  correlation token
+	 * @param refId  correlated request event ID
+	 * @return CompletableFuture with WriteTagResponsePayload
+	 */
+	public CompletableFuture<WriteTagResponsePayload> writeTags(List<TagWriteItem> items, String target, String token, String refId) {
 		CompletableFuture<WriteTagResponsePayload> future = CompletableFuture.supplyAsync(() -> {
-			String effectiveUid = (uid != null) ? uid.trim() : "";
-			Byte parsedAfi = parseAfi(afiObj);
-			String afiHex = formatAfiHex(parsedAfi);
+			List<TagWriteItem> effectiveItems = new ArrayList<>();
+			if (items != null) {
+				for (TagWriteItem it : items) {
+					if (it != null) {
+						effectiveItems.add(it);
+					}
+				}
+			}
+
+			if (effectiveItems.isEmpty()) {
+				return WriteTagResponsePayload.error("", "", "No tag items provided for write operation", "", clientName);
+			}
+
+			List<String> targetUids = new ArrayList<>();
+			List<String> successfulUids = new ArrayList<>();
+			Map<String, String> failedUids = new LinkedHashMap<>();
+			List<TagWriteResult> results = new ArrayList<>();
+
+			// If single item with wildcard/empty UID, resolve present tag if available
+			if (effectiveItems.size() == 1) {
+				TagWriteItem single = effectiveItems.get(0);
+				String u = single.getUid() != null ? single.getUid().trim() : "";
+				if (u.isEmpty() || u.equals("*")) {
+					if (callback != null && callback.getPresentTagCount() > 0) {
+						u = callback.getPresentUids().iterator().next();
+					}
+					effectiveItems.set(0, new TagWriteItem(u, single.getItemId(), single.getIsil(),
+							single.getCountry(), single.getParts(), single.getPartNo(), single.getUsageType(), single.getAfi()));
+				}
+			}
+
+			for (TagWriteItem it : effectiveItems) {
+				String effectiveUid = it.getUid() != null ? it.getUid().trim() : "";
+				if (!targetUids.contains(effectiveUid)) {
+					targetUids.add(effectiveUid);
+				}
+			}
 
 			try {
-				FinnishDataModel model = new FinnishDataModel();
-				int effParts = parts > 0 ? parts : 1;
-				int effPartNo = partNo > 0 ? partNo : 1;
-				int effUsage = usageType > 0 ? usageType : 1;
-				model.setValues(effUsage, effParts, effPartNo, (itemId != null ? itemId : ""),
-						(country != null ? country : ""), (isil != null ? isil : ""), null);
-
 				executeExclusive(r -> {
-					r.writeTag(effectiveUid, model, parsedAfi);
+					for (int i = 0; i < effectiveItems.size(); i++) {
+						TagWriteItem item = effectiveItems.get(i);
+						String effectiveUid = item.getUid() != null ? item.getUid().trim() : "";
+						Byte parsedAfi = parseAfi(item.getAfi());
+						String afiHex = formatAfiHex(parsedAfi);
+
+						try {
+							FinnishDataModel model = new FinnishDataModel();
+							int effParts = item.getParts() > 0 ? item.getParts() : 1;
+							int effPartNo = item.getPartNo() > 0 ? item.getPartNo() : 1;
+							int effUsage = item.getUsageType() > 0 ? item.getUsageType() : 1;
+							model.setValues(effUsage, effParts, effPartNo,
+									(item.getItemId() != null ? item.getItemId() : ""),
+									(item.getCountry() != null ? item.getCountry() : ""),
+									(item.getIsil() != null ? item.getIsil() : ""),
+									null);
+
+							r.writeTag(effectiveUid, model, parsedAfi);
+							successfulUids.add(effectiveUid);
+							results.add(TagWriteResult.ok(effectiveUid, item.getItemId(), afiHex));
+							logger.info("[WSBroker] Successfully wrote tag: UID='{}', ItemID='{}', ISIL='{}', Country='{}', AFI='{}'",
+									effectiveUid, item.getItemId(), item.getIsil(), item.getCountry(), afiHex);
+						} catch (Exception e) {
+							logger.error("[WSBroker] Error writing tag UID='{}': {}", effectiveUid, e.getMessage(), e);
+							String errMsg = e.getMessage() != null ? e.getMessage() : "Write failed";
+							failedUids.put(effectiveUid, errMsg);
+							results.add(TagWriteResult.error(effectiveUid, item.getItemId(), afiHex, errMsg));
+						}
+
+						if (i < effectiveItems.size() - 1) {
+							try {
+								Thread.sleep(50);
+							} catch (InterruptedException ie) {
+								Thread.currentThread().interrupt();
+							}
+						}
+					}
 					return null;
 				});
 
-				logger.info("[WSBroker] Successfully wrote tag: UID='{}', ItemID='{}', ISIL='{}', Country='{}', AFI='{}'",
-						effectiveUid, itemId, isil, country, afiHex);
-				return WriteTagResponsePayload.success(effectiveUid, itemId, isil, country,
-						effParts, effPartNo, effUsage, afiHex, "", clientName);
+				if (effectiveItems.size() == 1 && successfulUids.size() == 1) {
+					TagWriteItem single = effectiveItems.get(0);
+					Byte parsedAfi = parseAfi(single.getAfi());
+					String afiHex = formatAfiHex(parsedAfi);
+					return WriteTagResponsePayload.success(single.getUid(), single.getItemId(), single.getIsil(),
+							single.getCountry(), single.getParts(), single.getPartNo(), single.getUsageType(),
+							afiHex, "", clientName);
+				} else if (effectiveItems.size() == 1 && !failedUids.isEmpty()) {
+					TagWriteItem single = effectiveItems.get(0);
+					String err = failedUids.get(single.getUid());
+					return WriteTagResponsePayload.error(single.getUid(), single.getItemId(), err, "", clientName);
+				} else {
+					return WriteTagResponsePayload.batchResult(targetUids, successfulUids, failedUids, results, "", clientName);
+				}
 			} catch (Exception e) {
-				logger.error("[WSBroker] Error writing tag UID='{}': {}", effectiveUid, e.getMessage(), e);
-				return WriteTagResponsePayload.error(effectiveUid, itemId, e.getMessage(), "", clientName);
+				logger.error("[WSBroker] Error executing exclusive batch write tags: {}", e.getMessage(), e);
+				for (TagWriteItem item : effectiveItems) {
+					String uid = item.getUid() != null ? item.getUid().trim() : "";
+					if (!successfulUids.contains(uid) && !failedUids.containsKey(uid)) {
+						String errMsg = e.getMessage() != null ? e.getMessage() : "Reader error";
+						failedUids.put(uid, errMsg);
+						Byte parsedAfi = parseAfi(item.getAfi());
+						String afiHex = formatAfiHex(parsedAfi);
+						results.add(TagWriteResult.error(uid, item.getItemId(), afiHex, errMsg));
+					}
+				}
+				if (effectiveItems.size() == 1) {
+					TagWriteItem single = effectiveItems.get(0);
+					return WriteTagResponsePayload.error(single.getUid(), single.getItemId(), e.getMessage(), "", clientName);
+				}
+				return WriteTagResponsePayload.batchResult(targetUids, successfulUids, failedUids, results, "", clientName);
 			}
 		});
 
@@ -709,63 +856,32 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	private void handleWriteTagCommand(Event evt, String target) {
 		JsonNode data = evt.getData();
-		String uid = null;
-		String itemId = null;
-		String isil = null;
-		String country = null;
-		int parts = 1;
-		int partNo = 1;
-		int usageType = 1;
-		Object afi = null;
+		List<TagWriteItem> items = parseTagWriteItems(data);
 
-		if (data != null && data.isObject()) {
-			if (data.hasNonNull("uid")) uid = data.get("uid").asText();
-			else if (data.hasNonNull("UID")) uid = data.get("UID").asText();
-
-			if (data.hasNonNull("itemId")) itemId = data.get("itemId").asText();
-			else if (data.hasNonNull("imtemId")) itemId = data.get("imtemId").asText();
-			else if (data.hasNonNull("primaryItemId")) itemId = data.get("primaryItemId").asText();
-			else if (data.hasNonNull("item_id")) itemId = data.get("item_id").asText();
-			else if (data.hasNonNull("barcode")) itemId = data.get("barcode").asText();
-
-			if (data.hasNonNull("isil")) isil = data.get("isil").asText();
-			else if (data.hasNonNull("ISIL")) isil = data.get("ISIL").asText();
-
-			if (data.hasNonNull("country")) country = data.get("country").asText();
-			else if (data.hasNonNull("countryOfOwnerLib")) country = data.get("countryOfOwnerLib").asText();
-
-			if (data.hasNonNull("parts")) parts = data.get("parts").asInt(1);
-			else if (data.hasNonNull("partsInItem")) parts = data.get("partsInItem").asInt(1);
-
-			if (data.hasNonNull("partno")) partNo = data.get("partno").asInt(1);
-			else if (data.hasNonNull("partNo")) partNo = data.get("partNo").asInt(1);
-			else if (data.hasNonNull("partNumber")) partNo = data.get("partNumber").asInt(1);
-
-			if (data.hasNonNull("usageType")) usageType = data.get("usageType").asInt(1);
-			else if (data.hasNonNull("typeOfUsage")) usageType = data.get("typeOfUsage").asInt(1);
-
-			if (data.hasNonNull("afi")) {
-				JsonNode afiNode = data.get("afi");
-				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
-			} else if (data.hasNonNull("AFI")) {
-				JsonNode afiNode = data.get("AFI");
-				afi = afiNode.isInt() ? afiNode.asInt() : afiNode.asText();
-			}
+		if (items.isEmpty()) {
+			logger.warn("[WSBroker] Received write_tag command with no valid tag data from '{}'", evt.getSource());
+			WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+					"", "", "No tag data provided in write_tag command", "", clientName);
+			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			return;
 		}
 
 		boolean isDirect = evt.getTarget() != null && evt.getTarget().equalsIgnoreCase(clientName);
-		String reqUid = (uid != null) ? uid.trim() : "";
-		boolean isWildcard = reqUid.isEmpty() || reqUid.equals("*");
+		boolean isSingle = items.size() == 1;
+		boolean isWildcard = isSingle && (items.get(0).getUid().isEmpty() || items.get(0).getUid().equals("*"));
 
 		if (callback != null) {
 			if (!isDirect) {
-				// Broadcast write command: filter silently if tag is not physically present
+				// Broadcast write command: filter silently if tag(s) not physically present
 				if (!isWildcard) {
-					if (!callback.isTagPresent(reqUid)) {
-						logger.debug("[WSBroker] Broadcast write_tag command for UID '{}' ignored - tag not present on this station ({})",
-								reqUid, clientName);
+					List<TagWriteItem> presentItems = items.stream()
+							.filter(it -> it.getUid().isEmpty() || callback.isTagPresent(it.getUid()))
+							.toList();
+					if (presentItems.isEmpty()) {
+						logger.debug("[WSBroker] Broadcast write_tag command ignored - no matching tags present on station ({})", clientName);
 						return;
 					}
+					items = new ArrayList<>(presentItems);
 				} else {
 					int presentCount = callback.getPresentTagCount();
 					if (presentCount != 1) {
@@ -773,41 +889,321 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 								presentCount, clientName);
 						return;
 					}
-					uid = callback.getPresentUids().iterator().next();
-					logger.info("[WSBroker] Broadcast wildcard write_tag command matched single present tag UID '{}' on station '{}'", uid, clientName);
+					String singleUid = callback.getPresentUids().iterator().next();
+					TagWriteItem orig = items.get(0);
+					items = List.of(new TagWriteItem(singleUid, orig.getItemId(), orig.getIsil(),
+							orig.getCountry(), orig.getParts(), orig.getPartNo(), orig.getUsageType(), orig.getAfi()));
+					logger.info("[WSBroker] Broadcast wildcard write_tag command matched single present tag UID '{}' on station '{}'", singleUid, clientName);
 				}
 			} else {
 				// Direct command addressed to this station
-				if (!isWildcard) {
-					if (!callback.isTagPresent(reqUid)) {
-						logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on station '{}'", reqUid, clientName);
-						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
-								reqUid, (itemId != null ? itemId : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
-						return;
-					}
-				} else {
-					int presentCount = callback.getPresentTagCount();
-					if (presentCount == 0) {
-						logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on station '{}'", clientName);
-						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
-								"", (itemId != null ? itemId : ""), "No RFID tag present on reader station", "", clientName);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
-						return;
-					} else if (presentCount > 1) {
-						logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on station '{}'", presentCount, clientName);
-						WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
-								"", (itemId != null ? itemId : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
-						return;
+				if (isSingle) {
+					TagWriteItem single = items.get(0);
+					if (!isWildcard) {
+						if (!callback.isTagPresent(single.getUid())) {
+							logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on station '{}'", single.getUid(), clientName);
+							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+									single.getUid(), single.getItemId(), "Tag '" + single.getUid() + "' not present on reader station", "", clientName);
+							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							return;
+						}
 					} else {
-						uid = callback.getPresentUids().iterator().next();
+						int presentCount = callback.getPresentTagCount();
+						if (presentCount == 0) {
+							logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on station '{}'", clientName);
+							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+									"", single.getItemId(), "No RFID tag present on reader station", "", clientName);
+							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							return;
+						} else if (presentCount > 1) {
+							logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on station '{}'", presentCount, clientName);
+							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
+									"", single.getItemId(), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName);
+							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							return;
+						} else {
+							String singleUid = callback.getPresentUids().iterator().next();
+							items = List.of(new TagWriteItem(singleUid, single.getItemId(), single.getIsil(),
+									single.getCountry(), single.getParts(), single.getPartNo(), single.getUsageType(), single.getAfi()));
+						}
 					}
 				}
 			}
 		}
 
-		writeTag(uid, itemId, isil, country, parts, partNo, usageType, afi, target, evt.getToken(), evt.getId());
+		writeTags(items, target, evt.getToken(), evt.getId());
+	}
+
+	private List<TagWriteItem> parseTagWriteItems(JsonNode data) {
+		List<TagWriteItem> items = new ArrayList<>();
+		if (data == null || data.isNull()) {
+			return items;
+		}
+
+		if (data.isArray()) {
+			int index = 0;
+			for (JsonNode child : data) {
+				TagWriteItem item = parseSingleTagWriteItem(child, null, null, index + 1);
+				if (item != null) {
+					items.add(item);
+				}
+				index++;
+			}
+			return items;
+		}
+
+		if (data.isObject()) {
+			// 1. Check array or map wrapper keys
+			String[] arrayKeys = {"tags", "items", "transponders", "elements", "list", "data"};
+			for (String key : arrayKeys) {
+				if (data.hasNonNull(key)) {
+					JsonNode node = data.get(key);
+					if (node.isArray()) {
+						int index = 0;
+						for (JsonNode child : node) {
+							TagWriteItem item = parseSingleTagWriteItem(child, data, null, index + 1);
+							if (item != null) {
+								items.add(item);
+							}
+							index++;
+						}
+						if (!items.isEmpty()) {
+							return items;
+						}
+					} else if (node.isObject()) {
+						boolean isMap = false;
+						Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+						int index = 0;
+						while (fields.hasNext()) {
+							Map.Entry<String, JsonNode> entry = fields.next();
+							if (entry.getValue().isObject()) {
+								TagWriteItem item = parseSingleTagWriteItem(entry.getValue(), data, entry.getKey(), index + 1);
+								if (item != null) {
+									items.add(item);
+									isMap = true;
+								}
+							} else if (entry.getValue().isTextual() || entry.getValue().isNumber()) {
+								items.add(new TagWriteItem(
+										entry.getKey(),
+										entry.getValue().asText(),
+										extractString(data, null, "isil", "ISIL"),
+										extractString(data, null, "country", "countryOfOwnerLib"),
+										extractInt(data, null, 1, "parts", "partsInItem"),
+										extractInt(data, null, index + 1, "partno", "partNo", "partNumber"),
+										extractInt(data, null, 1, "usageType", "typeOfUsage"),
+										extractAfi(data, null)));
+								isMap = true;
+							}
+							index++;
+						}
+						if (isMap && !items.isEmpty()) {
+							return items;
+						}
+					}
+				}
+			}
+
+			// 2. Check if uids / UIDs is present (as array or map)
+			if ((data.hasNonNull("uids") && (data.get("uids").isArray() || data.get("uids").isObject())) ||
+				(data.hasNonNull("UIDs") && (data.get("UIDs").isArray() || data.get("UIDs").isObject()))) {
+				JsonNode uidsNode = data.hasNonNull("uids") ? data.get("uids") : data.get("UIDs");
+				if (uidsNode.isArray()) {
+					JsonNode itemIdsNode = null;
+					String[] itemArrayKeys = {"itemIds", "item_ids", "barcodes", "items"};
+					for (String k : itemArrayKeys) {
+						if (data.hasNonNull(k) && data.get(k).isArray()) {
+							itemIdsNode = data.get(k);
+							break;
+						}
+					}
+					JsonNode afisNode = null;
+					String[] afiArrayKeys = {"afis", "AFIs", "afiList"};
+					for (String k : afiArrayKeys) {
+						if (data.hasNonNull(k) && data.get(k).isArray()) {
+							afisNode = data.get(k);
+							break;
+						}
+					}
+
+					int index = 0;
+					int totalCount = uidsNode.size();
+					for (JsonNode child : uidsNode) {
+						if (child.isTextual() && !child.asText().isBlank()) {
+							String uid = child.asText().trim();
+							String itemId = (itemIdsNode != null && itemIdsNode.size() > index)
+									? itemIdsNode.get(index).asText()
+									: extractString(data, null, "itemId", "imtemId", "primaryItemId", "item_id", "barcode", "item");
+							Object afi = (afisNode != null && afisNode.size() > index)
+									? (afisNode.get(index).isInt() ? afisNode.get(index).asInt() : afisNode.get(index).asText())
+									: extractAfi(data, null);
+							String isil = extractString(data, null, "isil", "ISIL");
+							String country = extractString(data, null, "country", "countryOfOwnerLib");
+							int parts = extractInt(data, null, totalCount > 1 ? totalCount : 1, "parts", "partsInItem");
+							int partNo = extractInt(data, null, index + 1, "partno", "partNo", "partNumber");
+							int usageType = extractInt(data, null, 1, "usageType", "typeOfUsage");
+							items.add(new TagWriteItem(uid, itemId, isil, country, parts, partNo, usageType, afi));
+						} else if (child.isObject()) {
+							TagWriteItem item = parseSingleTagWriteItem(child, data, null, index + 1);
+							if (item != null) {
+								items.add(item);
+							}
+						}
+						index++;
+					}
+					if (!items.isEmpty()) {
+						return items;
+					}
+				} else if (uidsNode.isObject()) {
+					int index = 0;
+					Iterator<Map.Entry<String, JsonNode>> fields = uidsNode.fields();
+					while (fields.hasNext()) {
+						Map.Entry<String, JsonNode> entry = fields.next();
+						if (entry.getValue().isObject()) {
+							TagWriteItem item = parseSingleTagWriteItem(entry.getValue(), data, entry.getKey(), index + 1);
+							if (item != null) {
+								items.add(item);
+							}
+						} else if (entry.getValue().isTextual() || entry.getValue().isNumber()) {
+							items.add(new TagWriteItem(
+									entry.getKey(),
+									entry.getValue().asText(),
+									extractString(data, null, "isil", "ISIL"),
+									extractString(data, null, "country", "countryOfOwnerLib"),
+									extractInt(data, null, 1, "parts", "partsInItem"),
+									extractInt(data, null, index + 1, "partno", "partNo", "partNumber"),
+									extractInt(data, null, 1, "usageType", "typeOfUsage"),
+									extractAfi(data, null)));
+						}
+						index++;
+					}
+					if (!items.isEmpty()) {
+						return items;
+					}
+				}
+			}
+
+			// 3. Check if root data itself is a Map of UID -> object / UID -> itemId
+			boolean hasDirectTagFields = data.hasNonNull("uid") || data.hasNonNull("UID") ||
+					data.hasNonNull("itemId") || data.hasNonNull("imtemId") || data.hasNonNull("barcode") ||
+					data.hasNonNull("primaryItemId") || data.hasNonNull("item_id");
+
+			if (!hasDirectTagFields) {
+				Iterator<Map.Entry<String, JsonNode>> fields = data.fields();
+				List<TagWriteItem> mapItems = new ArrayList<>();
+				int index = 0;
+				while (fields.hasNext()) {
+					Map.Entry<String, JsonNode> entry = fields.next();
+					String key = entry.getKey();
+					if ("event".equalsIgnoreCase(key) || "session".equalsIgnoreCase(key) ||
+							"timestamp".equalsIgnoreCase(key) || "clientId".equalsIgnoreCase(key) ||
+							"isil".equalsIgnoreCase(key) || "country".equalsIgnoreCase(key) ||
+							"parts".equalsIgnoreCase(key) || "usageType".equalsIgnoreCase(key) ||
+							"afi".equalsIgnoreCase(key) || "target".equalsIgnoreCase(key)) {
+						continue;
+					}
+					if (entry.getValue().isObject()) {
+						TagWriteItem item = parseSingleTagWriteItem(entry.getValue(), data, key, index + 1);
+						if (item != null) {
+							mapItems.add(item);
+						}
+					} else if (entry.getValue().isTextual() || entry.getValue().isNumber()) {
+						mapItems.add(new TagWriteItem(
+								key,
+								entry.getValue().asText(),
+								extractString(data, null, "isil", "ISIL"),
+								extractString(data, null, "country", "countryOfOwnerLib"),
+								extractInt(data, null, 1, "parts", "partsInItem"),
+								extractInt(data, null, index + 1, "partno", "partNo", "partNumber"),
+								extractInt(data, null, 1, "usageType", "typeOfUsage"),
+								extractAfi(data, null)));
+					}
+					index++;
+				}
+				if (!mapItems.isEmpty()) {
+					return mapItems;
+				}
+			}
+
+			// 4. Single tag object
+			TagWriteItem single = parseSingleTagWriteItem(data, null, null, 1);
+			if (single != null && (!single.getUid().isEmpty() || !single.getItemId().isEmpty() || single.getAfi() != null)) {
+				items.add(single);
+			}
+		}
+
+		return items;
+	}
+
+	private TagWriteItem parseSingleTagWriteItem(JsonNode node, JsonNode defaults, String defaultUid, int defaultPartNo) {
+		if (node == null || (!node.isObject() && !node.isTextual())) {
+			return null;
+		}
+		if (node.isTextual()) {
+			String u = node.asText().trim();
+			return new TagWriteItem(u, "", "", "", 1, defaultPartNo, 1, null);
+		}
+		String uid = extractString(node, null, "uid", "UID");
+		if ((uid == null || uid.isBlank()) && defaultUid != null && !defaultUid.isBlank()) {
+			uid = defaultUid.trim();
+		}
+		String itemId = extractString(node, defaults, "itemId", "imtemId", "primaryItemId", "item_id", "barcode", "item", "data");
+		String isil = extractString(node, defaults, "isil", "ISIL");
+		String country = extractString(node, defaults, "country", "countryOfOwnerLib");
+		int parts = extractInt(node, defaults, 1, "parts", "partsInItem");
+		int partNo = extractInt(node, defaults, defaultPartNo, "partno", "partNo", "partNumber");
+		int usageType = extractInt(node, defaults, 1, "usageType", "typeOfUsage");
+		Object afi = extractAfi(node, defaults);
+		return new TagWriteItem(uid, itemId, isil, country, parts, partNo, usageType, afi);
+	}
+
+	private static String extractString(JsonNode node, JsonNode defaults, String... keys) {
+		if (node != null) {
+			for (String k : keys) {
+				if (node.hasNonNull(k)) return node.get(k).asText();
+			}
+		}
+		if (defaults != null) {
+			for (String k : keys) {
+				if (defaults.hasNonNull(k)) return defaults.get(k).asText();
+			}
+		}
+		return "";
+	}
+
+	private static int extractInt(JsonNode node, JsonNode defaults, int defaultVal, String... keys) {
+		if (node != null) {
+			for (String k : keys) {
+				if (node.hasNonNull(k)) return node.get(k).asInt(defaultVal);
+			}
+		}
+		if (defaults != null) {
+			for (String k : keys) {
+				if (defaults.hasNonNull(k)) return defaults.get(k).asInt(defaultVal);
+			}
+		}
+		return defaultVal;
+	}
+
+	private static Object extractAfi(JsonNode node, JsonNode defaults) {
+		if (node != null) {
+			if (node.hasNonNull("afi")) {
+				JsonNode n = node.get("afi");
+				return n.isInt() ? n.asInt() : n.asText();
+			} else if (node.hasNonNull("AFI")) {
+				JsonNode n = node.get("AFI");
+				return n.isInt() ? n.asInt() : n.asText();
+			}
+		}
+		if (defaults != null) {
+			if (defaults.hasNonNull("afi")) {
+				JsonNode n = defaults.get("afi");
+				return n.isInt() ? n.asInt() : n.asText();
+			} else if (defaults.hasNonNull("AFI")) {
+				JsonNode n = defaults.get("AFI");
+				return n.isInt() ? n.asInt() : n.asText();
+			}
+		}
+		return null;
 	}
 
 	private void handleWriteAfiCommand(Event evt, String target) {
