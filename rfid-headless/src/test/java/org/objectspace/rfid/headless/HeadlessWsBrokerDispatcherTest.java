@@ -588,6 +588,20 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(12346L, clearedPayload.getTimestamp());
         assertEquals("Client1", clearedPayload.getClientId());
         assertTrue(clearedPayload.getSummaryMessage().contains("[READER CLEARED]"));
+
+        // With explicit readerId
+        TagReadPayload tagPayloadWithReader = new TagReadPayload(
+                "UID-2", "ITEM-2", "HEX2", "ISIL2", "CH",
+                true, "TagType", "Sess2", 12347L, "Client1",
+                "gate-01", null, "07"
+        );
+        assertEquals("gate-01", tagPayloadWithReader.getReaderId());
+        assertTrue(tagPayloadWithReader.getSummaryMessage().contains("Reader: gate-01"));
+        assertTrue(tagPayloadWithReader.getSummaryMessage().contains("AFI: 07"));
+
+        TagsClearedPayload clearedPayloadWithReader = new TagsClearedPayload("Sess2", 12348L, "Client1", "gate-01");
+        assertEquals("gate-01", clearedPayloadWithReader.getReaderId());
+        assertTrue(clearedPayloadWithReader.getSummaryMessage().contains("Reader: gate-01"));
     }
 
     @Test

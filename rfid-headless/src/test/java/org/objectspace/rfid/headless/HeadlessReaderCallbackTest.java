@@ -503,4 +503,46 @@ public class HeadlessReaderCallbackTest {
         String writeAfiJson = mapper.writeValueAsString(writeAfiPayload);
         assertTrue(writeAfiJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + writeAfiJson);
     }
+
+    @Test
+    @DisplayName("Test tag read and reader cleared handling with custom, default, and null reader ID")
+    public void testTagReadWithVariousReaderIds() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-READER-ID", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+
+        // 1. Explicit readerId with AFI
+        HeadlessReaderCallback callbackWithId = new HeadlessReaderCallback(processor, null, 1000L, 1000L, "reader-01");
+        assertEquals("reader-01", callbackWithId.getReaderId());
+        callbackWithId.doIt(1, 1, "NXP", "SLIX2", "E00401080AFD252F", data, 4, "07");
+        assertTrue(callbackWithId.hasActiveTags());
+        callbackWithId.empty();
+        assertFalse(callbackWithId.hasActiveTags());
+        callbackWithId.close();
+
+        // 2. Explicit readerId without AFI
+        HeadlessReaderCallback callbackNoAfi = new HeadlessReaderCallback(processor, null, 1000L, 1000L, "reader-02");
+        assertEquals("reader-02", callbackNoAfi.getReaderId());
+        callbackNoAfi.doIt(1, 1, "NXP", "SLIX2", "E00401080AD4B4E7", data, 4);
+        assertTrue(callbackNoAfi.hasActiveTags());
+        callbackNoAfi.empty();
+        callbackNoAfi.close();
+
+        // 3. Null / blank readerId (legacy single-reader mode)
+        HeadlessReaderCallback callbackNullId = new HeadlessReaderCallback(processor, null, 1000L, 1000L, null);
+        assertNull(callbackNullId.getReaderId());
+        callbackNullId.doIt(1, 1, "NXP", "SLIX2", "E00401080AFD252F", data, 4, "C2");
+        assertTrue(callbackNullId.hasActiveTags());
+        callbackNullId.empty();
+        callbackNullId.close();
+
+        HeadlessReaderCallback callbackBlankId = new HeadlessReaderCallback(processor, null, 1000L, 1000L, "   ");
+        assertNull(callbackBlankId.getReaderId());
+        callbackBlankId.doIt(1, 1, "NXP", "SLIX2", "E00401080AFD252F", data, 4);
+        callbackBlankId.empty();
+        callbackBlankId.close();
+    }
 }

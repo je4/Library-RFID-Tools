@@ -48,6 +48,9 @@ public class TagsClearedPayload extends BaseRfidPayload {
 	@JsonIgnore
 	@Override
 	public String getSummaryMessage() {
+		if (getReaderId() != null && !getReaderId().isBlank()) {
+			return "[READER CLEARED] Reader: " + getReaderId() + " | All RFID tags removed from reader field";
+		}
 		return "[READER CLEARED] All RFID tags removed from reader field";
 	}
 }

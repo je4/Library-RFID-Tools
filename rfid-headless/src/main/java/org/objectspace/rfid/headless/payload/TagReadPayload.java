@@ -186,6 +186,9 @@ public class TagReadPayload extends BaseRfidPayload {
 		if (afi != null) {
 			base += " | AFI: " + afi;
 		}
+		if (getReaderId() != null && !getReaderId().isBlank()) {
+			base += " | Reader: " + getReaderId();
+		}
 		return base;
 	}
 }

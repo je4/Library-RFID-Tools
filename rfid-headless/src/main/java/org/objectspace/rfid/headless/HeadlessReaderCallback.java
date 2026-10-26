@@ -108,12 +108,13 @@ public class HeadlessReaderCallback implements TagCallback {
 		String country = metadata.getCountryOfOwnerLib();
 		boolean crcOk = !metadata.getCRCError();
 
+		String readerPrefix = (readerId != null && !readerId.isBlank()) ? "Reader: " + readerId + " | " : "";
 		if (afi != null && !afi.isEmpty()) {
-			logger.info("[TAG READ] UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | AFI: {} | TagType: {}",
-					UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), afi, tagName);
+			logger.info("[TAG READ] {}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | AFI: {} | TagType: {}",
+					readerPrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), afi, tagName);
 		} else {
-			logger.info("[TAG READ] UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
-					UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
+			logger.info("[TAG READ] {}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
+					readerPrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
 		}
 
 		// 1. Database persistence
@@ -212,7 +213,11 @@ public class HeadlessReaderCallback implements TagCallback {
 		if (hasActiveTags.compareAndSet(true, false)) {
 			clearedEvents.incrementAndGet();
 			long now = System.currentTimeMillis();
-			logger.info("[READER CLEARED] All RFID tags removed from reader field");
+			if (readerId != null && !readerId.isBlank()) {
+				logger.info("[READER CLEARED] Reader: {} | All RFID tags removed from reader field", readerId);
+			} else {
+				logger.info("[READER CLEARED] All RFID tags removed from reader field");
+			}
 			activePresenceMap.clear();
 			lastSeenMap.clear();
 
