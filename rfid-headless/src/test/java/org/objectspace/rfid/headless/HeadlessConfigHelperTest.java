@@ -483,7 +483,7 @@ public class HeadlessConfigHelperTest {
                 assertEquals("usb", primaryReader.getType());
                 assertEquals(12, primaryReader.getNumBlocks());
                 assertEquals(300, primaryReader.getSleepInterval());
-                assertEquals(3000, primaryReader.getDebounceMillis());
+                assertEquals(20000, primaryReader.getDebounceMillis());
                 assertTrue(primaryReader.getChannels().contains("rfid"));
                 assertTrue(primaryReader.getChannels().contains("rfid:reader-01"));
 

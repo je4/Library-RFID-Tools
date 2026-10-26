@@ -1,12 +1,14 @@
 package org.objectspace.rfid.headless.payload;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Payload representing a reader cleared event (all RFID tags removed from reader field).
  */
+@JsonIgnoreProperties({"clientId"})
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TagsClearedPayload extends BaseRfidPayload {
 

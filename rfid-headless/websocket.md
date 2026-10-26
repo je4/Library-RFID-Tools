@@ -199,6 +199,7 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 ```json
 {
   "id": "optional-message-id",
+  "refId": "optional-referenced-message-id",
   "channel": "intern",
   "time": "2026-10-23T12:00:00Z",
   "source": "rfid:reader:01",
@@ -210,14 +211,15 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 ```
 
 ### Envelope Fields:
-* **`id`** *(string, optional)*: Unique message identifier assigned by WSBroker.
+* **`id`** *(string, optional)*: Unique message identifier assigned by WSBroker or sender (differentiates and tracks the specific message/envelope).
+* **`refId`** *(string, optional)*: Reference message ID correlating a response directly to the `id` of the originating request message.
 * **`channel`** *(string, optional)*: Channel name through which the message was routed/broadcast.
 * **`time`** *(string, ISO-8601)*: Timestamp when the message was generated.
 * **`source`** *(string)*: Unique client identifier of the sender.
 * **`target`** *(string)*: Target client identifier or channel name (`"all"`, `"intern"`, or specific client name).
 * **`type`** *(string)*: Event type. Standard data exchanges and commands utilize `"message"`.
 * **`token`** *(string, optional)*: Correlation ID used to correlate request commands with response messages.
-* **`data`** *(object)*: Concrete payload (such as `TagReadPayload` or `DeviceMetadataPayload`).
+* **`data`** *(object)*: Concrete payload (such as `TagReadPayload` or `DeviceMetadataPayload`). Note that reader identification (`readerId` / `reader_id`) is encapsulated within this payload, clearly separated from the envelope message `id`.
 
 ---
 
@@ -254,7 +256,6 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
     "afi": "07",
     "session": "main-scan",
     "timestamp": 1792756801123,
-    "clientId": "rfid:reader:01",
     "readerId": "gate-01"
   }
 }
@@ -278,7 +279,6 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 | `version` | integer | Data model format version (typically 1). |
 | `afi` | string | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). Optional / omitted (`null`) if transponder system information is not accessible or not supported. |
 | `timestamp` | long | Epoch millisecond timestamp of the scan event. |
-| `clientId` | string | Identifier of the WSBroker daemon client that captured the tag. |
 | `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`) configured in `inventory.xml`. |
 
 ---
@@ -306,7 +306,6 @@ When transponders are no longer detected on the reader antenna, or when the read
     "totalTags": 0,
     "session": "main-scan",
     "timestamp": 1792756805100,
-    "clientId": "rfid:reader:01",
     "readerId": "gate-01"
   }
 }
@@ -320,7 +319,6 @@ When transponders are no longer detected on the reader antenna, or when the read
 | `totalTags` | integer | Total count of active tags remaining on the plate (`0`). |
 | `session` | string | Name of the active reader inventory session. |
 | `timestamp` | long | Epoch millisecond timestamp when the plate was cleared or reader disconnected. |
-| `clientId` | string | Identifier of the WSBroker daemon client that emitted the event. |
 | `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`). |
 
 ---
@@ -505,7 +503,7 @@ The dispatcher accepts multiple command variations for high interoperability acr
   * `"rfid:writetag"` / `"writetag"`
 * **Write AFI Events**:
   * `"rfid:write_afi"` / `"write_afi"`
-* **Correlation Token**: If a `token` is included in any request, the daemon returns the exact same `token` in its response message for deterministic request-reply matching.
+* **Correlation Token & RefID**: If a `token` is included in any request, the daemon returns the exact same `token` in its response message for deterministic request-reply matching. Additionally, if the request envelope contains an `id`, it is returned in the response envelope's `refId` field to enable direct message-level correlation.
 * **Targeting**: Requests may be addressed directly to the reader's client name (`target: "rfid:reader:01"`) or to a shared channel (e.g., `target: "intern"`).
 
 ---
@@ -518,6 +516,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 
 ```json
 {
+  "id": "resp-meta-001",
+  "refId": "req-98765-meta",
   "time": "2026-10-23T12:00:02.045Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -543,6 +543,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 
 ```json
 {
+  "id": "resp-write-001",
+  "refId": "req-write-001",
   "time": "2026-10-23T12:00:03.350Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -570,6 +572,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 *In case of an error (e.g. read-only reader, tag collision, or transponder not found):*
 ```json
 {
+  "id": "resp-write-001",
+  "refId": "req-write-001",
   "time": "2026-10-23T12:00:03.350Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -596,6 +600,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 #### Single Tag Success Response:
 ```json
 {
+  "id": "resp-afi-001",
+  "refId": "req-afi-002",
   "time": "2026-10-23T12:00:04.280Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -625,6 +631,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 #### Batch Write Success Response:
 ```json
 {
+  "id": "resp-afi-002",
+  "refId": "req-afi-batch-003",
   "time": "2026-10-23T12:00:04.350Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -657,6 +665,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
 #### Batch Partial Failure Response:
 ```json
 {
+  "id": "resp-afi-003",
+  "refId": "req-afi-batch-004",
   "time": "2026-10-23T12:00:04.420Z",
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
@@ -766,6 +776,7 @@ import (
 
 type Event struct {
 	ID      string          `json:"id,omitempty"`
+	RefID   string          `json:"refId,omitempty"`
 	Channel string          `json:"channel,omitempty"`
 	Time    string          `json:"time,omitempty"`
 	Source  string          `json:"source,omitempty"`
@@ -785,7 +796,7 @@ type TagReadEvent struct {
 	CRCOk     bool   `json:"crcOk"`
 	TagName   string `json:"tagName"`
 	Timestamp int64  `json:"timestamp"`
-	ClientID  string `json:"clientId"`
+	ReaderID  string `json:"readerId,omitempty"`
 }
 
 type TagsClearedEvent struct {
@@ -794,7 +805,7 @@ type TagsClearedEvent struct {
 	TotalTags int    `json:"totalTags"`
 	Session   string `json:"session"`
 	Timestamp int64  `json:"timestamp"`
-	ClientID  string `json:"clientId"`
+	ReaderID  string `json:"readerId,omitempty"`
 }
 
 type WriteTagResponse struct {
@@ -845,13 +856,13 @@ func HandleEvent(evt *Event) error {
 		var tag TagReadEvent
 		_ = json.Unmarshal(evt.Data, &tag)
 		fmt.Printf("Tag Read: ItemID=%s | UID=%s | AFI=%s | Reader=%s\n",
-			tag.ItemID, tag.UID, tag.AFI, tag.ClientID)
+			tag.ItemID, tag.UID, tag.AFI, tag.ReaderID)
 
 	case "rfid:tags_cleared":
 		var cleared TagsClearedEvent
 		_ = json.Unmarshal(evt.Data, &cleared)
 		fmt.Printf("Plate Cleared: status=%s | totalTags=%d | Reader=%s\n",
-			cleared.Status, cleared.TotalTags, cleared.ClientID)
+			cleared.Status, cleared.TotalTags, cleared.ReaderID)
 
 	case "rfid:write_tag_response":
 		var resp WriteTagResponse

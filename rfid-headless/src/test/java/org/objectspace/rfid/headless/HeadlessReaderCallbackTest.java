@@ -470,13 +470,14 @@ public class HeadlessReaderCallbackTest {
                 );
         String tagJson = mapper.writeValueAsString(tagPayload);
         assertTrue(tagJson.contains("\"readerId\":\"reader-gate-01\""), "JSON must contain readerId: " + tagJson);
-        assertTrue(tagJson.contains("\"clientId\":\"client-ws\""), "JSON must contain clientId: " + tagJson);
+        assertFalse(tagJson.contains("\"clientId\""), "JSON must not contain clientId: " + tagJson);
 
         // 2. TagsClearedPayload
         org.objectspace.rfid.headless.payload.TagsClearedPayload clearPayload =
                 new org.objectspace.rfid.headless.payload.TagsClearedPayload("sess-1", 1000L, "client-ws", "reader-gate-02");
         String clearJson = mapper.writeValueAsString(clearPayload);
         assertTrue(clearJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + clearJson);
+        assertFalse(clearJson.contains("\"clientId\""), "JSON must not contain clientId: " + clearJson);
 
         // 3. DeviceMetadataPayload
         org.objectspace.rfid.headless.payload.DeviceMetadataPayload metaPayload =

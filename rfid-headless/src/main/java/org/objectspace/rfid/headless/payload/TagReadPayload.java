@@ -1,6 +1,7 @@
 package org.objectspace.rfid.headless.payload;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.objectspace.rfid.FinnishDataModel;
@@ -8,6 +9,7 @@ import org.objectspace.rfid.FinnishDataModel;
 /**
  * Payload representing an RFID tag read event.
  */
+@JsonIgnoreProperties({"clientId"})
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class TagReadPayload extends BaseRfidPayload {
 

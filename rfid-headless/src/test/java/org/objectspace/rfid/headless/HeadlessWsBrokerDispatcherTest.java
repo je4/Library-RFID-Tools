@@ -336,7 +336,7 @@ public class HeadlessWsBrokerDispatcherTest {
             assertEquals(0, evt.getData().get("totalTags").asInt());
             assertEquals("Session-99", evt.getData().get("session").asText());
             assertEquals(1234567890L, evt.getData().get("timestamp").asLong());
-            assertEquals("Station-Client-1", evt.getData().get("clientId").asText());
+            assertFalse(evt.getData().has("clientId"), "clientId must not be in data payload");
             assertTrue(evt.getMessage().contains("[READER CLEARED]"));
         }
 
