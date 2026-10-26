@@ -122,28 +122,42 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 
 ```xml
 <configuration>
-    <!-- RFID Reader Settings -->
-    <device>
-        <select>feig</select>
-        <feig>
-            <type>usb</type>
-        </feig>
-    </device>
+    <!-- Multi-Reader Configuration -->
+    <readers>
+        <reader>
+            <reader_id>reader-01</reader_id>
+            <readonly>false</readonly>
+            <feig>
+                <type>usb</type>
+            </feig>
+            <debounce>10000</debounce>
+            <sleep>300</sleep>
+            <numblocks>12</numblocks>
+            <!-- Optional per-reader WSBroker channels -->
+            <channels>
+                <channel>rfid</channel>
+                <channel>rfid:reader-01</channel>
+            </channels>
+        </reader>
+    </readers>
 
-    <!-- Webservice connection (optional) -->
-    <webservice>
+    <!-- WSBroker WebSocket service connection (optional) -->
+    <wsbroker>
         <active>true</active>
-        <client_id>raspi-station-01</client_id>
-        <target_url><![CDATA[https://inventory.example.org/api/inventory?clientid={clientid}]]></target_url>
-        <http_method>POST</http_method>
-        <jwt_key><![CDATA[secret-jwt-key]]></jwt_key>
-        <debug_mode>false</debug_mode>
-    </webservice>
+        <name>rfid:reader:01</name>
+        <url><![CDATA[https://localhost:8765]]></url>
+        <channels>
+            <channel>rfid</channel>
+        </channels>
+        <clienttls>
+            <type>minivault</type>
+            ...
+        </clienttls>
+    </wsbroker>
 
-    <!-- Scan cycle interval in milliseconds -->
-    <inventory>
-        <sleep>300</sleep>
-    </inventory>
+    <!-- Global scan defaults -->
+    <numblocks>12</numblocks>
+    <debounce>30000</debounce>
 </configuration>
 ```
 

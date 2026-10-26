@@ -497,4 +497,40 @@ public class HeadlessConfigHelperTest {
             }
         }
     }
+
+    @Test
+    @DisplayName("Test streamlined inventory.xml and inventory.xml.template without database, webservice, or inventory sections")
+    public void testStreamlinedInventoryXmlAndTemplate() throws Exception {
+        String[] filesToCheck = new String[]{
+            "rfid-headless/inventory.xml",
+            "rfid-headless/inventory.xml.template"
+        };
+        for (String relativePath : filesToCheck) {
+            File f = new File(relativePath);
+            if (!f.exists()) {
+                // If executed from module directory (rfid-headless/)
+                f = new File(relativePath.replace("rfid-headless/", ""));
+            }
+            if (f.exists()) {
+                XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(f.getAbsolutePath());
+                assertNotNull(config, "Config should load from " + f.getAbsolutePath());
+
+                // Verify database, webservice, and inventory sections are absent
+                assertFalse(config.containsKey("database.active"), "database.active should not be present in " + f.getName());
+                assertFalse(config.containsKey("webservice.active"), "webservice.active should not be present in " + f.getName());
+                assertFalse(config.containsKey("inventory.ui"), "inventory.ui should not be present in " + f.getName());
+                assertFalse(config.containsKey("inventory.sleep"), "inventory.sleep should not be present in " + f.getName());
+
+                // Verify TagScanProcessor initializes with inactive database and webservice
+                try (org.objectspace.rfid.core.TagScanProcessor processor = new org.objectspace.rfid.core.TagScanProcessor(config)) {
+                    assertFalse(processor.isDatabaseConfigured());
+                    assertFalse(processor.isDatabaseConnected());
+                    assertFalse(processor.isWebserviceActive());
+                }
+
+                // Verify default sleep interval fallback
+                assertEquals(HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS, HeadlessConfigHelper.getSleepInterval(config));
+            }
+        }
+    }
 }
