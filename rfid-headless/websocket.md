@@ -125,6 +125,71 @@ WebSocket settings are defined inside the `<wsbroker>` element of `inventory.xml
 | `channels` | list | List of channels (`<channel>`) to automatically join. | `all`, `intern` |
 | `clienttls` | object | mTLS and dynamic certificate provisioning via `certmanager`. | `minivault` or `file` |
 
+### Multi-Reader Configuration (`<readers>`):
+
+`rfid-headless` supports connecting multiple RFID readers simultaneously on one host. Each reader is configured inside `<readers><reader>...</reader></readers>`:
+
+```xml
+<configuration>
+    <!-- Multi-Reader Configuration -->
+    <readers>
+        <reader>
+            <reader_id>gate-01</reader_id>
+            <readonly>false</readonly>
+            <feig>
+                <id>52E688</id>
+                <type>usb</type>
+            </feig>
+            <debounce>2500</debounce>
+            <sleep>200</sleep>
+            <numblocks>12</numblocks>
+            <!-- Optional reader-specific WSBroker channels -->
+            <channels>
+                <channel>rfid:gates</channel>
+                <channel>rfid:gate-01</channel>
+            </channels>
+        </reader>
+        <reader>
+            <reader_id>return-station</reader_id>
+            <readonly>true</readonly>
+            <feig>
+                <id>52E689</id>
+                <type>usb</type>
+            </feig>
+            <debounce>2000</debounce>
+            <sleep>250</sleep>
+            <channels>
+                <channel>rfid:returns</channel>
+            </channels>
+        </reader>
+    </readers>
+
+    <!-- WSBroker settings shared by all readers -->
+    <wsbroker>
+        <active>true</active>
+        <name>rfid-hub-01</name>
+        <url><![CDATA[https://localhost:8765]]></url>
+        <!-- Global fallback channels; deduplicated with reader-specific channels on connect -->
+        <channels>
+            <channel>all</channel>
+            <channel>intern</channel>
+        </channels>
+    </wsbroker>
+</configuration>
+```
+
+#### Reader Configuration Elements:
+| Element | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `reader_id` / `id` | string | Unique logical name for this reader instance (e.g. `gate-01`, `return-station`). | Generated |
+| `readonly` | boolean | When `true`, write commands (`rfid:write_tag`, `rfid:write_afi`) are rejected with an error. | `false` |
+| `feig/id` | string | Hardware USB serial / Device ID for FEIG reader. | First available |
+| `feig/type` | string | Hardware interface type (e.g. `usb`). | `usb` |
+| `channels` | list | Optional list of channels (`<channel>`) to target for events originating from this reader. If omitted, global WSBroker channels are used. Deduplicated across all readers on startup. | Global channels |
+| `debounce` | long | Per-reader debounce cooldown in milliseconds. | Global debounce |
+| `sleep` | integer | Per-reader inventory scan cycle sleep in milliseconds. | Global sleep (300) |
+| `numblocks` | integer | Per-reader block count to read from transponders. | Global numblocks (12) |
+
 ---
 
 ## 3. Message Envelope Format
@@ -189,7 +254,8 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
     "afi": "07",
     "session": "main-scan",
     "timestamp": 1792756801123,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```
@@ -212,7 +278,8 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
 | `version` | integer | Data model format version (typically 1). |
 | `afi` | string | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). Optional / omitted (`null`) if transponder system information is not accessible or not supported. |
 | `timestamp` | long | Epoch millisecond timestamp of the scan event. |
-| `clientId` | string | Identifier of the reader client that captured the tag. |
+| `clientId` | string | Identifier of the WSBroker daemon client that captured the tag. |
+| `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`) configured in `inventory.xml`. |
 
 ---
 
@@ -239,7 +306,8 @@ When transponders are no longer detected on the reader antenna, or when the read
     "totalTags": 0,
     "session": "main-scan",
     "timestamp": 1792756805100,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```
@@ -252,7 +320,8 @@ When transponders are no longer detected on the reader antenna, or when the read
 | `totalTags` | integer | Total count of active tags remaining on the plate (`0`). |
 | `session` | string | Name of the active reader inventory session. |
 | `timestamp` | long | Epoch millisecond timestamp when the plate was cleared or reader disconnected. |
-| `clientId` | string | Identifier of the reader client that emitted the event. |
+| `clientId` | string | Identifier of the WSBroker daemon client that emitted the event. |
+| `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`). |
 
 ---
 
@@ -262,7 +331,7 @@ Remote clients (such as dashboards, web apps, or Go controllers) can query reade
 
 ### 5.1 Query Device Metadata (`rfid:get_device_metadata`)
 
-To query device details (Device ID, Device Type, and initial initialization startup diagnostics report), send a `message` event to the reader client:
+To query device details (Device ID, Device Type, and initial initialization startup diagnostics report), send a `message` event to the reader client. In a multi-reader environment, specify `reader_id` to query a specific reader:
 
 #### Query Request JSON:
 ```json
@@ -273,7 +342,8 @@ To query device details (Device ID, Device Type, and initial initialization star
   "type": "message",
   "token": "req-98765-meta",
   "data": {
-    "event": "rfid:get_device_metadata"
+    "event": "rfid:get_device_metadata",
+    "reader_id": "gate-01"
   }
 }
 ```
@@ -288,8 +358,10 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
 - **Multi-Tag Map**: Payload with `tags` / `items` map or root-level map (`UID -> { itemId, partNo, afi, ... }` or `UID -> "itemId"`).
 - **Parallel Arrays**: Payload with `uids`, `itemIds`, and optional `afis`.
 
-> **Note on Concurrency & Timing:**
-> During write operations, the autonomous scan loop is safely paused (`executeExclusive`). Settling delays before and after writing guarantee physical EEPROM write stability. Once completed, a `rfid:tags_cleared` notification is dispatched and the reader cache is cleared before background scanning resumes, allowing clean downstream state resets and immediate detection of the newly written transponders. See [Cache Architecture Documentation](cache-architecture.md) for details.
+> **Note on Concurrency, Reader Targeting & Read-Only Protection:**
+> - In multi-reader mode, specify `reader_id` (or `target`) to direct the write command to a specific reader.
+> - During write operations, only the target reader's autonomous scan loop is safely paused (`executeExclusive`), while other readers continue scanning without interruption.
+> - If the target reader is configured with `readonly="true"`, write operations are immediately rejected with an error response (`status: "error"`, `error: "Reader '<reader_id>' is configured as read-only"`).
 
 #### Single Tag Write Request JSON:
 ```json
@@ -301,6 +373,7 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
   "token": "req-write-001",
   "data": {
     "event": "rfid:write_tag",
+    "reader_id": "gate-01",
     "uid": "E004015099887766",
     "itemId": "3012345678",
     "isil": "000001-1",
@@ -323,6 +396,7 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
   "token": "req-write-batch-001",
   "data": {
     "event": "rfid:write_tag",
+    "reader_id": "gate-01",
     "tags": [
       {
         "uid": "E004015099887766",
@@ -351,6 +425,7 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `event` | string | **Yes** | Constant identifier: `"rfid:write_tag"`. |
+| `reader_id` / `readerId` | string | Optional | Logical identifier of the target reader (routes command to specific reader in multi-reader setups). |
 | `uid` / `UID` | string | Optional | Target tag UID (hex string, e.g. `E004015099887766`). If omitted or empty in single-write mode, writes to the transponder currently in the RF field. |
 | `tags` / `items` | array or map | Optional | List or Map of transponder write specifications (`uid`, `itemId`, `partNo`, `afi`, etc.) for batch writing where each UID has its own data. |
 | `itemId` / `barcode` | string | Optional | Primary item barcode / identifier to encode into ISO 28560 block format (per item or default). |
@@ -367,7 +442,7 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
 
 To write or toggle the Application Family Identifier (AFI byte) independently (e.g. for security gate EAS check-in / check-out), send a `message` event with event `rfid:write_afi`.
 
-Both single-UID writes and batch multi-UID writes are supported. When a list of UIDs is supplied, the background scan loop is paused once (`executeExclusive`), programming all specified transponders in a single exclusive reader session with precise settling times and error tracking per UID.
+Both single-UID writes and batch multi-UID writes are supported. When a list of UIDs is supplied, the background scan loop of the target reader is paused once (`executeExclusive`), programming all specified transponders in a single exclusive reader session with precise settling times and error tracking per UID.
 
 #### Single Tag Write AFI Request JSON:
 ```json
@@ -379,6 +454,7 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "token": "req-afi-002",
   "data": {
     "event": "rfid:write_afi",
+    "reader_id": "gate-01",
     "uid": "E004015099887766",
     "afi": "07"
   }
@@ -395,6 +471,7 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "token": "req-afi-batch-003",
   "data": {
     "event": "rfid:write_afi",
+    "reader_id": "gate-01",
     "uids": ["E004015099887766", "E004015099887777"],
     "afi": "C2"
   }
@@ -405,6 +482,7 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `event` | string | **Yes** | Constant identifier: `"rfid:write_afi"`. |
+| `reader_id` / `readerId` | string | Optional | Logical identifier of the target reader. |
 | `uid` / `UID` | string | Optional | Single target tag UID (hex string). If omitted and `uids` is omitted, writes to the tag present in reader field. |
 | `uids` / `UIDs` | array of strings | Optional | Array of target tag UIDs for batch programming within a single scanner pause cycle. |
 | `afi` / `AFI` | string/int | **Yes** | AFI byte value (e.g. `"07"`, `"0x07"`, `7`, `"C2"` for checked out / secured states). |
@@ -453,7 +531,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "initDescription": "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00\nSDK: Gen3 Java v7.1.0\nInterface: USB (Native Lib: libfecom.so)\nReader initialized successfully. RF Field active.",
     "session": "",
     "timestamp": 1792756802045,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```
@@ -482,12 +561,13 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "afi": "07",
     "message": "Tag written successfully",
     "timestamp": 1792756803350,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```
 
-*In case of an error (e.g. tag collision or transponder not found):*
+*In case of an error (e.g. read-only reader, tag collision, or transponder not found):*
 ```json
 {
   "time": "2026-10-23T12:00:03.350Z",
@@ -500,10 +580,11 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "status": "error",
     "uid": "E004015099887766",
     "itemId": "3012345678",
-    "message": "Tag with UID 'E004015099887766' not found in reader field",
-    "error": "Tag with UID 'E004015099887766' not found in reader field",
+    "message": "Reader 'return-station' is configured as read-only",
+    "error": "Reader 'return-station' is configured as read-only",
     "timestamp": 1792756803350,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "return-station"
   }
 }
 ```
@@ -535,7 +616,8 @@ When commands or queries are received, `rfid-headless` processes them and respon
     "afi": "07",
     "message": "AFI written successfully",
     "timestamp": 1792756804280,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```
@@ -551,17 +633,23 @@ When commands or queries are received, `rfid-headless` processes them and respon
   "data": {
     "event": "rfid:write_afi_response",
     "status": "ok",
-    "uid": "E004015099887766",
     "uids": ["E004015099887766", "E004015099887777"],
     "successfulUids": ["E004015099887766", "E004015099887777"],
     "results": [
-      {"uid": "E004015099887766", "status": "ok"},
-      {"uid": "E004015099887777", "status": "ok"}
+      {
+        "uid": "E004015099887766",
+        "status": "ok"
+      },
+      {
+        "uid": "E004015099887777",
+        "status": "ok"
+      }
     ],
     "afi": "C2",
     "message": "AFI written to 2/2 tags successfully",
     "timestamp": 1792756804350,
-    "clientId": "rfid:reader:01"
+    "clientId": "rfid:reader:01",
+    "readerId": "gate-01"
   }
 }
 ```

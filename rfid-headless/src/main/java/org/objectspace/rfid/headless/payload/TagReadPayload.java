@@ -58,13 +58,19 @@ public class TagReadPayload extends BaseRfidPayload {
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, FinnishDataModel metadata) {
-		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, metadata, null);
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, clientId, metadata, null);
 	}
 
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, FinnishDataModel metadata, String afi) {
-		super(EVENT_NAME, sessionName, timestamp, clientId);
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, clientId, metadata, afi);
+	}
+
+	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
+						  boolean crcOk, String tagName, String sessionName, long timestamp,
+						  String clientId, String readerId, FinnishDataModel metadata, String afi) {
+		super(EVENT_NAME, sessionName, timestamp, clientId, readerId);
 		this.uid = uid != null ? uid : "";
 		this.itemId = itemId != null ? itemId : "empty";
 		this.isil = isil != null ? isil : "";
@@ -87,13 +93,19 @@ public class TagReadPayload extends BaseRfidPayload {
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, Integer parts, Integer partNo, Integer usageType, Integer version) {
-		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, parts, partNo, usageType, version, null);
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, clientId, parts, partNo, usageType, version, null);
 	}
 
 	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
 						  boolean crcOk, String tagName, String sessionName, long timestamp,
 						  String clientId, Integer parts, Integer partNo, Integer usageType, Integer version, String afi) {
-		super(EVENT_NAME, sessionName, timestamp, clientId);
+		this(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, clientId, parts, partNo, usageType, version, afi);
+	}
+
+	public TagReadPayload(String uid, String itemId, String rawHex, String isil, String country,
+						  boolean crcOk, String tagName, String sessionName, long timestamp,
+						  String clientId, String readerId, Integer parts, Integer partNo, Integer usageType, Integer version, String afi) {
+		super(EVENT_NAME, sessionName, timestamp, clientId, readerId);
 		this.uid = uid != null ? uid : "";
 		this.itemId = itemId != null ? itemId : "empty";
 		this.isil = isil != null ? isil : "";

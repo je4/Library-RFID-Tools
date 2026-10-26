@@ -1,5 +1,8 @@
 package org.objectspace.rfid.headless;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.objectspace.rfid.ISO15693ReaderFactory;
 import org.objectspace.rfid.core.TagScanProcessor;
@@ -9,7 +12,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Main entry point and CLI daemon for rfid-headless on Raspberry Pi (aarch64) and Linux systems.
- * Launches continuous RFID scanning and webservice dispatching without a graphical interface.
+ * Launches continuous RFID scanning and webservice dispatching across one or multiple reader instances
+ * without requiring a graphical interface.
  */
 public class HeadlessReader {
 
@@ -19,40 +23,46 @@ public class HeadlessReader {
 	private final XMLConfiguration config;
 	private final TagScanProcessor tagScanProcessor;
 	private final HeadlessWsBrokerDispatcher wsBrokerDispatcher;
-	private final ISO15693Reader reader;
-	private final HeadlessReaderCallback callback;
-	private final HeadlessReaderScanner scanner;
+	private final List<HeadlessReaderInstance> readerInstances;
 
 	public HeadlessReader(XMLConfiguration config, Long debounceOverride, Integer sleepOverride, Integer blocksOverride) throws Exception {
 		this.config = config;
 		this.tagScanProcessor = new TagScanProcessor(config);
 		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
-		this.reader = ISO15693ReaderFactory.createReader(config);
 
-		long debounce = (debounceOverride != null && debounceOverride >= 0)
-				? debounceOverride
-				: HeadlessConfigHelper.getDebounceMillis(config);
+		List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+		this.readerInstances = new ArrayList<>();
 
-		int sleepInterval = (sleepOverride != null && sleepOverride > 0)
-				? sleepOverride
-				: HeadlessConfigHelper.getSleepInterval(config);
+		for (HeadlessReaderConfig rCfg : readerConfigs) {
+			if (debounceOverride != null && debounceOverride >= 0) {
+				rCfg.setDebounceMillis(debounceOverride);
+			}
+			if (sleepOverride != null && sleepOverride > 0) {
+				rCfg.setSleepInterval(sleepOverride);
+			}
+			if (blocksOverride != null && blocksOverride > 0) {
+				rCfg.setNumBlocks(blocksOverride);
+			}
 
-		int numBlocks = (blocksOverride != null && blocksOverride > 0)
-				? blocksOverride
-				: HeadlessConfigHelper.getNumBlocks(config);
+			ISO15693Reader reader = ISO15693ReaderFactory.createReader(rCfg.toConfiguration());
+			HeadlessReaderCallback callback = new HeadlessReaderCallback(
+					tagScanProcessor, wsBrokerDispatcher, rCfg.getDebounceMillis(), rCfg.getReaderId());
+			HeadlessReaderScanner scanner = new HeadlessReaderScanner(
+					reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(), rCfg.getReaderId());
 
-		this.callback = new HeadlessReaderCallback(tagScanProcessor, wsBrokerDispatcher, debounce);
-		this.scanner = new HeadlessReaderScanner(reader, callback, numBlocks, sleepInterval);
+			HeadlessReaderInstance instance = new HeadlessReaderInstance(rCfg, reader, callback, scanner);
+			this.readerInstances.add(instance);
+		}
+
 		if (this.wsBrokerDispatcher != null) {
-			this.wsBrokerDispatcher.setReader(this.reader);
-			this.wsBrokerDispatcher.setScanner(this.scanner);
-			this.wsBrokerDispatcher.setCallback(this.callback);
+			this.wsBrokerDispatcher.setReaderInstances(this.readerInstances);
 		}
 	}
 
 	public void start() {
 		logger.info("==================================================");
 		logger.info(" Starting RFID-Headless Reader Daemon v{} (Headless) ", VERSION);
+		logger.info(" Managing {} configured RFID reader instance(s)", readerInstances.size());
 		logger.info("==================================================");
 
 		// Connect to WSBroker if configured
@@ -63,25 +73,12 @@ public class HeadlessReader {
 		// Register graceful shutdown hook
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			logger.info("Shutdown signal received (SIGINT/SIGTERM). Cleaning up resources...");
-			try {
-				scanner.stop();
-			} catch (Exception e) {
-				logger.warn("Error stopping scanner: {}", e.getMessage());
-			}
-			try {
-				if (callback != null) {
-					callback.empty();
+			for (HeadlessReaderInstance instance : readerInstances) {
+				try {
+					instance.stop();
+				} catch (Exception e) {
+					logger.warn("Error stopping reader instance [{}]: {}", instance.getReaderId(), e.getMessage());
 				}
-			} catch (Exception e) {
-				logger.warn("Error clearing plate state on shutdown: {}", e.getMessage());
-			}
-			try {
-				if (reader != null && reader.isConnected()) {
-					reader.close();
-					logger.info("RFID Reader closed/disconnected");
-				}
-			} catch (Exception e) {
-				logger.warn("Error disconnecting reader: {}", e.getMessage());
 			}
 			try {
 				if (wsBrokerDispatcher != null) {
@@ -98,15 +95,42 @@ public class HeadlessReader {
 			logger.info("RFID-Headless Reader shutdown complete.");
 		}, "RFID-Headless-Shutdown-Hook"));
 
-		scanner.start();
+		for (HeadlessReaderInstance instance : readerInstances) {
+			instance.start();
+		}
+	}
+
+	public boolean isRunning() {
+		for (HeadlessReaderInstance instance : readerInstances) {
+			if (instance.getScanner() != null && instance.getScanner().isRunning()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public List<HeadlessReaderInstance> getReaderInstances() {
+		return Collections.unmodifiableList(readerInstances);
+	}
+
+	public HeadlessReaderInstance getReaderInstance(String readerId) {
+		if (readerId == null || readerId.isBlank()) {
+			return null;
+		}
+		for (HeadlessReaderInstance inst : readerInstances) {
+			if (readerId.equalsIgnoreCase(inst.getReaderId())) {
+				return inst;
+			}
+		}
+		return null;
 	}
 
 	public HeadlessReaderScanner getScanner() {
-		return scanner;
+		return !readerInstances.isEmpty() ? readerInstances.get(0).getScanner() : null;
 	}
 
 	public HeadlessReaderCallback getCallback() {
-		return callback;
+		return !readerInstances.isEmpty() ? readerInstances.get(0).getCallback() : null;
 	}
 
 	public TagScanProcessor getTagScanProcessor() {
@@ -118,7 +142,11 @@ public class HeadlessReader {
 	}
 
 	public ISO15693Reader getReader() {
-		return reader;
+		return !readerInstances.isEmpty() ? readerInstances.get(0).getReader() : null;
+	}
+
+	public XMLConfiguration getConfig() {
+		return config;
 	}
 
 	public static void main(String[] args) {
@@ -156,7 +184,7 @@ public class HeadlessReader {
 			app.start();
 
 			// Keep main thread alive
-			while (app.getScanner().isRunning()) {
+			while (app.isRunning()) {
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {

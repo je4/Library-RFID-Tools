@@ -35,7 +35,12 @@ public class DeviceMetadataPayload extends BaseRfidPayload {
 
 	public DeviceMetadataPayload(String deviceId, String deviceType, String initDescription,
 								 String sessionName, long timestamp, String clientId, String status, String event) {
-		super(event != null && !event.isBlank() ? event : EVENT_RESPONSE, sessionName, timestamp, clientId);
+		this(deviceId, deviceType, initDescription, sessionName, timestamp, clientId, clientId, status, event);
+	}
+
+	public DeviceMetadataPayload(String deviceId, String deviceType, String initDescription,
+								 String sessionName, long timestamp, String clientId, String readerId, String status, String event) {
+		super(event != null && !event.isBlank() ? event : EVENT_RESPONSE, sessionName, timestamp, clientId, readerId);
 		this.deviceId = deviceId != null ? deviceId : "";
 		this.deviceType = deviceType != null ? deviceType : "";
 		this.initDescription = initDescription != null ? initDescription : "";
@@ -44,11 +49,16 @@ public class DeviceMetadataPayload extends BaseRfidPayload {
 
 	public DeviceMetadataPayload(String deviceId, String deviceType, String initDescription,
 								 String sessionName, long timestamp, String clientId) {
-		this(deviceId, deviceType, initDescription, sessionName, timestamp, clientId, "ok", EVENT_RESPONSE);
+		this(deviceId, deviceType, initDescription, sessionName, timestamp, clientId, clientId, "ok", EVENT_RESPONSE);
+	}
+
+	public DeviceMetadataPayload(String deviceId, String deviceType, String initDescription,
+								 String sessionName, long timestamp, String clientId, String readerId) {
+		this(deviceId, deviceType, initDescription, sessionName, timestamp, clientId, readerId, "ok", EVENT_RESPONSE);
 	}
 
 	public DeviceMetadataPayload(String deviceId, String deviceType, String initDescription) {
-		this(deviceId, deviceType, initDescription, "", System.currentTimeMillis(), "", "ok", EVENT_RESPONSE);
+		this(deviceId, deviceType, initDescription, "", System.currentTimeMillis(), "", "", "ok", EVENT_RESPONSE);
 	}
 
 	public String getStatus() {

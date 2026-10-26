@@ -66,7 +66,34 @@ public class WriteAfiResponsePayload extends BaseRfidPayload {
 				"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? List.of(uid) : Collections.emptyList(),
 				!"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? Map.of(uid, error != null ? error : message != null ? message : "Error") : Collections.emptyMap(),
 				(uid != null && !uid.isBlank()) ? List.of("ok".equalsIgnoreCase(status) ? TagAfiResult.ok(uid) : TagAfiResult.error(uid, error != null ? error : message)) : Collections.emptyList(),
-				afi, message, error, sessionName, timestamp, clientId);
+				afi, message, error, sessionName, timestamp, clientId, clientId);
+	}
+
+	public WriteAfiResponsePayload(String status, String uid, String afi,
+								   String message, String error, String sessionName,
+								   long timestamp, String clientId, String readerId) {
+		this(status, uid,
+				(uid != null && !uid.isBlank()) ? List.of(uid) : Collections.emptyList(),
+				"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? List.of(uid) : Collections.emptyList(),
+				!"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? Map.of(uid, error != null ? error : message != null ? message : "Error") : Collections.emptyMap(),
+				(uid != null && !uid.isBlank()) ? List.of("ok".equalsIgnoreCase(status) ? TagAfiResult.ok(uid) : TagAfiResult.error(uid, error != null ? error : message)) : Collections.emptyList(),
+				afi, message, error, sessionName, timestamp, clientId, readerId);
+	}
+
+	public WriteAfiResponsePayload(
+			String status,
+			String uid,
+			List<String> uids,
+			List<String> successfulUids,
+			Map<String, String> failedUids,
+			List<TagAfiResult> results,
+			String afi,
+			String message,
+			String error,
+			String sessionName,
+			long timestamp,
+			String clientId) {
+		this(status, uid, uids, successfulUids, failedUids, results, afi, message, error, sessionName, timestamp, clientId, clientId);
 	}
 
 	@JsonCreator
@@ -82,8 +109,9 @@ public class WriteAfiResponsePayload extends BaseRfidPayload {
 			@JsonProperty("error") String error,
 			@JsonProperty("sessionName") String sessionName,
 			@JsonProperty("timestamp") long timestamp,
-			@JsonProperty("clientId") String clientId) {
-		super(EVENT_RESPONSE, sessionName, timestamp, clientId);
+			@JsonProperty("clientId") String clientId,
+			@JsonProperty("readerId") @JsonAlias({"reader_id", "readerID"}) String readerId) {
+		super(EVENT_RESPONSE, sessionName, timestamp, clientId, readerId);
 		this.status = status != null ? status : "ok";
 		this.uid = uid != null ? uid : "";
 		this.uids = (uids != null) ? Collections.unmodifiableList(new ArrayList<>(uids)) : null;
@@ -96,17 +124,26 @@ public class WriteAfiResponsePayload extends BaseRfidPayload {
 	}
 
 	public static WriteAfiResponsePayload success(String uid, String afi, String sessionName, String clientId) {
+		return success(uid, afi, sessionName, clientId, clientId);
+	}
+
+	public static WriteAfiResponsePayload success(String uid, String afi, String sessionName, String clientId, String readerId) {
 		return new WriteAfiResponsePayload(
 				"ok", uid, afi, "AFI written successfully", null, sessionName,
-				System.currentTimeMillis(), clientId
+				System.currentTimeMillis(), clientId, readerId
 		);
 	}
 
 	public static WriteAfiResponsePayload error(String uid, String afi, String errorMessage,
 												String sessionName, String clientId) {
+		return error(uid, afi, errorMessage, sessionName, clientId, clientId);
+	}
+
+	public static WriteAfiResponsePayload error(String uid, String afi, String errorMessage,
+												String sessionName, String clientId, String readerId) {
 		return new WriteAfiResponsePayload(
 				"error", uid, afi, errorMessage, errorMessage, sessionName,
-				System.currentTimeMillis(), clientId
+				System.currentTimeMillis(), clientId, readerId
 		);
 	}
 
@@ -117,6 +154,17 @@ public class WriteAfiResponsePayload extends BaseRfidPayload {
 			String afi,
 			String sessionName,
 			String clientId) {
+		return batchResult(requestedUids, successfulUids, failedUids, afi, sessionName, clientId, clientId);
+	}
+
+	public static WriteAfiResponsePayload batchResult(
+			List<String> requestedUids,
+			List<String> successfulUids,
+			Map<String, String> failedUids,
+			String afi,
+			String sessionName,
+			String clientId,
+			String readerId) {
 		List<String> reqUids = (requestedUids != null) ? new ArrayList<>(requestedUids) : Collections.emptyList();
 		List<String> succUids = (successfulUids != null) ? new ArrayList<>(successfulUids) : Collections.emptyList();
 		Map<String, String> failUids = (failedUids != null) ? new LinkedHashMap<>(failedUids) : Collections.emptyMap();
@@ -152,7 +200,7 @@ public class WriteAfiResponsePayload extends BaseRfidPayload {
 
 		return new WriteAfiResponsePayload(
 				status, primaryUid, reqUids, succUids, failUids, resList, afi, message, error, sessionName,
-				System.currentTimeMillis(), clientId
+				System.currentTimeMillis(), clientId, readerId
 		);
 	}
 

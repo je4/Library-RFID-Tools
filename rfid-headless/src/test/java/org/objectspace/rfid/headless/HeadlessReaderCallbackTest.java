@@ -413,4 +413,94 @@ public class HeadlessReaderCallbackTest {
 
         callback.close();
     }
+
+    @Test
+    @DisplayName("Test independent debounce caches and plate clearance across isolated reader instances")
+    public void testIsolatedReaderCallbacksAndCaches() throws Exception {
+        BaseConfiguration cfg = new BaseConfiguration();
+        TagScanProcessor processor = new TagScanProcessor(cfg);
+
+        HeadlessReaderCallback callback1 = new HeadlessReaderCallback(processor, null, 5000L, 2000L, "reader-01");
+        HeadlessReaderCallback callback2 = new HeadlessReaderCallback(processor, null, 5000L, 2000L, "reader-02");
+
+        assertEquals("reader-01", callback1.getReaderId());
+        assertEquals("reader-02", callback2.getReaderId());
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-MULTI-1", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+        String uid = "E004010099990000";
+
+        // Scan tag on Reader 1 -> should dispatch on Reader 1
+        callback1.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(1, callback1.getDispatchedScans());
+        assertEquals(0, callback1.getDebouncedScans());
+        assertTrue(callback1.isTagPresent(uid));
+
+        // Subsequent scan of SAME tag on Reader 1 is debounced by Reader 1
+        callback1.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(1, callback1.getDispatchedScans());
+        assertEquals(1, callback1.getDebouncedScans());
+
+        // Scan of SAME tag on Reader 2 is NOT debounced by Reader 1's debounce cache!
+        assertEquals(0, callback2.getDispatchedScans());
+        callback2.doIt(1, 1, "NXP", "SLIX", uid, data, 4);
+        assertEquals(1, callback2.getDispatchedScans(), "Reader 2 must immediately dispatch without being debounced by Reader 1");
+        assertTrue(callback2.isTagPresent(uid));
+
+        // Clearing plate on Reader 1 only affects Reader 1
+        callback1.empty();
+        assertFalse(callback1.isTagPresent(uid), "Reader 1 tag must be cleared");
+        assertTrue(callback2.isTagPresent(uid), "Reader 2 tag must remain active and unaffected by Reader 1 clearance");
+
+        callback1.close();
+        callback2.close();
+    }
+
+    @Test
+    @DisplayName("Test readerId field serialization in payload classes")
+    public void testPayloadReaderIdSerialization() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        // 1. TagReadPayload
+        org.objectspace.rfid.headless.payload.TagReadPayload tagPayload =
+                new org.objectspace.rfid.headless.payload.TagReadPayload(
+                        "E00401001234", "ITEM-1", "AABB", "001596-0", "CH", true, "SLIX",
+                        "sess-1", 1000L, "client-ws", "reader-gate-01", 1, 1, 1, 1, "07"
+                );
+        String tagJson = mapper.writeValueAsString(tagPayload);
+        assertTrue(tagJson.contains("\"readerId\":\"reader-gate-01\""), "JSON must contain readerId: " + tagJson);
+        assertTrue(tagJson.contains("\"clientId\":\"client-ws\""), "JSON must contain clientId: " + tagJson);
+
+        // 2. TagsClearedPayload
+        org.objectspace.rfid.headless.payload.TagsClearedPayload clearPayload =
+                new org.objectspace.rfid.headless.payload.TagsClearedPayload("sess-1", 1000L, "client-ws", "reader-gate-02");
+        String clearJson = mapper.writeValueAsString(clearPayload);
+        assertTrue(clearJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + clearJson);
+
+        // 3. DeviceMetadataPayload
+        org.objectspace.rfid.headless.payload.DeviceMetadataPayload metaPayload =
+                new org.objectspace.rfid.headless.payload.DeviceMetadataPayload(
+                        "52E688", "MR102", "Desc", "sess-1", 1000L, "client-ws", "reader-gate-03"
+                );
+        String metaJson = mapper.writeValueAsString(metaPayload);
+        assertTrue(metaJson.contains("\"readerId\":\"reader-gate-03\""), "JSON must contain readerId: " + metaJson);
+
+        // 4. WriteTagResponsePayload
+        org.objectspace.rfid.headless.payload.WriteTagResponsePayload writeTagPayload =
+                org.objectspace.rfid.headless.payload.WriteTagResponsePayload.success(
+                        "E00401001234", "ITEM-1", "001596-0", "CH", 1, 1, 1, "07",
+                        "sess-1", "client-ws", "reader-gate-01"
+                );
+        String writeTagJson = mapper.writeValueAsString(writeTagPayload);
+        assertTrue(writeTagJson.contains("\"readerId\":\"reader-gate-01\""), "JSON must contain readerId: " + writeTagJson);
+
+        // 5. WriteAfiResponsePayload
+        org.objectspace.rfid.headless.payload.WriteAfiResponsePayload writeAfiPayload =
+                org.objectspace.rfid.headless.payload.WriteAfiResponsePayload.success(
+                        "E00401001234", "07", "sess-1", "client-ws", "reader-gate-02"
+                );
+        String writeAfiJson = mapper.writeValueAsString(writeAfiPayload);
+        assertTrue(writeAfiJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + writeAfiJson);
+    }
 }

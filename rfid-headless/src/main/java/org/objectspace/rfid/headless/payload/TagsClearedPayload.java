@@ -20,13 +20,19 @@ public class TagsClearedPayload extends BaseRfidPayload {
 	private final int totalTags;
 
 	public TagsClearedPayload(String sessionName, long timestamp, String clientId) {
-		super(EVENT_NAME, sessionName, timestamp, clientId);
-		this.status = STATUS_EMPTY;
-		this.totalTags = 0;
+		this(sessionName, timestamp, clientId, clientId, STATUS_EMPTY, 0);
+	}
+
+	public TagsClearedPayload(String sessionName, long timestamp, String clientId, String readerId) {
+		this(sessionName, timestamp, clientId, readerId, STATUS_EMPTY, 0);
 	}
 
 	public TagsClearedPayload(String sessionName, long timestamp, String clientId, String status, int totalTags) {
-		super(EVENT_NAME, sessionName, timestamp, clientId);
+		this(sessionName, timestamp, clientId, clientId, status, totalTags);
+	}
+
+	public TagsClearedPayload(String sessionName, long timestamp, String clientId, String readerId, String status, int totalTags) {
+		super(EVENT_NAME, sessionName, timestamp, clientId, readerId);
 		this.status = status != null ? status : STATUS_EMPTY;
 		this.totalTags = totalTags;
 	}

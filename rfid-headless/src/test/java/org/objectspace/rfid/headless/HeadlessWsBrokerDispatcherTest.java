@@ -1173,7 +1173,7 @@ public class HeadlessWsBrokerDispatcherTest {
         d2.handleIncomingMessage(broadcastEvent);
         d3.handleIncomingMessage(broadcastEvent);
 
-        Thread.sleep(400);
+        Thread.sleep(800);
 
         // Station 1 must have executed write and replied
         assertTrue(st1Written.get(), "Station 1 holding UID-1111 should execute writeTag");
@@ -1271,7 +1271,7 @@ public class HeadlessWsBrokerDispatcherTest {
         d1.handleIncomingMessage(broadcastAfi);
         d2.handleIncomingMessage(broadcastAfi);
 
-        Thread.sleep(400);
+        Thread.sleep(800);
 
         assertFalse(st1AfiWritten.get(), "Station 1 should ignore write_afi for UID-BBBB");
         assertEquals(0, st1Events.size());
@@ -1882,11 +1882,11 @@ public class HeadlessWsBrokerDispatcherTest {
         batchMsg.setToken("req-batch-array");
 
         dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(400);
+        Thread.sleep(800);
 
         assertEquals(2, written.size());
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
+        assertEquals(2, sentEvents.size(), "Should have dispatched tags_cleared and write_afi_response");
+        Event reply = sentEvents.stream().filter(e -> "req-batch-array".equals(e.getToken())).findFirst().orElseThrow();
         assertEquals("req-batch-array", reply.getToken());
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals("C2", reply.getData().get("afi").asText());
@@ -2476,5 +2476,379 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(0, clearedEvent.getData().get("totalTags").asInt());
 
         wsDispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test multi-reader command routing for metadata queries")
+    void testMultiReaderCommandRoutingAndMetadata() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-hub-01");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-hub-01", "https://localhost:8765", List.of("all"), null, mockClient
+        );
+
+        HeadlessReaderConfig cfg1 = new HeadlessReaderConfig("gate-01", false, "52E101");
+        HeadlessReaderConfig cfg2 = new HeadlessReaderConfig("return-02", true, "52E102");
+
+        ISO15693Reader reader1 = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "52E101"; }
+            @Override public String getDeviceType() { return "ISC.MR102-USB"; }
+            @Override public String getDeviceInfo() { return "FEIG Gate 1"; }
+            @Override public void writeTag(String uid, FinnishDataModel model, Byte afi) {}
+            @Override public void close() {}
+        };
+
+        ISO15693Reader reader2 = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "52E102"; }
+            @Override public String getDeviceType() { return "ISC.PRH101-USB"; }
+            @Override public String getDeviceInfo() { return "FEIG Return 2"; }
+            @Override public void writeTag(String uid, FinnishDataModel model, Byte afi) {}
+            @Override public void close() {}
+        };
+
+        HeadlessReaderCallback cb1 = new HeadlessReaderCallback(null, dispatcher, 3000L, "gate-01");
+        HeadlessReaderCallback cb2 = new HeadlessReaderCallback(null, dispatcher, 3000L, "return-02");
+
+        HeadlessReaderScanner sc1 = new HeadlessReaderScanner(reader1, cb1, 12, 300, "gate-01");
+        HeadlessReaderScanner sc2 = new HeadlessReaderScanner(reader2, cb2, 12, 300, "return-02");
+
+        HeadlessReaderInstance inst1 = new HeadlessReaderInstance(cfg1, reader1, cb1, sc1);
+        HeadlessReaderInstance inst2 = new HeadlessReaderInstance(cfg2, reader2, cb2, sc2);
+
+        dispatcher.setReaderInstances(List.of(inst1, inst2));
+
+        // 1. Query device metadata for gate-01
+        Event queryGate = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
+                "event", "rfid:get_device_metadata",
+                "reader_id", "gate-01"
+        ));
+        queryGate.setToken("req-gate");
+        dispatcher.handleIncomingMessage(queryGate);
+
+        Event replyGate = sentEvents.stream().filter(e -> "req-gate".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("rfid:device_metadata_response", replyGate.getData().get("event").asText());
+        assertEquals("gate-01", replyGate.getData().get("readerId").asText());
+        assertEquals("52E101", replyGate.getData().get("deviceId").asText());
+        assertEquals("ISC.MR102-USB", replyGate.getData().get("deviceType").asText());
+
+        // 2. Query device metadata for return-02
+        Event queryReturn = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
+                "event", "rfid:get_device_metadata",
+                "reader_id", "return-02"
+        ));
+        queryReturn.setToken("req-return");
+        dispatcher.handleIncomingMessage(queryReturn);
+
+        Event replyReturn = sentEvents.stream().filter(e -> "req-return".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("rfid:device_metadata_response", replyReturn.getData().get("event").asText());
+        assertEquals("return-02", replyReturn.getData().get("readerId").asText());
+        assertEquals("52E102", replyReturn.getData().get("deviceId").asText());
+        assertEquals("ISC.PRH101-USB", replyReturn.getData().get("deviceType").asText());
+
+        // 3. Query non-existent reader
+        Event queryUnknown = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
+                "event", "rfid:get_device_metadata",
+                "reader_id", "non-existent-reader"
+        ));
+        queryUnknown.setToken("req-unknown");
+        dispatcher.handleIncomingMessage(queryUnknown);
+
+        Event replyUnknown = sentEvents.stream().filter(e -> "req-unknown".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("error", replyUnknown.getData().get("status").asText());
+        assertTrue(replyUnknown.getData().get("initDescription").asText().contains("not found"));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test multi-reader read-only enforcement on write_tag and write_afi commands")
+    void testMultiReaderReadOnlyRejectionOnWriteCommands() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("rfid-hub-01");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-hub-01", "https://localhost:8765", List.of("all"), null, mockClient
+        );
+
+        HeadlessReaderConfig cfgRw = new HeadlessReaderConfig("reader-rw", false, "52E101");
+        HeadlessReaderConfig cfgRo = new HeadlessReaderConfig("reader-ro", true, "52E102");
+
+        List<String> writtenTags = new CopyOnWriteArrayList<>();
+        List<String> writtenAfis = new CopyOnWriteArrayList<>();
+
+        ISO15693Reader readerRw = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "52E101"; }
+            @Override public String getDeviceType() { return "MR102"; }
+            @Override public String getDeviceInfo() { return "RW Reader"; }
+            @Override
+            public void writeTag(String uid, FinnishDataModel model, Byte afi) {
+                writtenTags.add(uid + ":" + model.getPrimaryItemId());
+            }
+            @Override
+            public void writeAfi(String uid, byte afi) {
+                writtenAfis.add(uid + ":" + afi);
+            }
+            @Override public void close() {}
+        };
+
+        ISO15693Reader readerRo = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "52E102"; }
+            @Override public String getDeviceType() { return "MR102"; }
+            @Override public String getDeviceInfo() { return "RO Reader"; }
+            @Override
+            public void writeTag(String uid, FinnishDataModel model, Byte afi) {
+                fail("Write tag should NEVER be invoked on a read-only reader!");
+            }
+            @Override
+            public void writeAfi(String uid, byte afi) {
+                fail("Write AFI should NEVER be invoked on a read-only reader!");
+            }
+            @Override public void close() {}
+        };
+
+        HeadlessReaderCallback cbRw = new HeadlessReaderCallback(null, dispatcher, 3000L, "reader-rw");
+        HeadlessReaderCallback cbRo = new HeadlessReaderCallback(null, dispatcher, 3000L, "reader-ro");
+
+        HeadlessReaderScanner scRw = new HeadlessReaderScanner(readerRw, cbRw, 12, 300, "reader-rw");
+        HeadlessReaderScanner scRo = new HeadlessReaderScanner(readerRo, cbRo, 12, 300, "reader-ro");
+
+        HeadlessReaderInstance instRw = new HeadlessReaderInstance(cfgRw, readerRw, cbRw, scRw);
+        HeadlessReaderInstance instRo = new HeadlessReaderInstance(cfgRo, readerRo, cbRo, scRo);
+
+        dispatcher.setReaderInstances(List.of(instRw, instRo));
+
+        // Place tags in presence
+        cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
+        cbRo.doIt(1, 1, "NXP", "SLIX", "E00401-RO-1", new FinnishDataModel().getBlock(32), 4);
+        sentEvents.clear();
+
+        // 1. Attempt write_tag on READ-ONLY reader -> MUST REJECT
+        Event writeRoMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
+                "event", "rfid:write_tag",
+                "reader_id", "reader-ro",
+                "uid", "E00401-RO-1",
+                "itemId", "NEW-BOOK-RO"
+        ));
+        writeRoMsg.setToken("req-write-ro");
+        dispatcher.handleIncomingMessage(writeRoMsg);
+
+        Event replyWriteRo = sentEvents.stream().filter(e -> "req-write-ro".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("error", replyWriteRo.getData().get("status").asText());
+        assertEquals("reader-ro", replyWriteRo.getData().get("readerId").asText());
+        assertTrue(replyWriteRo.getData().get("error").asText().contains("read-only"));
+        assertTrue(writtenTags.isEmpty());
+
+        // 2. Attempt write_afi on READ-ONLY reader -> MUST REJECT
+        Event afiRoMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
+                "event", "rfid:write_afi",
+                "reader_id", "reader-ro",
+                "uid", "E00401-RO-1",
+                "afi", "07"
+        ));
+        afiRoMsg.setToken("req-afi-ro");
+        dispatcher.handleIncomingMessage(afiRoMsg);
+
+        Event replyAfiRo = sentEvents.stream().filter(e -> "req-afi-ro".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("error", replyAfiRo.getData().get("status").asText());
+        assertEquals("reader-ro", replyAfiRo.getData().get("readerId").asText());
+        assertTrue(replyAfiRo.getData().get("error").asText().contains("read-only"));
+        assertTrue(writtenAfis.isEmpty());
+
+        // 3. Write tag on R/W reader -> MUST SUCCEED
+        Event writeRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
+                "event", "rfid:write_tag",
+                "reader_id", "reader-rw",
+                "uid", "E00401-RW-1",
+                "itemId", "NEW-BOOK-RW"
+        ));
+        writeRwMsg.setToken("req-write-rw");
+        dispatcher.handleIncomingMessage(writeRwMsg);
+        Thread.sleep(400);
+
+        Event replyWriteRw = sentEvents.stream().filter(e -> "req-write-rw".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("ok", replyWriteRw.getData().get("status").asText());
+        assertEquals("reader-rw", replyWriteRw.getData().get("readerId").asText());
+        assertEquals(1, writtenTags.size());
+        assertEquals("E00401-RW-1:NEW-BOOK-RW", writtenTags.get(0));
+
+        // 4. Write AFI on R/W reader -> MUST SUCCEED
+        // Place tag back in presence after previous write_tag emptied callback presence
+        cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
+
+        Event afiRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
+                "event", "rfid:write_afi",
+                "reader_id", "reader-rw",
+                "uid", "E00401-RW-1",
+                "afi", "C2"
+        ));
+        afiRwMsg.setToken("req-afi-rw");
+        dispatcher.handleIncomingMessage(afiRwMsg);
+        Thread.sleep(400);
+
+        Event replyAfiRw = sentEvents.stream().filter(e -> "req-afi-rw".equals(e.getToken())).findFirst().orElseThrow();
+        assertEquals("ok", replyAfiRw.getData().get("status").asText());
+        assertEquals("reader-rw", replyAfiRw.getData().get("readerId").asText());
+        assertEquals(1, writtenAfis.size());
+        assertEquals("E00401-RW-1:-62", writtenAfis.get(0));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test WSBroker channel deduplication across global and reader configs")
+    void testChannelDeduplication() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <wsbroker>
+                        <active>true</active>
+                        <url>https://localhost:8765</url>
+                        <channels>
+                            <channel>common</channel>
+                            <channel>gates</channel>
+                        </channels>
+                    </wsbroker>
+                    <readers>
+                        <reader>
+                            <reader_id>gate-01</reader_id>
+                            <channels>
+                                <channel>gates</channel>
+                                <channel>gate-01-ch</channel>
+                            </channels>
+                        </reader>
+                        <reader>
+                            <reader_id>gate-02</reader_id>
+                            <channels>
+                                <channel>common</channel>
+                                <channel>gate-02-ch</channel>
+                            </channels>
+                        </reader>
+                    </readers>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-ch-dedup-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        HeadlessWsBrokerDispatcher dispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
+
+        List<String> channels = dispatcher.getChannels();
+        assertEquals(4, channels.size());
+        assertEquals(List.of("common", "gates", "gate-01-ch", "gate-02-ch"), channels);
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test per-reader targeted channel dispatching")
+    void testPerReaderTargetedChannelDispatching() {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-hub");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-hub",
+                "https://localhost:8765",
+                List.of("global-ch"),
+                null,
+                mockClient,
+                true
+        );
+
+        HeadlessReaderConfig cfg1 = new HeadlessReaderConfig("reader-1");
+        cfg1.setChannels(List.of("channel-r1-a", "channel-r1-b"));
+
+        HeadlessReaderConfig cfg2 = new HeadlessReaderConfig("reader-2");
+        cfg2.setChannels(List.of("channel-r2"));
+
+        HeadlessReaderConfig cfgFallback = new HeadlessReaderConfig("reader-fallback");
+        // No reader-specific channels set -> fallback to global
+
+        HeadlessReaderInstance inst1 = new HeadlessReaderInstance(cfg1, null, null, null);
+        HeadlessReaderInstance inst2 = new HeadlessReaderInstance(cfg2, null, null, null);
+        HeadlessReaderInstance instFallback = new HeadlessReaderInstance(cfgFallback, null, null, null);
+
+        dispatcher.setReaderInstances(List.of(inst1, inst2, instFallback));
+
+        // 1. Dispatch TagReadPayload from reader-1
+        TagReadPayload p1 = new TagReadPayload("UID1", "ITEM1", "", "", "", true, "SLIX", "session1", 1000L, "rfid-hub", "reader-1", null, null);
+        dispatcher.dispatch(p1);
+
+        assertEquals(2, sentEvents.size());
+        assertEquals("channel-r1-a", sentEvents.get(0).getTarget());
+        assertEquals("channel-r1-b", sentEvents.get(1).getTarget());
+        sentEvents.clear();
+
+        // 2. Dispatch TagReadPayload from reader-2
+        TagReadPayload p2 = new TagReadPayload("UID2", "ITEM2", "", "", "", true, "SLIX", "session1", 1000L, "rfid-hub", "reader-2", null, null);
+        dispatcher.dispatch(p2);
+
+        assertEquals(1, sentEvents.size());
+        assertEquals("channel-r2", sentEvents.get(0).getTarget());
+        sentEvents.clear();
+
+        // 3. Dispatch TagReadPayload from fallback reader
+        TagReadPayload pFallback = new TagReadPayload("UID3", "ITEM3", "", "", "", true, "SLIX", "session1", 1000L, "rfid-hub", "reader-fallback", null, null);
+        dispatcher.dispatch(pFallback);
+
+        assertEquals(1, sentEvents.size());
+        assertEquals("global-ch", sentEvents.get(0).getTarget());
+
+        dispatcher.close();
     }
 }

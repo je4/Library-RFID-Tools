@@ -1,5 +1,6 @@
 package org.objectspace.rfid.headless.payload;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -22,11 +23,20 @@ public abstract class BaseRfidPayload {
 	@JsonProperty("clientId")
 	private final String clientId;
 
+	@JsonProperty("readerId")
+	@JsonAlias({"reader_id", "readerID"})
+	private final String readerId;
+
 	protected BaseRfidPayload(String event, String session, long timestamp, String clientId) {
+		this(event, session, timestamp, clientId, clientId);
+	}
+
+	protected BaseRfidPayload(String event, String session, long timestamp, String clientId, String readerId) {
 		this.event = event != null ? event : "";
 		this.session = session != null ? session : "";
 		this.timestamp = timestamp;
 		this.clientId = clientId != null ? clientId : "";
+		this.readerId = (readerId != null && !readerId.isBlank()) ? readerId : (clientId != null ? clientId : "");
 	}
 
 	public String getEvent() {
@@ -43,6 +53,10 @@ public abstract class BaseRfidPayload {
 
 	public String getClientId() {
 		return clientId;
+	}
+
+	public String getReaderId() {
+		return readerId;
 	}
 
 	@JsonIgnore

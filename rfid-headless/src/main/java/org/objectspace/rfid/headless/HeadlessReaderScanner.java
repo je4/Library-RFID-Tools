@@ -21,6 +21,7 @@ public class HeadlessReaderScanner implements Runnable {
 	private final HeadlessReaderCallback callback;
 	private final int numBlocks;
 	private final int sleepInterval;
+	private final String readerId;
 
 	private final ReentrantLock scanLock = new ReentrantLock(true);
 	private final AtomicBoolean paused = new AtomicBoolean(false);
@@ -29,22 +30,29 @@ public class HeadlessReaderScanner implements Runnable {
 	private Thread workerThread;
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
+		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null);
+	}
+
+	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval, String readerId) {
 		this.reader = reader;
 		this.callback = callback;
 		this.numBlocks = numBlocks > 0 ? numBlocks : HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
 		this.sleepInterval = sleepInterval > 0 ? sleepInterval : HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS;
+		this.readerId = readerId != null && !readerId.isBlank() ? readerId.trim() : (callback != null ? callback.getReaderId() : null);
 	}
 
 	public synchronized void start() {
 		if (running) {
-			logger.warn("Scanner is already running");
+			logger.warn("Scanner is already running{}", (readerId != null ? " for reader: " + readerId : ""));
 			return;
 		}
 		running = true;
-		workerThread = new Thread(this, "RFID-Headless-Scanner");
+		String threadName = (readerId != null && !readerId.isBlank()) ? "RFID-Scanner-" + readerId : "RFID-Headless-Scanner";
+		workerThread = new Thread(this, threadName);
 		workerThread.setDaemon(false);
 		workerThread.start();
-		logger.info("HeadlessReaderScanner started (interval: {} ms, blocks: {})", sleepInterval, numBlocks);
+		logger.info("HeadlessReaderScanner started [thread: {}] (interval: {} ms, blocks: {})",
+				threadName, sleepInterval, numBlocks);
 	}
 
 	public synchronized void stop() {
@@ -274,5 +282,13 @@ public class HeadlessReaderScanner implements Runnable {
 
 	public HeadlessReaderCallback getCallback() {
 		return callback;
+	}
+
+	public String getReaderId() {
+		return readerId;
+	}
+
+	public Thread getWorkerThread() {
+		return workerThread;
 	}
 }

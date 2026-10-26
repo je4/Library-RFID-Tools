@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-	<!-- Configuration and selection of FEIG RFID reader -->
+	<!-- Configuration and selection of FEIG RFID reader (Single-Reader mode) -->
+	<!-- If <readers> is not specified below, this <device> section is used as default reader. -->
 	<device>
 		<select>feig</select>
 		
@@ -18,6 +19,45 @@
 			<!-- <restoreconfig>host.xml</restoreconfig> -->
 		</feig>
 	</device>
+
+	<!-- Multi-Reader Configuration (Alternative to single <device>) -->
+	<!-- When <readers> is defined, rfid-headless initializes dedicated worker threads, -->
+	<!-- isolated debounce/presence caches, and targeted WSBroker routing per reader. -->
+	<!--
+	<readers>
+		<reader>
+			<reader_id>reader-01</reader_id>
+			<readonly>false</readonly>
+			<feig>
+				<id>52E688</id>
+				<type>usb</type>
+			</feig>
+			<debounce>3000</debounce>
+			<sleep>300</sleep>
+			<numblocks>12</numblocks>
+			<!-- Optional per-reader WSBroker channels (if omitted, global channels are used) -->
+			<channels>
+				<channel>rfid</channel>
+				<channel>rfid:reader-01</channel>
+			</channels>
+		</reader>
+		<reader>
+			<reader_id>reader-02</reader_id>
+			<readonly>true</readonly>
+			<feig>
+				<id>52E689</id>
+				<type>usb</type>
+			</feig>
+			<debounce>2000</debounce>
+			<sleep>250</sleep>
+			<numblocks>12</numblocks>
+			<channels>
+				<channel>rfid</channel>
+				<channel>rfid:reader-02</channel>
+			</channels>
+		</reader>
+	</readers>
+	-->
 
 	<!-- Database connection (optional) -->
 	<database>

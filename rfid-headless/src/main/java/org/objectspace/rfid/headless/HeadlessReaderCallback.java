@@ -34,6 +34,7 @@ public class HeadlessReaderCallback implements TagCallback {
 	private final ConcurrentHashMap<String, Long> lastSeenMap;
 	private final ConcurrentHashMap<String, Long> activePresenceMap;
 	private final String sessionName;
+	private final String readerId;
 
 	private final AtomicLong totalScans = new AtomicLong(0);
 	private final AtomicLong dispatchedScans = new AtomicLong(0);
@@ -42,24 +43,36 @@ public class HeadlessReaderCallback implements TagCallback {
 	private final AtomicLong clearedEvents = new AtomicLong(0);
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, long debounceMillis) {
-		this(tagScanProcessor, null, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS);
+		this(tagScanProcessor, null, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS, null);
 	}
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher, long debounceMillis) {
-		this(tagScanProcessor, wsBrokerDispatcher, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS);
+		this(tagScanProcessor, wsBrokerDispatcher, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS, null);
 	}
 
 	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher,
 								  long debounceMillis, long presenceTtlMillis) {
+		this(tagScanProcessor, wsBrokerDispatcher, debounceMillis, presenceTtlMillis, null);
+	}
+
+	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher,
+								  long debounceMillis, String readerId) {
+		this(tagScanProcessor, wsBrokerDispatcher, debounceMillis, DEFAULT_PRESENCE_TTL_MILLIS, readerId);
+	}
+
+	public HeadlessReaderCallback(TagScanProcessor tagScanProcessor, HeadlessWsBrokerDispatcher wsBrokerDispatcher,
+								  long debounceMillis, long presenceTtlMillis, String readerId) {
 		this.tagScanProcessor = tagScanProcessor;
 		this.wsBrokerDispatcher = wsBrokerDispatcher;
 		this.debounceMillis = debounceMillis >= 0 ? debounceMillis : HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS;
 		this.presenceTtlMillis = presenceTtlMillis > 0 ? presenceTtlMillis : DEFAULT_PRESENCE_TTL_MILLIS;
+		this.readerId = (readerId != null && !readerId.isBlank()) ? readerId.trim() : null;
 		this.lastSeenMap = new ConcurrentHashMap<>();
 		this.activePresenceMap = new ConcurrentHashMap<>();
 		this.sessionName = LocalDateTime.now().toString();
-		logger.info("HeadlessReaderCallback initialized with debounce window: {} ms, presence TTL: {} ms, session: {}",
-				this.debounceMillis, this.presenceTtlMillis, this.sessionName);
+		logger.info("HeadlessReaderCallback initialized with debounce window: {} ms, presence TTL: {} ms, session: {}{}",
+				this.debounceMillis, this.presenceTtlMillis, this.sessionName,
+				(this.readerId != null ? ", readerId: " + this.readerId : ""));
 	}
 
 	@Override
@@ -151,6 +164,7 @@ public class HeadlessReaderCallback implements TagCallback {
 				String clientId = (tagScanProcessor != null && tagScanProcessor.getWebserviceConfig() != null)
 						? tagScanProcessor.getWebserviceConfig().getClientId()
 						: "";
+				String effectiveReaderId = (readerId != null && !readerId.isBlank()) ? readerId : clientId;
 				wsBrokerDispatcher.dispatchTag(
 						UID,
 						itemId,
@@ -162,6 +176,7 @@ public class HeadlessReaderCallback implements TagCallback {
 						sessionName,
 						now,
 						clientId,
+						effectiveReaderId,
 						metadata,
 						afi
 				);
@@ -206,7 +221,8 @@ public class HeadlessReaderCallback implements TagCallback {
 					String clientId = (tagScanProcessor != null && tagScanProcessor.getWebserviceConfig() != null)
 							? tagScanProcessor.getWebserviceConfig().getClientId()
 							: "";
-					wsBrokerDispatcher.dispatchEmpty(sessionName, now, clientId);
+					String effectiveReaderId = (readerId != null && !readerId.isBlank()) ? readerId : clientId;
+					wsBrokerDispatcher.dispatchEmpty(sessionName, now, clientId, effectiveReaderId);
 				} catch (Exception e) {
 					logger.error("[WSBroker Exception] Failed to dispatch reader cleared event: {}", e.getMessage(), e);
 				}
@@ -366,5 +382,9 @@ public class HeadlessReaderCallback implements TagCallback {
 
 	public String getSessionName() {
 		return sessionName;
+	}
+
+	public String getReaderId() {
+		return readerId;
 	}
 }

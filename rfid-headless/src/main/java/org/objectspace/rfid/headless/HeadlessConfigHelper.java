@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.apache.commons.configuration2.AbstractConfiguration;
+import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
 import org.apache.commons.configuration2.builder.fluent.Parameters;
@@ -224,5 +225,267 @@ public class HeadlessConfigHelper {
 			logger.warn("Failed to parse <clienttls> from XML content: {}", e.getMessage());
 			return null;
 		}
+	}
+
+	/**
+	 * Extracts all configured reader instances from the <readers><reader>...</reader></readers> section.
+	 * If no <readers> section exists, falls back to generating a single HeadlessReaderConfig from the <device> section.
+	 */
+	public static List<HeadlessReaderConfig> getReaderConfigs(AbstractConfiguration config) {
+		List<HeadlessReaderConfig> readerConfigs = new ArrayList<>();
+		if (config == null) {
+			HeadlessReaderConfig defaultConfig = new HeadlessReaderConfig(DEFAULT_CLIENT_NAME);
+			defaultConfig.setReadOnly(false);
+			defaultConfig.setType("usb");
+			defaultConfig.setSleepInterval(DEFAULT_SLEEP_INTERVAL_MS);
+			defaultConfig.setNumBlocks(DEFAULT_NUM_BLOCKS);
+			defaultConfig.setDebounceMillis(DEFAULT_DEBOUNCE_MILLIS);
+			readerConfigs.add(defaultConfig);
+			return readerConfigs;
+		}
+
+		if (config instanceof HierarchicalConfiguration<?> hierConfig) {
+			List<?> readerNodes = hierConfig.configurationsAt("readers.reader");
+			if (readerNodes != null && !readerNodes.isEmpty()) {
+				int index = 1;
+				for (Object nodeObj : readerNodes) {
+					if (nodeObj instanceof HierarchicalConfiguration<?> node) {
+						HeadlessReaderConfig rCfg = parseReaderNode(node, config, index++);
+						readerConfigs.add(rCfg);
+					}
+				}
+				if (!readerConfigs.isEmpty()) {
+					return readerConfigs;
+				}
+			}
+		}
+
+		// Fallback: Check if indexed properties exist in standard AbstractConfiguration (e.g. BaseConfiguration in tests)
+		if (config.containsKey("readers.reader(0).reader_id") || config.containsKey("readers.reader(0).id") ||
+				config.containsKey("readers.reader.reader_id") || config.containsKey("readers.reader.id")) {
+			int idx = 0;
+			while (true) {
+				String prefix = "readers.reader(" + idx + ").";
+				if (!config.containsKey(prefix + "reader_id") && !config.containsKey(prefix + "id") &&
+						!config.containsKey(prefix + "device.feig.id") && !config.containsKey(prefix + "feig.id") &&
+						!config.containsKey(prefix + "device_id") && !config.containsKey(prefix + "readonly") &&
+						!config.containsKey(prefix + "read_only")) {
+					if (idx == 0) {
+						// Try without index prefix
+						String singlePrefix = "readers.reader.";
+						if (config.containsKey(singlePrefix + "reader_id") || config.containsKey(singlePrefix + "id") ||
+								config.containsKey(singlePrefix + "device.feig.id") || config.containsKey(singlePrefix + "feig.id") ||
+								config.containsKey(singlePrefix + "readonly") || config.containsKey(singlePrefix + "read_only")) {
+							prefix = singlePrefix;
+						} else {
+							break;
+						}
+					} else {
+						break;
+					}
+				}
+
+				HeadlessReaderConfig rCfg = new HeadlessReaderConfig();
+				String readerId = config.getString(prefix + "reader_id",
+						config.getString(prefix + "id",
+						config.getString(prefix + "readerId",
+						config.getString(prefix + "name", "reader-" + (idx + 1)))));
+				rCfg.setReaderId(readerId != null && !readerId.isBlank() ? readerId.trim() : "reader-" + (idx + 1));
+
+				boolean ro = config.getBoolean(prefix + "readonly",
+						config.getBoolean(prefix + "read_only",
+						config.getBoolean(prefix + "readOnly", false)));
+				rCfg.setReadOnly(ro);
+
+				String devId = config.getString(prefix + "feig.id",
+						config.getString(prefix + "device.feig.id",
+						config.getString(prefix + "device_id",
+						config.getString(prefix + "deviceId",
+						config.getString(prefix + "feig_id", null)))));
+				if (devId != null && !devId.isBlank()) {
+					rCfg.setDeviceId(devId.trim());
+				}
+
+				String type = config.getString(prefix + "feig.type",
+						config.getString(prefix + "device.feig.type",
+						config.getString(prefix + "type", "usb")));
+				rCfg.setType(type != null && !type.isBlank() ? type.trim() : "usb");
+
+				String readerType = config.getString(prefix + "device.select",
+						config.getString(prefix + "select",
+						config.getString("device.select", "feig")));
+				rCfg.setReaderType(readerType != null && !readerType.isBlank() ? readerType.trim() : "feig");
+
+				rCfg.setSleepInterval(config.getInt(prefix + "sleep",
+						config.getInt(prefix + "inventory.sleep", getSleepInterval(config))));
+				rCfg.setNumBlocks(config.getInt(prefix + "numblocks", getNumBlocks(config)));
+				rCfg.setDebounceMillis(parseDebounceFromPrefix(config, prefix, getDebounceMillis(config)));
+
+				rCfg.setConfigFile(config.getString(prefix + "feig.configfile",
+						config.getString(prefix + "device.feig.configfile",
+						config.getString("device.feig.configfile", null))));
+				rCfg.setRestoreConfig(config.getString(prefix + "feig.restoreconfig",
+						config.getString(prefix + "device.feig.restoreconfig",
+						config.getString("device.feig.restoreconfig", null))));
+				rCfg.setStoreConfigFile(config.getString(prefix + "feig.storeconfigfile",
+						config.getString(prefix + "device.feig.storeconfigfile",
+						config.getString("device.feig.storeconfigfile", null))));
+				rCfg.setHostConfigFile(config.getString(prefix + "feig.hostconfigfile",
+						config.getString(prefix + "device.feig.hostconfigfile",
+						config.getString("device.feig.hostconfigfile", null))));
+
+				List<Object> chList = config.getList(prefix + "channels.channel");
+				if (chList != null && !chList.isEmpty()) {
+					List<String> channels = new ArrayList<>();
+					for (Object obj : chList) {
+						if (obj != null && !obj.toString().isBlank()) {
+							channels.add(obj.toString().trim());
+						}
+					}
+					rCfg.setChannels(channels);
+				}
+
+				rCfg.setRootConfiguration(config);
+				readerConfigs.add(rCfg);
+				idx++;
+				if (prefix.equals("readers.reader.")) {
+					break;
+				}
+			}
+			if (!readerConfigs.isEmpty()) {
+				return readerConfigs;
+			}
+		}
+
+		// Single-Reader Legacy Fallback: Build from root <device> section
+		HeadlessReaderConfig fallback = new HeadlessReaderConfig();
+		fallback.setReaderId(getClientName(config));
+		fallback.setReadOnly(config.getBoolean("device.readonly", config.getBoolean("readonly", false)));
+		fallback.setDeviceId(config.getString("device.feig.id", null));
+		fallback.setType(config.getString("device.feig.type", "usb"));
+		fallback.setReaderType(config.getString("device.select", "feig"));
+		fallback.setSleepInterval(getSleepInterval(config));
+		fallback.setNumBlocks(getNumBlocks(config));
+		fallback.setDebounceMillis(getDebounceMillis(config));
+		fallback.setConfigFile(config.getString("device.feig.configfile", null));
+		fallback.setRestoreConfig(config.getString("device.feig.restoreconfig", null));
+		fallback.setStoreConfigFile(config.getString("device.feig.storeconfigfile", null));
+		fallback.setHostConfigFile(config.getString("device.feig.hostconfigfile", null));
+		fallback.setChannels(getChannels(config));
+		fallback.setRootConfiguration(config);
+
+		readerConfigs.add(fallback);
+		return readerConfigs;
+	}
+
+	private static HeadlessReaderConfig parseReaderNode(HierarchicalConfiguration<?> node, AbstractConfiguration rootConfig, int defaultIndex) {
+		HeadlessReaderConfig rCfg = new HeadlessReaderConfig();
+		String readerId = node.getString("reader_id",
+				node.getString("id",
+				node.getString("readerId",
+				node.getString("name", "reader-" + defaultIndex))));
+		rCfg.setReaderId(readerId != null && !readerId.isBlank() ? readerId.trim() : "reader-" + defaultIndex);
+
+		boolean readOnly = node.getBoolean("readonly",
+				node.getBoolean("read_only",
+				node.getBoolean("readOnly", false)));
+		rCfg.setReadOnly(readOnly);
+
+		String deviceId = node.getString("feig.id",
+				node.getString("device.feig.id",
+				node.getString("device_id",
+				node.getString("deviceId",
+				node.getString("feig_id", null)))));
+		if (deviceId != null && !deviceId.isBlank()) {
+			rCfg.setDeviceId(deviceId.trim());
+		}
+
+		String type = node.getString("feig.type",
+				node.getString("device.feig.type",
+				node.getString("type", "usb")));
+		rCfg.setType(type != null && !type.isBlank() ? type.trim() : "usb");
+
+		String readerType = node.getString("device.select",
+				node.getString("select",
+				rootConfig.getString("device.select", "feig")));
+		rCfg.setReaderType(readerType != null && !readerType.isBlank() ? readerType.trim() : "feig");
+
+		int sleepInterval = node.getInt("sleep",
+				node.getInt("inventory.sleep", getSleepInterval(rootConfig)));
+		rCfg.setSleepInterval(sleepInterval);
+
+		int numBlocks = node.getInt("numblocks", getNumBlocks(rootConfig));
+		rCfg.setNumBlocks(numBlocks);
+
+		rCfg.setDebounceMillis(parseDebounceFromNode(node, getDebounceMillis(rootConfig)));
+
+		rCfg.setConfigFile(node.getString("feig.configfile",
+				node.getString("device.feig.configfile",
+				rootConfig.getString("device.feig.configfile", null))));
+		rCfg.setRestoreConfig(node.getString("feig.restoreconfig",
+				node.getString("device.feig.restoreconfig",
+				rootConfig.getString("device.feig.restoreconfig", null))));
+		rCfg.setStoreConfigFile(node.getString("feig.storeconfigfile",
+				node.getString("device.feig.storeconfigfile",
+				rootConfig.getString("device.feig.storeconfigfile", null))));
+		rCfg.setHostConfigFile(node.getString("feig.hostconfigfile",
+				node.getString("device.feig.hostconfigfile",
+				rootConfig.getString("device.feig.hostconfigfile", null))));
+
+		List<Object> chList = node.getList("channels.channel");
+		if (chList != null && !chList.isEmpty()) {
+			List<String> channels = new ArrayList<>();
+			for (Object obj : chList) {
+				if (obj != null && !obj.toString().isBlank()) {
+					channels.add(obj.toString().trim());
+				}
+			}
+			rCfg.setChannels(channels);
+		} else {
+			rCfg.setChannels(getChannels(rootConfig));
+		}
+
+		rCfg.setRootConfiguration(rootConfig);
+		return rCfg;
+	}
+
+	private static long parseDebounceFromNode(HierarchicalConfiguration<?> node, long defaultVal) {
+		String[] keys = new String[] {
+				"debounce",
+				"inventory.debounce",
+				"resend_interval",
+				"resend_time",
+				"tag_resend_time",
+				"cooldown"
+		};
+		for (String key : keys) {
+			if (node.containsKey(key)) {
+				long val = node.getLong(key, -1L);
+				if (val >= 0) {
+					return val;
+				}
+			}
+		}
+		return defaultVal;
+	}
+
+	private static long parseDebounceFromPrefix(AbstractConfiguration config, String prefix, long defaultVal) {
+		String[] keys = new String[] {
+				"debounce",
+				"inventory.debounce",
+				"resend_interval",
+				"resend_time",
+				"tag_resend_time",
+				"cooldown"
+		};
+		for (String key : keys) {
+			if (config.containsKey(prefix + key)) {
+				long val = config.getLong(prefix + key, -1L);
+				if (val >= 0) {
+					return val;
+				}
+			}
+		}
+		return defaultVal;
 	}
 }

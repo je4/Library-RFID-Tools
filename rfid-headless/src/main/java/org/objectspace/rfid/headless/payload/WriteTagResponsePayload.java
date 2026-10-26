@@ -96,7 +96,41 @@ public class WriteTagResponsePayload extends BaseRfidPayload {
 				"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? List.of(uid) : Collections.emptyList(),
 				!"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? Map.of(uid, error != null ? error : message != null ? message : "Error") : Collections.emptyMap(),
 				(uid != null && !uid.isBlank()) ? List.of("ok".equalsIgnoreCase(status) ? TagWriteResult.ok(uid, itemId, afi) : TagWriteResult.error(uid, itemId, afi, error != null ? error : message)) : Collections.emptyList(),
-				message, error, sessionName, timestamp, clientId);
+				message, error, sessionName, timestamp, clientId, clientId);
+	}
+
+	public WriteTagResponsePayload(String status, String uid, String itemId, String isil, String country,
+								   int parts, int partNo, int usageType, String afi,
+								   String message, String error, String sessionName,
+								   long timestamp, String clientId, String readerId) {
+		this(status, uid, itemId, isil, country, parts, partNo, usageType, afi,
+				(uid != null && !uid.isBlank()) ? List.of(uid) : Collections.emptyList(),
+				"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? List.of(uid) : Collections.emptyList(),
+				!"ok".equalsIgnoreCase(status) && uid != null && !uid.isBlank() ? Map.of(uid, error != null ? error : message != null ? message : "Error") : Collections.emptyMap(),
+				(uid != null && !uid.isBlank()) ? List.of("ok".equalsIgnoreCase(status) ? TagWriteResult.ok(uid, itemId, afi) : TagWriteResult.error(uid, itemId, afi, error != null ? error : message)) : Collections.emptyList(),
+				message, error, sessionName, timestamp, clientId, readerId);
+	}
+
+	public WriteTagResponsePayload(
+			String status,
+			String uid,
+			String itemId,
+			String isil,
+			String country,
+			int parts,
+			int partNo,
+			int usageType,
+			String afi,
+			List<String> uids,
+			List<String> successfulUids,
+			Map<String, String> failedUids,
+			List<TagWriteResult> results,
+			String message,
+			String error,
+			String sessionName,
+			long timestamp,
+			String clientId) {
+		this(status, uid, itemId, isil, country, parts, partNo, usageType, afi, uids, successfulUids, failedUids, results, message, error, sessionName, timestamp, clientId, clientId);
 	}
 
 	@JsonCreator
@@ -118,8 +152,9 @@ public class WriteTagResponsePayload extends BaseRfidPayload {
 			@JsonProperty("error") String error,
 			@JsonProperty("sessionName") String sessionName,
 			@JsonProperty("timestamp") long timestamp,
-			@JsonProperty("clientId") String clientId) {
-		super(EVENT_RESPONSE, sessionName, timestamp, clientId);
+			@JsonProperty("clientId") String clientId,
+			@JsonProperty("readerId") @JsonAlias({"reader_id", "readerID"}) String readerId) {
+		super(EVENT_RESPONSE, sessionName, timestamp, clientId, readerId);
 		this.status = status != null ? status : "ok";
 		this.uid = uid != null ? uid : "";
 		this.itemId = itemId != null ? itemId : "";
@@ -140,17 +175,28 @@ public class WriteTagResponsePayload extends BaseRfidPayload {
 	public static WriteTagResponsePayload success(String uid, String itemId, String isil, String country,
 												  int parts, int partNo, int usageType, String afi,
 												  String sessionName, String clientId) {
+		return success(uid, itemId, isil, country, parts, partNo, usageType, afi, sessionName, clientId, clientId);
+	}
+
+	public static WriteTagResponsePayload success(String uid, String itemId, String isil, String country,
+												  int parts, int partNo, int usageType, String afi,
+												  String sessionName, String clientId, String readerId) {
 		return new WriteTagResponsePayload(
 				"ok", uid, itemId, isil, country, parts, partNo, usageType, afi,
-				"Tag written successfully", null, sessionName, System.currentTimeMillis(), clientId
+				"Tag written successfully", null, sessionName, System.currentTimeMillis(), clientId, readerId
 		);
 	}
 
 	public static WriteTagResponsePayload error(String uid, String itemId, String errorMessage,
 												String sessionName, String clientId) {
+		return error(uid, itemId, errorMessage, sessionName, clientId, clientId);
+	}
+
+	public static WriteTagResponsePayload error(String uid, String itemId, String errorMessage,
+												String sessionName, String clientId, String readerId) {
 		return new WriteTagResponsePayload(
 				"error", uid, itemId, null, null, 0, 0, 0, null,
-				errorMessage, errorMessage, sessionName, System.currentTimeMillis(), clientId
+				errorMessage, errorMessage, sessionName, System.currentTimeMillis(), clientId, readerId
 		);
 	}
 
@@ -161,6 +207,17 @@ public class WriteTagResponsePayload extends BaseRfidPayload {
 			List<TagWriteResult> results,
 			String sessionName,
 			String clientId) {
+		return batchResult(requestedUids, successfulUids, failedUids, results, sessionName, clientId, clientId);
+	}
+
+	public static WriteTagResponsePayload batchResult(
+			List<String> requestedUids,
+			List<String> successfulUids,
+			Map<String, String> failedUids,
+			List<TagWriteResult> results,
+			String sessionName,
+			String clientId,
+			String readerId) {
 		List<String> reqUids = (requestedUids != null) ? requestedUids : Collections.emptyList();
 		List<String> succUids = (successfulUids != null) ? successfulUids : Collections.emptyList();
 		Map<String, String> failUids = (failedUids != null) ? failedUids : Collections.emptyMap();
@@ -191,7 +248,7 @@ public class WriteTagResponsePayload extends BaseRfidPayload {
 		return new WriteTagResponsePayload(
 				status, primaryUid, primaryItemId, null, null, 0, 0, 0, primaryAfi,
 				reqUids, succUids, failUids, resList, message, error, sessionName,
-				System.currentTimeMillis(), clientId
+				System.currentTimeMillis(), clientId, readerId
 		);
 	}
 

@@ -208,4 +208,293 @@ public class HeadlessConfigHelperTest {
         cfgInvalid.setProperty("debounce", -100L);
         assertEquals(HeadlessConfigHelper.DEFAULT_DEBOUNCE_MILLIS, HeadlessConfigHelper.getDebounceMillis(cfgInvalid));
     }
+
+    @Test
+    @DisplayName("Test getReaderConfigs with multi-reader XML configuration")
+    public void testGetReaderConfigsMultiReaderXml() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <readers>
+                        <reader>
+                            <reader_id>gate-01</reader_id>
+                            <readonly>false</readonly>
+                            <feig>
+                                <id>52E688</id>
+                                <type>usb</type>
+                            </feig>
+                            <debounce>2500</debounce>
+                            <sleep>200</sleep>
+                            <numblocks>16</numblocks>
+                        </reader>
+                        <reader>
+                            <reader_id>return-station</reader_id>
+                            <readonly>true</readonly>
+                            <feig>
+                                <id>52E689</id>
+                                <type>usb</type>
+                            </feig>
+                        </reader>
+                    </readers>
+                    <numblocks>12</numblocks>
+                    <sleep>300</sleep>
+                    <debounce>3000</debounce>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-multi-reader-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+
+        java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+        assertEquals(2, readerConfigs.size());
+
+        HeadlessReaderConfig r1 = readerConfigs.get(0);
+        assertEquals("gate-01", r1.getReaderId());
+        assertFalse(r1.isReadOnly());
+        assertEquals("52E688", r1.getDeviceId());
+        assertEquals("usb", r1.getType());
+        assertEquals(2500L, r1.getDebounceMillis());
+        assertEquals(200, r1.getSleepInterval());
+        assertEquals(16, r1.getNumBlocks());
+
+        // Test effective configuration of r1
+        org.apache.commons.configuration2.AbstractConfiguration c1 = r1.toConfiguration();
+        assertEquals("feig", c1.getString("device.select"));
+        assertEquals("52E688", c1.getString("device.feig.id"));
+        assertEquals("usb", c1.getString("device.feig.type"));
+        assertEquals(16, c1.getInt("numblocks"));
+        assertEquals(200, c1.getInt("sleep"));
+        assertEquals(2500L, c1.getLong("debounce"));
+
+        HeadlessReaderConfig r2 = readerConfigs.get(1);
+        assertEquals("return-station", r2.getReaderId());
+        assertTrue(r2.isReadOnly());
+        assertEquals("52E689", r2.getDeviceId());
+        assertEquals("usb", r2.getType());
+        // Defaults inherited from root config
+        assertEquals(3000L, r2.getDebounceMillis());
+        assertEquals(300, r2.getSleepInterval());
+        assertEquals(12, r2.getNumBlocks());
+    }
+
+    @Test
+    @DisplayName("Test getReaderConfigs fallback for single-device legacy configuration")
+    public void testGetReaderConfigsLegacyFallback() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <device>
+                        <select>feig</select>
+                        <feig>
+                            <id>52E100</id>
+                            <type>usb</type>
+                        </feig>
+                    </device>
+                    <wsbroker>
+                        <name>rfid:station-01</name>
+                    </wsbroker>
+                    <numblocks>14</numblocks>
+                    <sleep>400</sleep>
+                    <debounce>3500</debounce>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-legacy-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+
+        java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+        assertEquals(1, readerConfigs.size());
+
+        HeadlessReaderConfig r = readerConfigs.get(0);
+        assertEquals("rfid:station-01", r.getReaderId());
+        assertFalse(r.isReadOnly());
+        assertEquals("52E100", r.getDeviceId());
+        assertEquals("usb", r.getType());
+        assertEquals("feig", r.getReaderType());
+        assertEquals(3500L, r.getDebounceMillis());
+        assertEquals(400, r.getSleepInterval());
+        assertEquals(14, r.getNumBlocks());
+
+        org.apache.commons.configuration2.AbstractConfiguration c = r.toConfiguration();
+        assertEquals("feig", c.getString("device.select"));
+        assertEquals("52E100", c.getString("device.feig.id"));
+        assertEquals("usb", c.getString("device.feig.type"));
+    }
+
+    @Test
+    @DisplayName("Test getReaderConfigs with null or empty configuration")
+    public void testGetReaderConfigsNullOrEmpty() {
+        java.util.List<HeadlessReaderConfig> nullConfigs = HeadlessConfigHelper.getReaderConfigs(null);
+        assertEquals(1, nullConfigs.size());
+        assertEquals(HeadlessConfigHelper.DEFAULT_CLIENT_NAME, nullConfigs.get(0).getReaderId());
+        assertFalse(nullConfigs.get(0).isReadOnly());
+
+        BaseConfiguration emptyCfg = new BaseConfiguration();
+        java.util.List<HeadlessReaderConfig> emptyConfigs = HeadlessConfigHelper.getReaderConfigs(emptyCfg);
+        assertEquals(1, emptyConfigs.size());
+        assertEquals(HeadlessConfigHelper.DEFAULT_CLIENT_NAME, emptyConfigs.get(0).getReaderId());
+    }
+
+    @Test
+    @DisplayName("Test tagfeatures hierarchical structure preservation in toConfiguration()")
+    public void testTagFeaturesHierarchicalPreservationInToConfiguration() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <readers>
+                        <reader>
+                            <reader_id>gate-01</reader_id>
+                            <feig>
+                                <id>52E688</id>
+                            </feig>
+                        </reader>
+                    </readers>
+                    <tagfeatures>
+                        <tag>
+                            <name><![CDATA[ISO 15693 : NXP I-Code SLIX]]></name>
+                            <blocksize>4</blocksize>
+                            <usermemory>896</usermemory>
+                            <blocks>32</blocks>
+                        </tag>
+                        <tag>
+                            <name><![CDATA[ISO15693]]></name>
+                            <blocksize>4</blocksize>
+                            <usermemory>896</usermemory>
+                            <blocks>32</blocks>
+                        </tag>
+                    </tagfeatures>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-tagfeatures-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+
+        java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+        assertEquals(1, readerConfigs.size());
+
+        HeadlessReaderConfig r1 = readerConfigs.get(0);
+        org.apache.commons.configuration2.AbstractConfiguration effectiveConfig = r1.toConfiguration();
+
+        // Check that hierarchical tagfeatures keys are accessible with indices as required by ISO15693Feig
+        java.util.List<Object> tagNames = effectiveConfig.getList("tagfeatures.tag.name");
+        assertEquals(2, tagNames.size());
+        assertEquals("ISO 15693 : NXP I-Code SLIX", effectiveConfig.getString("tagfeatures.tag(0).name"));
+        assertEquals(896, effectiveConfig.getInt("tagfeatures.tag(0).usermemory"));
+        assertEquals(4, effectiveConfig.getInt("tagfeatures.tag(0).blocksize"));
+
+        assertEquals("ISO15693", effectiveConfig.getString("tagfeatures.tag(1).name"));
+        assertEquals(896, effectiveConfig.getInt("tagfeatures.tag(1).usermemory"));
+        assertEquals(4, effectiveConfig.getInt("tagfeatures.tag(1).blocksize"));
+    }
+
+    @Test
+    @DisplayName("Test reader-specific channels parsing and fallback to global channels")
+    public void testReaderSpecificChannelsParsing() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <wsbroker>
+                        <channels>
+                            <channel>global-ch1</channel>
+                            <channel>global-ch2</channel>
+                        </channels>
+                    </wsbroker>
+                    <readers>
+                        <reader>
+                            <reader_id>reader-custom</reader_id>
+                            <channels>
+                                <channel>custom-ch1</channel>
+                                <channel>custom-ch2</channel>
+                            </channels>
+                        </reader>
+                        <reader>
+                            <reader_id>reader-fallback</reader_id>
+                        </reader>
+                    </readers>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-channels-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        assertNotNull(config);
+
+        java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+        assertEquals(2, readerConfigs.size());
+
+        HeadlessReaderConfig customReader = readerConfigs.get(0);
+        assertEquals(2, customReader.getChannels().size());
+        assertTrue(customReader.getChannels().contains("custom-ch1"));
+        assertTrue(customReader.getChannels().contains("custom-ch2"));
+
+        HeadlessReaderConfig fallbackReader = readerConfigs.get(1);
+        assertEquals(2, fallbackReader.getChannels().size());
+        assertTrue(fallbackReader.getChannels().contains("global-ch1"));
+        assertTrue(fallbackReader.getChannels().contains("global-ch2"));
+    }
+
+    @Test
+    @DisplayName("Test loading actual inventory.xml and rfid-headless/inventory.xml files")
+    public void testActualInventoryXmlFiles() throws Exception {
+        String[] configPaths = new String[]{"../inventory.xml", "inventory.xml"};
+        for (String path : configPaths) {
+            File f = new File(path);
+            if (!f.exists()) {
+                // If run from root or module, check alternative
+                f = new File("rfid-headless/" + path);
+            }
+            if (f.exists()) {
+                XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(f.getAbsolutePath());
+                assertNotNull(config, "Configuration must load from " + f.getAbsolutePath());
+
+                java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
+                assertNotNull(readerConfigs);
+                assertEquals(1, readerConfigs.size());
+
+                HeadlessReaderConfig primaryReader = readerConfigs.get(0);
+                assertEquals("reader-01", primaryReader.getReaderId());
+                assertFalse(primaryReader.isReadOnly());
+                assertEquals("usb", primaryReader.getType());
+                assertEquals(12, primaryReader.getNumBlocks());
+                assertEquals(300, primaryReader.getSleepInterval());
+                assertEquals(3000, primaryReader.getDebounceMillis());
+                assertTrue(primaryReader.getChannels().contains("rfid"));
+                assertTrue(primaryReader.getChannels().contains("rfid:reader-01"));
+
+                // Verify hierarchical preservation in effective config
+                org.apache.commons.configuration2.AbstractConfiguration effective = primaryReader.toConfiguration();
+                assertNotNull(effective);
+                assertEquals("ISO 15693 : NXP I-Code SLIX", effective.getString("tagfeatures.tag(0).name"));
+                assertEquals(896, effective.getInt("tagfeatures.tag(0).usermemory"));
+                assertEquals(4, effective.getInt("tagfeatures.tag(0).blocksize"));
+                assertEquals(32, effective.getInt("tagfeatures.tag(0).blocks"));
+            }
+        }
+    }
 }
