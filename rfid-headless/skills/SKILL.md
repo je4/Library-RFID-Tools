@@ -1,6 +1,6 @@
 ---
 name: rfid-headless-websocket
-description: "AI Agent skill for integrating, operating, and communicating with the rfid-headless RFID daemon via the WSBroker WebSocket protocol. Covers event models (tag_read, tags_cleared), command dispatching (get_device_metadata, write_tag, write_afi), request-response correlation (id, refId, token), multi-reader addressing (readerId), ISO 28560-2 library transponder data models, and error recovery."
+description: "AI Agent skill for integrating, operating, and communicating with the rfid-headless RFID daemon via the WSBroker WebSocket protocol. Covers event models (tag_read, tags_cleared), command dispatching (get_device_metadata, write_tag, write_afi), request-response correlation (id, refId), multi-reader addressing (readerId), ISO 28560-2 library transponder data models, and error recovery."
 ---
 
 # RFID Headless WebSocket & WSBroker AI Agent Skill
@@ -11,7 +11,7 @@ description: "AI Agent skill for integrating, operating, and communicating with 
 
 The daemon connects as a WebSocket client to a **WSBroker** server. It operates bi-directionally:
 1. **Autonomous Outbound Broadcasts**: Continuously monitors the reader RF field and broadcasts real-time transponder scan events (`rfid:tag_read`) and plate clearance / disconnect events (`rfid:tags_cleared`) to configured WSBroker channels (`all`, `intern`, reader-specific channels).
-2. **Inbound Command Execution & Responses**: Receives JSON command messages (device diagnostics query, transponder block writing, AFI byte security toggling), executes them on the targeted reader instance, and returns correlated response events (`refId`, `token`).
+2. **Inbound Command Execution & Responses**: Receives JSON command messages (device diagnostics query, transponder block writing, AFI byte security toggling), executes them on the targeted reader instance, and returns correlated response events (`refId`).
 
 ---
 
@@ -32,9 +32,9 @@ Use this skill whenever an AI agent, autonomous controller, or client applicatio
 When generating code, validating payloads, or reasoning about `rfid-headless`, AI systems MUST adhere to the following strict rules:
 
 ### Rule 1: Separation of Envelope `id` / `refId` vs. Payload `readerId`
-* **`id`** (`string`, optional) in the outer JSON envelope: Unique message ID of the envelope.
-* **`refId`** (`string`, optional) in the outer JSON envelope: Set in responses to mirror the `id` of the originating request.
-* **`token`** (`string`, optional) in the outer JSON envelope: Application correlation token mirrored in responses.
+* **`id`** (`string`, optional/recommended) in the outer JSON envelope: Unique message ID of the request envelope.
+* **`refId`** (`string`, optional) in the outer JSON envelope: Set in responses to mirror the `id` of the originating request for RPC / waiter correlation.
+* **`token`** (`string`, optional) in the outer JSON envelope: Optional application correlation token; transparently mirrored in responses if provided, but not required for RPC request-response matching.
 * **`readerId`** (`string`) inside the `data` payload: Logical name of the physical RFID reader instance (e.g., `"gate-01"`, `"return-station"`). Never place `readerId` in the outer envelope header.
 
 ### Rule 2: Standard CamelCase Naming in JSON Payloads
@@ -46,8 +46,9 @@ When generating code, validating payloads, or reasoning about `rfid-headless`, A
 * **Never** send poll requests to read tags. Instead, listen for outbound `"rfid:tag_read"` and `"rfid:tags_cleared"` events on the subscribed channels.
 
 ### Rule 4: Request-Response Correlation
-* When sending a command (`rfid:get_device_metadata`, `rfid:write_tag`, `rfid:write_afi`), ALWAYS set both `"id"` and `"token"` in the request envelope.
-* The daemon automatically mirrors `"token"` and sets `"refId"` to the request's `"id"`.
+* When sending a command (`rfid:get_device_metadata`, `rfid:write_tag`, `rfid:write_afi`), set `"id"` in the request envelope (or allow client libraries like Go's `wsbrokerclient` to generate it automatically).
+* The daemon sets `"refId"` in the response envelope equal to the request's `"id"`.
+* The `"token"` field is entirely optional; WSBroker client correlation relies on `id` -> `refId`.
 
 ### Rule 5: Read-Only Safety & Exclusive Lock Protection
 * During write operations (`rfid:write_tag`, `rfid:write_afi`), the daemon temporarily pauses the target reader's scan loop (`executeExclusive`), programs the tag(s), sends a `rfid:tags_cleared` notification, and resumes scanning.
@@ -456,11 +457,27 @@ func HandleIncomingEvent(evt *Event) error {
 	case "rfid:tags_cleared":
 		fmt.Println("Reader plate cleared or tags removed.")
 	case "rfid:write_tag_response":
-		fmt.Printf("Write Tag Response received for RefID=%s, Token=%s\n", evt.RefID, evt.Token)
+		fmt.Printf("Write Tag Response received for RefID=%s\n", evt.RefID)
 	case "rfid:write_afi_response":
-		fmt.Printf("Write AFI Response received for RefID=%s, Token=%s\n", evt.RefID, evt.Token)
+		fmt.Printf("Write AFI Response received for RefID=%s\n", evt.RefID)
 	}
 	return nil
+}
+
+// Synchronous RPC request example using wsbrokerclient/pkg/client
+func SendWriteAfiRequest(ctx context.Context, c *client.Client, daemonTarget, readerId, uid, afiHex string) (*event.Event, error) {
+	cmdPayload := map[string]any{
+		"event":    "rfid:write_afi",
+		"readerId": readerId,
+		"uid":      uid,
+		"afi":      afiHex,
+	}
+	// Creates envelope; ID is generated automatically if omitted
+	reqEvt, err := event.NewMessageEvent(c.ClientName(), daemonTarget, cmdPayload)
+	if err != nil {
+		return nil, err
+	}
+	return c.Request(ctx, reqEvt)
 }
 ```
 
@@ -471,7 +488,7 @@ import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.event.Event;
 import java.util.Map;
 
-// Sending AFI write command
+// Sending AFI write command (id is required for correlation; token is optional)
 Event afiCmd = Event.createMessage("my-controller", "rfid:reader:01", Map.of(
     "event", "rfid:write_afi",
     "readerId", "gate-01",
@@ -479,7 +496,6 @@ Event afiCmd = Event.createMessage("my-controller", "rfid:reader:01", Map.of(
     "afi", "07"
 ));
 afiCmd.setId("cmd-afi-001");
-afiCmd.setToken("cmd-afi-001");
 
 client.send(afiCmd);
 ```
