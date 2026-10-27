@@ -188,7 +188,7 @@ class EventTest {
                 .build();
 
         String jsonWithRefId = event.toJson();
-        assertThat(jsonWithRefId).contains("\"ref_id\":\"parent-event-id-12345\"");
+        assertThat(jsonWithRefId).contains("\"refId\":\"parent-event-id-12345\"");
 
         Event deserialized = Event.fromJson(jsonWithRefId);
         assertThat(deserialized.getRefId()).isEqualTo("parent-event-id-12345");
@@ -200,15 +200,15 @@ class EventTest {
                 .build();
 
         String jsonWithoutRefId = eventWithoutRef.toJson();
-        assertThat(jsonWithoutRefId).doesNotContain("\"ref_id\"");
+        assertThat(jsonWithoutRefId).doesNotContain("\"refId\"");
 
         Event pongWithRef = Event.createPong("me", "sender", "token-99", "ping-id-777");
         assertThat(pongWithRef.getRefId()).isEqualTo("ping-id-777");
-        assertThat(pongWithRef.toJson()).contains("\"ref_id\":\"ping-id-777\"");
+        assertThat(pongWithRef.toJson()).contains("\"refId\":\"ping-id-777\"");
     }
 
     @Test
-    @DisplayName("Test createReply correlations for source, channel, token, ref_id and id")
+    @DisplayName("Test createReply correlations for source, channel, token, refId and id")
     void testCreateReply() {
         Event request = Event.builder()
                 .id("req-1234567890abcdef1234567890abcdef")

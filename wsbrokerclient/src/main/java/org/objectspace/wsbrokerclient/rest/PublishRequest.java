@@ -22,7 +22,7 @@ public class PublishRequest {
     @JsonProperty("id")
     private String id;
 
-    @JsonProperty("ref_id")
+    @JsonProperty("refId")
     private String refId;
 
     @JsonProperty("source")

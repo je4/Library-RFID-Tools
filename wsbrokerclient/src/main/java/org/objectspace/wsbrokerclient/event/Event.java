@@ -51,7 +51,7 @@ public class Event {
     @JsonProperty("id")
     private String id;
 
-    @JsonProperty("ref_id")
+    @JsonProperty("refId")
     private String refId;
 
     @JsonProperty("channel")
@@ -417,7 +417,7 @@ public class Event {
 
     /**
      * Creates a reply Event correlated with this request Event.
-     * Sets {@code id} to a newly generated unique identifier, {@code ref_id} to this event's {@code id},
+     * Sets {@code id} to a newly generated unique identifier, {@code refId} to this event's {@code id},
      * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
      *
      * @param replyType event type of the reply
@@ -430,7 +430,7 @@ public class Event {
 
     /**
      * Creates a reply Event correlated with this request Event.
-     * Sets {@code id} to a newly generated unique identifier, {@code ref_id} to this event's {@code id},
+     * Sets {@code id} to a newly generated unique identifier, {@code refId} to this event's {@code id},
      * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
      *
      * @param replyType string representation of event type
