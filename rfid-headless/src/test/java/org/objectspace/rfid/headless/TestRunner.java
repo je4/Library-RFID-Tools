@@ -1,6 +1,8 @@
 package org.objectspace.rfid.headless;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import java.lang.reflect.Method;
 
 public class TestRunner {
@@ -12,6 +14,9 @@ public class TestRunner {
             HeadlessReaderCallbackTest.class,
             HeadlessReaderScannerTest.class,
             HeadlessReaderTest.class,
+            WsBrokerPayloadParserTest.class,
+            HeadlessReaderRegistryTest.class,
+            RfidWriteServiceTest.class,
             HeadlessWsBrokerDispatcherTest.class
         };
 
@@ -39,6 +44,23 @@ public class TestRunner {
                             t.getCause().printStackTrace(System.err);
                         }
                         failed++;
+                    }
+                } else if (method.isAnnotationPresent(ParameterizedTest.class)) {
+                    if (method.isAnnotationPresent(CsvSource.class)) {
+                        CsvSource csv = method.getAnnotation(CsvSource.class);
+                        for (String val : csv.value()) {
+                            String[] parts = val.split(",");
+                            String arg1 = parts[0].trim().replaceAll("^'|'$", "");
+                            int arg2 = Integer.parseInt(parts[1].trim());
+                            try {
+                                method.invoke(instance, arg1, arg2);
+                                System.out.println("  [PASS] " + method.getName() + " (" + val + ")");
+                                passed++;
+                            } catch (Throwable t) {
+                                System.err.println("  [FAIL] " + method.getName() + " (" + val + ") -> " + t.getCause());
+                                failed++;
+                            }
+                        }
                     }
                 }
             }
