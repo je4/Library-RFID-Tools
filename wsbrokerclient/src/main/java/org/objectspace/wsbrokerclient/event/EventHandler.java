@@ -12,5 +12,5 @@ public interface EventHandler {
      * @param event the received event envelope
      * @throws Exception if handler processing fails
      */
-    void onEvent(Event event) throws Exception;
+    void onEvent(Event<?> event) throws Exception;
 }

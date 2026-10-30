@@ -17,14 +17,13 @@ public abstract class BaseRfidPayload {
 	@JsonIgnore
 	private final String session;
 
-	@JsonProperty("timestamp")
+	@JsonIgnore
 	private final long timestamp;
 
-	@JsonProperty("clientId")
+	@JsonIgnore
 	private final String clientId;
 
-	@JsonProperty("readerId")
-	@JsonAlias({"reader_id", "readerID"})
+	@JsonIgnore
 	private final String readerId;
 
 	protected BaseRfidPayload(String event, String session, long timestamp, String clientId) {
@@ -48,14 +47,17 @@ public abstract class BaseRfidPayload {
 		return session;
 	}
 
+	@JsonIgnore
 	public long getTimestamp() {
 		return timestamp;
 	}
 
+	@JsonIgnore
 	public String getClientId() {
 		return clientId;
 	}
 
+	@JsonIgnore
 	public String getReaderId() {
 		return readerId;
 	}

@@ -190,9 +190,12 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 		for (String channel : targetChannels) {
 			try {
-				Event event = Event.createMessage(clientName, channel, payload);
+				Event<BaseRfidPayload> event = Event.createMessage(clientName, channel, payload);
 				if (payload.getSession() != null && !payload.getSession().isBlank()) {
 					event.setSession(payload.getSession());
+				}
+				if (payload.getTimestamp() > 0) {
+					event.setTime(java.time.Instant.ofEpochMilli(payload.getTimestamp()));
 				}
 				if (summaryMsg != null && !summaryMsg.isBlank()) {
 					event.setMessage(summaryMsg);
@@ -299,7 +302,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 *
 	 * @param evt incoming message event
 	 */
-	public void handleIncomingMessage(Event evt) {
+	public void handleIncomingMessage(Event<?> evt) {
 		if (evt == null) {
 			return;
 		}
@@ -311,7 +314,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 		// Extract command / event name from payload data
 		String eventName = null;
-		JsonNode dataNode = evt.getData();
+		JsonNode dataNode = evt.getDataAs(JsonNode.class);
 		if (dataNode != null && dataNode.isObject()) {
 			if (dataNode.hasNonNull("event")) {
 				eventName = dataNode.get("event").asText();
@@ -387,7 +390,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		}
 	}
 
-	private void handleGeneralEvent(Event evt) {
+	private void handleGeneralEvent(Event<?> evt) {
 		if (evt == null) {
 			return;
 		}
@@ -466,7 +469,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	/**
 	 * Resolves the target reader instance from event target or payload data.
 	 */
-	public HeadlessReaderInstance resolveTargetReader(Event evt, JsonNode dataNode) {
+	public HeadlessReaderInstance resolveTargetReader(Event<?> evt, JsonNode dataNode) {
 		String explicitReaderId = extractRequestedReaderId(dataNode, evt);
 
 		if (explicitReaderId != null) {
@@ -494,7 +497,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	/**
 	 * Extracts requested reader ID from message payload data or event target.
 	 */
-	public String extractRequestedReaderId(JsonNode dataNode, Event evt) {
+	public String extractRequestedReaderId(JsonNode dataNode, Event<?> evt) {
 		if (dataNode != null && dataNode.isObject()) {
 			String[] readerKeys = {"reader_id", "readerId", "readerID", "reader", "target_reader", "targetReader"};
 			for (String k : readerKeys) {
@@ -1075,8 +1078,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		});
 	}
 
-	private void handleWriteTagCommand(Event evt, String target) {
-		JsonNode data = evt.getData();
+	private void handleWriteTagCommand(Event<?> evt, String target) {
+		JsonNode data = evt.getDataAs(JsonNode.class);
 		List<TagWriteItem> items = parseTagWriteItems(data);
 
 		HeadlessReaderInstance readerInstance = resolveTargetReader(evt, data);
@@ -1468,8 +1471,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		return null;
 	}
 
-	private void handleWriteAfiCommand(Event evt, String target) {
-		JsonNode data = evt.getData();
+	private void handleWriteAfiCommand(Event<?> evt, String target) {
+		JsonNode data = evt.getDataAs(JsonNode.class);
 		List<String> targetUids = new ArrayList<>();
 		Object afi = null;
 
@@ -1614,9 +1617,12 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 	private CompletableFuture<Void> sendReply(String target, String refId, BaseRfidPayload payload) {
 		if (active && client != null && target != null && !target.isBlank()) {
-			Event reply = Event.createMessage(clientName, target, payload);
+			Event<BaseRfidPayload> reply = Event.createMessage(clientName, target, payload);
 			if (payload.getSession() != null && !payload.getSession().isBlank()) {
 				reply.setSession(payload.getSession());
+			}
+			if (payload.getTimestamp() > 0) {
+				reply.setTime(java.time.Instant.ofEpochMilli(payload.getTimestamp()));
 			}
 			if (refId != null && !refId.isBlank()) {
 				reply.setRefId(refId);
@@ -1710,9 +1716,12 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			return CompletableFuture.completedFuture(null);
 		}
 		DeviceMetadataPayload payload = queryDeviceMetadata(inst);
-		Event event = Event.createMessage(clientName, target, payload);
+		Event<DeviceMetadataPayload> event = Event.createMessage(clientName, target, payload);
 		if (payload.getSession() != null && !payload.getSession().isBlank()) {
 			event.setSession(payload.getSession());
+		}
+		if (payload.getTimestamp() > 0) {
+			event.setTime(java.time.Instant.ofEpochMilli(payload.getTimestamp()));
 		}
 		if (refId != null && !refId.isBlank()) {
 			event.setRefId(refId);
@@ -1728,7 +1737,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 *
 	 * @param incomingEvent incoming event requesting metadata
 	 */
-	public void handleMetadataQuery(Event incomingEvent) {
+	public void handleMetadataQuery(Event<?> incomingEvent) {
 		if (incomingEvent == null) {
 			return;
 		}
@@ -1736,7 +1745,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			return;
 		}
 
-		JsonNode dataNode = incomingEvent.getData();
+		JsonNode dataNode = incomingEvent.getDataAs(JsonNode.class);
 		HeadlessReaderInstance targetReader = resolveTargetReader(incomingEvent, dataNode);
 		String reqReaderId = extractRequestedReaderId(dataNode, incomingEvent);
 

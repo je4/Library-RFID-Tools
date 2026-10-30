@@ -178,7 +178,7 @@ public class WSChatClient implements AutoCloseable {
     /**
      * Handles incoming events from the broker.
      */
-    private void handleIncomingEvent(Event evt) {
+    private void handleIncomingEvent(Event<?> evt) {
         if (evt == null) return;
 
         // Skip self messages to prevent duplicate echoes since sendMessage already stored them
@@ -197,12 +197,8 @@ public class WSChatClient implements AutoCloseable {
         String content = null;
         if (evt.getMessage() != null && !evt.getMessage().isBlank()) {
             content = evt.getMessage();
-        } else if (evt.getData() != null) {
-            if (evt.getData().isTextual()) {
-                content = evt.getData().asText();
-            } else {
-                content = evt.getData().toString();
-            }
+        } else if (evt.getDataAsString() != null) {
+            content = evt.getDataAsString();
         } else {
             content = "";
         }

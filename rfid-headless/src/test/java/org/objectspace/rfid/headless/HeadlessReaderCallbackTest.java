@@ -458,7 +458,7 @@ public class HeadlessReaderCallbackTest {
     }
 
     @Test
-    @DisplayName("Test readerId field serialization in payload classes")
+    @DisplayName("Test redundant metadata fields (readerId, clientId, session, timestamp) are omitted from payload JSON")
     public void testPayloadReaderIdSerialization() throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -468,24 +468,52 @@ public class HeadlessReaderCallbackTest {
                         "E00401001234", "ITEM-1", "AABB", "001596-0", "CH", true, "SLIX",
                         "sess-1", 1000L, "client-ws", "reader-gate-01", 1, 1, 1, 1, "07"
                 );
+        assertEquals("reader-gate-01", tagPayload.getReaderId());
+        assertEquals("client-ws", tagPayload.getClientId());
+        assertEquals("sess-1", tagPayload.getSession());
+        assertEquals(1000L, tagPayload.getTimestamp());
+
         String tagJson = mapper.writeValueAsString(tagPayload);
-        assertTrue(tagJson.contains("\"readerId\":\"reader-gate-01\""), "JSON must contain readerId: " + tagJson);
-        assertFalse(tagJson.contains("\"clientId\""), "JSON must not contain clientId: " + tagJson);
+        assertFalse(tagJson.contains("\"readerId\""), "JSON must not contain redundant readerId in payload: " + tagJson);
+        assertFalse(tagJson.contains("\"clientId\""), "JSON must not contain redundant clientId: " + tagJson);
+        assertFalse(tagJson.contains("\"session\""), "JSON must not contain redundant session: " + tagJson);
+        assertFalse(tagJson.contains("\"timestamp\""), "JSON must not contain redundant timestamp: " + tagJson);
+        assertTrue(tagJson.contains("\"uid\":\"E00401001234\""));
+        assertTrue(tagJson.contains("\"itemId\":\"ITEM-1\""));
 
         // 2. TagsClearedPayload
         org.objectspace.rfid.headless.payload.TagsClearedPayload clearPayload =
                 new org.objectspace.rfid.headless.payload.TagsClearedPayload("sess-1", 1000L, "client-ws", "reader-gate-02");
+        assertEquals("reader-gate-02", clearPayload.getReaderId());
+        assertEquals("client-ws", clearPayload.getClientId());
+        assertEquals("sess-1", clearPayload.getSession());
+        assertEquals(1000L, clearPayload.getTimestamp());
+
         String clearJson = mapper.writeValueAsString(clearPayload);
-        assertTrue(clearJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + clearJson);
-        assertFalse(clearJson.contains("\"clientId\""), "JSON must not contain clientId: " + clearJson);
+        assertFalse(clearJson.contains("\"readerId\""), "JSON must not contain redundant readerId in payload: " + clearJson);
+        assertFalse(clearJson.contains("\"clientId\""), "JSON must not contain redundant clientId: " + clearJson);
+        assertFalse(clearJson.contains("\"session\""), "JSON must not contain redundant session: " + clearJson);
+        assertFalse(clearJson.contains("\"timestamp\""), "JSON must not contain redundant timestamp: " + clearJson);
+        assertTrue(clearJson.contains("\"event\":\"rfid:tags_cleared\""));
+        assertTrue(clearJson.contains("\"status\":\"empty\""));
 
         // 3. DeviceMetadataPayload
         org.objectspace.rfid.headless.payload.DeviceMetadataPayload metaPayload =
                 new org.objectspace.rfid.headless.payload.DeviceMetadataPayload(
                         "52E688", "MR102", "Desc", "sess-1", 1000L, "client-ws", "reader-gate-03"
                 );
+        assertEquals("reader-gate-03", metaPayload.getReaderId());
+        assertEquals("client-ws", metaPayload.getClientId());
+        assertEquals("sess-1", metaPayload.getSession());
+        assertEquals(1000L, metaPayload.getTimestamp());
+
         String metaJson = mapper.writeValueAsString(metaPayload);
-        assertTrue(metaJson.contains("\"readerId\":\"reader-gate-03\""), "JSON must contain readerId: " + metaJson);
+        assertFalse(metaJson.contains("\"readerId\""), "JSON must not contain redundant readerId in payload: " + metaJson);
+        assertFalse(metaJson.contains("\"clientId\""), "JSON must not contain redundant clientId: " + metaJson);
+        assertFalse(metaJson.contains("\"session\""), "JSON must not contain redundant session: " + metaJson);
+        assertFalse(metaJson.contains("\"timestamp\""), "JSON must not contain redundant timestamp: " + metaJson);
+        assertTrue(metaJson.contains("\"deviceId\":\"52E688\""));
+        assertTrue(metaJson.contains("\"deviceType\":\"MR102\""));
 
         // 4. WriteTagResponsePayload
         org.objectspace.rfid.headless.payload.WriteTagResponsePayload writeTagPayload =
@@ -493,16 +521,28 @@ public class HeadlessReaderCallbackTest {
                         "E00401001234", "ITEM-1", "001596-0", "CH", 1, 1, 1, "07",
                         "sess-1", "client-ws", "reader-gate-01"
                 );
+        assertEquals("reader-gate-01", writeTagPayload.getReaderId());
+        assertEquals("client-ws", writeTagPayload.getClientId());
+        assertEquals("sess-1", writeTagPayload.getSession());
+
         String writeTagJson = mapper.writeValueAsString(writeTagPayload);
-        assertTrue(writeTagJson.contains("\"readerId\":\"reader-gate-01\""), "JSON must contain readerId: " + writeTagJson);
+        assertFalse(writeTagJson.contains("\"readerId\""), "JSON must not contain redundant readerId in payload: " + writeTagJson);
+        assertFalse(writeTagJson.contains("\"clientId\""), "JSON must not contain redundant clientId: " + writeTagJson);
+        assertFalse(writeTagJson.contains("\"session\""), "JSON must not contain redundant session: " + writeTagJson);
 
         // 5. WriteAfiResponsePayload
         org.objectspace.rfid.headless.payload.WriteAfiResponsePayload writeAfiPayload =
                 org.objectspace.rfid.headless.payload.WriteAfiResponsePayload.success(
                         "E00401001234", "07", "sess-1", "client-ws", "reader-gate-02"
                 );
+        assertEquals("reader-gate-02", writeAfiPayload.getReaderId());
+        assertEquals("client-ws", writeAfiPayload.getClientId());
+        assertEquals("sess-1", writeAfiPayload.getSession());
+
         String writeAfiJson = mapper.writeValueAsString(writeAfiPayload);
-        assertTrue(writeAfiJson.contains("\"readerId\":\"reader-gate-02\""), "JSON must contain readerId: " + writeAfiJson);
+        assertFalse(writeAfiJson.contains("\"readerId\""), "JSON must not contain redundant readerId in payload: " + writeAfiJson);
+        assertFalse(writeAfiJson.contains("\"clientId\""), "JSON must not contain redundant clientId: " + writeAfiJson);
+        assertFalse(writeAfiJson.contains("\"session\""), "JSON must not contain redundant session: " + writeAfiJson);
     }
 
     @Test

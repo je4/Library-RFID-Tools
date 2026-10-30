@@ -15,5 +15,5 @@ public interface TypedEventHandler<T> {
      * @param data  the deserialized data payload
      * @throws Exception if handler processing fails
      */
-    void onEvent(Event event, T data) throws Exception;
+    void onEvent(Event<?> event, T data) throws Exception;
 }

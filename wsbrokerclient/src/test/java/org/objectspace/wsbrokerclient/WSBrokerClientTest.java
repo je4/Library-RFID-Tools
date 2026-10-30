@@ -100,14 +100,14 @@ class WSBrokerClientTest {
     @Test
     @DisplayName("Test queryDeviceMetadata creates valid message event with rfid:get_device_metadata command payload")
     void testQueryDeviceMetadataEvent() {
-        Event msg = Event.createMessage("dashboard", "reader-01", java.util.Map.of("event", "rfid:get_device_metadata"));
+        Event<java.util.Map<String, Object>> msg = Event.createMessage("dashboard", "reader-01", java.util.Map.of("event", "rfid:get_device_metadata"));
         assertThat(msg.getType()).isEqualTo("message");
         assertThat(msg.getSource()).isEqualTo("dashboard");
         assertThat(msg.getTarget()).isEqualTo("reader-01");
-        assertThat(msg.getData().get("event").asText()).isEqualTo("rfid:get_device_metadata");
+        assertThat(msg.getData().get("event")).isEqualTo("rfid:get_device_metadata");
 
         String json = msg.toJson();
-        Event deserialized = Event.fromJson(json);
+        org.objectspace.wsbrokerclient.event.RawEvent deserialized = Event.fromJson(json);
         assertThat(deserialized.getSource()).isEqualTo("dashboard");
         assertThat(deserialized.getTarget()).isEqualTo("reader-01");
         assertThat(deserialized.getType()).isEqualTo("message");

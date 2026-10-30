@@ -10,6 +10,7 @@ import org.objectspace.certmanager.CertManager;
 import org.objectspace.certmanager.loader.CertLoader;
 import org.objectspace.certmanager.model.KeyCertPair;
 import org.objectspace.wsbrokerclient.config.WSClientConfig;
+import org.objectspace.wsbrokerclient.event.BaseEvent;
 import org.objectspace.wsbrokerclient.event.Event;
 import org.objectspace.wsbrokerclient.event.EventHandler;
 import org.objectspace.wsbrokerclient.event.EventType;
@@ -411,10 +412,10 @@ public class WSBrokerClient implements AutoCloseable {
      * @param event the event to send
      * @return CompletableFuture completing when message is transmitted
      */
-    public CompletableFuture<Void> send(Event event) {
+    public CompletableFuture<Void> send(BaseEvent event) {
         Objects.requireNonNull(event, "Event cannot be null");
         if (event.getId() == null || event.getId().isBlank()) {
-            event.setId(Event.generateEventId());
+            event.setId(BaseEvent.generateEventId());
         }
         if (event.getSource() == null || event.getSource().isBlank()) {
             event.setSource(clientName);
@@ -430,6 +431,16 @@ public class WSBrokerClient implements AutoCloseable {
 
         String json = event.toJson();
         return ws.sendText(json, true).thenApply(r -> null);
+    }
+
+    /**
+     * Sends an Event envelope over the WebSocket connection (convenience overload).
+     *
+     * @param event the event to send
+     * @return CompletableFuture completing when message is transmitted
+     */
+    public CompletableFuture<Void> send(Event event) {
+        return send((BaseEvent) event);
     }
 
     /**
@@ -653,7 +664,7 @@ public class WSBrokerClient implements AutoCloseable {
         }
     }
 
-    void handleIncomingEvent(Event evt) {
+    void handleIncomingEvent(Event<?> evt) {
         log.debug("Received event: type='{}', source='{}', target='{}'", evt.getType(), evt.getSource(), evt.getTarget());
 
         // Heartbeat auto-reply
@@ -684,8 +695,8 @@ public class WSBrokerClient implements AutoCloseable {
                     String errorMsg = "Unknown NTP error";
                     if (evt.getError() != null && !evt.getError().isBlank()) {
                         errorMsg = evt.getError();
-                    } else if (evt.getData() != null) {
-                        errorMsg = evt.getData().isTextual() ? evt.getData().asText() : evt.getData().toString();
+                    } else if (evt.getDataAsString() != null) {
+                        errorMsg = evt.getDataAsString();
                     }
                     future.completeExceptionally(new RuntimeException("NTP broker error: " + errorMsg));
                 } else {
@@ -739,29 +750,38 @@ public class WSBrokerClient implements AutoCloseable {
         });
     }
 
-    private byte[] extractNtpBytes(JsonNode data) {
-        if (data == null || data.isNull()) {
+    private byte[] extractNtpBytes(Object data) {
+        if (data == null) {
             throw new IllegalArgumentException("NTP data payload is missing");
         }
-        if (data.isBinary()) {
-            try {
-                return data.binaryValue();
-            } catch (Exception ignored) {}
-        }
-        if (data.isTextual()) {
-            return Base64.getDecoder().decode(data.asText());
-        }
-        if (data.isArray()) {
-            byte[] bytes = new byte[data.size()];
-            for (int i = 0; i < data.size(); i++) {
-                bytes[i] = (byte) data.get(i).asInt();
-            }
+        if (data instanceof byte[] bytes) {
             return bytes;
         }
-        throw new IllegalArgumentException("Unsupported NTP payload format: " + data.getNodeType());
+        if (data instanceof String str) {
+            return Base64.getDecoder().decode(str);
+        }
+        if (data instanceof JsonNode node) {
+            if (node.isBinary()) {
+                try {
+                    return node.binaryValue();
+                } catch (Exception ignored) {}
+            }
+            if (node.isTextual()) {
+                return Base64.getDecoder().decode(node.asText());
+            }
+            if (node.isArray()) {
+                byte[] bytes = new byte[node.size()];
+                for (int i = 0; i < node.size(); i++) {
+                    bytes[i] = (byte) node.get(i).asInt();
+                }
+                return bytes;
+            }
+            throw new IllegalArgumentException("Unsupported NTP payload format: " + node.getNodeType());
+        }
+        throw new IllegalArgumentException("Unsupported NTP payload format: " + data.getClass().getName());
     }
 
-    private void invokeHandler(EventHandler handler, Event event) {
+    private void invokeHandler(EventHandler handler, Event<?> event) {
         try {
             handler.onEvent(event);
         } catch (Exception e) {

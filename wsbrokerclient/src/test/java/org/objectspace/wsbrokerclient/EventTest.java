@@ -40,7 +40,7 @@ class EventTest {
         assertThat(json).contains("\"name\":\"ItemA\"");
         assertThat(json).contains("\"count\":42");
 
-        Event deserialized = Event.fromJson(json);
+        Event<?> deserialized = Event.fromJson(json);
         assertThat(deserialized.getSource()).isEqualTo("sensor-1");
         assertThat(deserialized.getTarget()).isEqualTo("hub-main");
         assertThat(deserialized.getType()).isEqualTo("message");
@@ -66,10 +66,10 @@ class EventTest {
                 "group2", List.of(4, 5, 6)
         );
 
-        Event event = Event.createMessage("sourceNode", "targetGroup", dataMap);
+        Event<Map<String, List<Integer>>> event = Event.createMessage("sourceNode", "targetGroup", dataMap);
         String json = event.toJson();
 
-        Event parsed = Event.fromJson(json);
+        Event<?> parsed = Event.fromJson(json);
         Map<String, List<Integer>> result = parsed.getDataAs(new TypeReference<Map<String, List<Integer>>>() {});
 
         assertThat(result).isNotNull();
