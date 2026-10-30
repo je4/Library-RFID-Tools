@@ -149,6 +149,7 @@ class RESTClientTest {
         assertThat(response.getTarget()).isEqualTo("all-clients");
     }
 
+
     @Test
     @DisplayName("Test RESTClient PublishToChannel endpoint")
     void testPublishToChannel() throws Exception {

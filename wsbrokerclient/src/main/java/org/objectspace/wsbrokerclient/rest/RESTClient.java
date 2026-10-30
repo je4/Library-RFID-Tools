@@ -119,30 +119,9 @@ public class RESTClient implements AutoCloseable {
      */
     public PublishResponse publish(Event event) throws IOException, InterruptedException {
         Objects.requireNonNull(event, "Event cannot be null");
-        PublishRequest req = new PublishRequest()
-                .setId(event.getId())
-                .setRefId(event.getRefId())
-                .setSource(event.getSource())
-                .setTarget(event.getTarget())
-                .setType(event.getType())
-                .setSession(event.getSession())
-                .setData(event.getData())
-                .setMessage(event.getMessage());
-        return publish(req);
+        return doRequest("POST", "/publish", event, PublishResponse.class);
     }
 
-    /**
-     * Publishes a raw PublishRequest payload via the WSBroker REST endpoint.
-     *
-     * @param request the publish request
-     * @return publish response from broker
-     * @throws IOException          if communication or serialization fails
-     * @throws InterruptedException if interrupted during request
-     */
-    public PublishResponse publish(PublishRequest request) throws IOException, InterruptedException {
-        Objects.requireNonNull(request, "PublishRequest cannot be null");
-        return doRequest("POST", "/publish", request, PublishResponse.class);
-    }
 
     /**
      * Publishes a message payload directly to a specific channel endpoint.
@@ -158,14 +137,9 @@ public class RESTClient implements AutoCloseable {
         if (channel == null || channel.isBlank()) {
             throw new IllegalArgumentException("Channel cannot be empty");
         }
-        PublishRequest request = new PublishRequest()
-                .setSource(source)
-                .setTarget(channel.trim())
-                .setType(EventType.CLIENT_MESSAGE.getValue())
-                .setData(payload);
-
+        Event event = Event.createMessage(source, channel.trim(), payload);
         String path = "/channel/" + urlEncode(channel.trim()) + "/publish";
-        return doRequest("POST", path, request, PublishResponse.class);
+        return doRequest("POST", path, event, PublishResponse.class);
     }
 
     /**
