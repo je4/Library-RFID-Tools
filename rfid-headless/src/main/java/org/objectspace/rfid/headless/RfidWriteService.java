@@ -1,10 +1,12 @@
 package org.objectspace.rfid.headless;
 
 import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
-import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
-import org.objectspace.rfid.headless.payload.WriteTagResponsePayload;
-import org.objectspace.rfid.headless.payload.WriteTagResponsePayload.TagWriteResult;
+import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
+import org.objectspace.rfid.headless.payload.WriteAfiResponseData.TagAfiResult;
+import org.objectspace.rfid.headless.payload.WriteTagResponseData;
+import org.objectspace.rfid.headless.payload.WriteTagResponseData.TagWriteResult;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.event.Event;
 import org.slf4j.Logger;
@@ -33,7 +35,7 @@ public class RfidWriteService {
 		this.clientName = clientName;
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTagsOnReader(
+	public CompletableFuture<WriteTagResponseData> writeTagsOnReader(
 			HeadlessReaderInstance readerInstance,
 			List<TagWriteItem> items,
 			String target,
@@ -41,15 +43,15 @@ public class RfidWriteService {
 			String refId,
 			WSBrokerClient client,
 			boolean active) {
-		CompletableFuture<WriteTagResponsePayload> future = CompletableFuture.supplyAsync(() -> {
+		CompletableFuture<WriteTagResponseData> future = CompletableFuture.supplyAsync(() -> {
 			String effectiveReaderId = readerInstance != null ? readerInstance.getReaderId() : clientName;
 
 			if (readerInstance != null && readerInstance.isReadOnly()) {
 				logger.warn("[WSBroker] Rejecting writeTags on read-only reader '{}'", effectiveReaderId);
 				String primaryUid = (items != null && !items.isEmpty()) ? items.get(0).getUid() : "";
 				String primaryItemId = (items != null && !items.isEmpty()) ? items.get(0).getItemId() : "";
-				return WriteTagResponsePayload.error(primaryUid, primaryItemId,
-						"Reader '" + effectiveReaderId + "' is configured as read-only", "", clientName, effectiveReaderId);
+				return WriteTagResponseData.error(primaryUid, primaryItemId,
+						"Reader '" + effectiveReaderId + "' is configured as read-only", effectiveReaderId);
 			}
 
 			List<TagWriteItem> effectiveItems = new ArrayList<>();
@@ -62,7 +64,7 @@ public class RfidWriteService {
 			}
 
 			if (effectiveItems.isEmpty()) {
-				return WriteTagResponsePayload.error("", "", "No tag items provided for write operation", "", clientName, effectiveReaderId);
+				return WriteTagResponseData.error("", "", "No tag items provided for write operation", effectiveReaderId);
 			}
 
 			List<String> targetUids = new ArrayList<>();
@@ -145,15 +147,15 @@ public class RfidWriteService {
 					TagWriteItem single = effectiveItems.get(0);
 					Byte parsedAfi = WsBrokerPayloadParser.parseAfi(single.getAfi());
 					String afiHex = WsBrokerPayloadParser.formatAfiHex(parsedAfi);
-					return WriteTagResponsePayload.success(single.getUid(), single.getItemId(), single.getIsil(),
+					return WriteTagResponseData.success(single.getUid(), single.getItemId(), single.getIsil(),
 							single.getCountry(), single.getParts(), single.getPartNo(), single.getUsageType(),
-							afiHex, "", clientName, effectiveReaderId);
+							afiHex, effectiveReaderId);
 				} else if (effectiveItems.size() == 1 && !failedUids.isEmpty()) {
 					TagWriteItem single = effectiveItems.get(0);
 					String err = failedUids.get(single.getUid());
-					return WriteTagResponsePayload.error(single.getUid(), single.getItemId(), err, "", clientName, effectiveReaderId);
+					return WriteTagResponseData.error(single.getUid(), single.getItemId(), err, effectiveReaderId);
 				} else {
-					return WriteTagResponsePayload.batchResult(targetUids, successfulUids, failedUids, results, "", clientName, effectiveReaderId);
+					return WriteTagResponseData.batchResult(targetUids, successfulUids, failedUids, results, effectiveReaderId);
 				}
 			} catch (Exception e) {
 				logger.error("[WSBroker] Error executing exclusive batch write tags on reader '{}': {}", effectiveReaderId, e.getMessage(), e);
@@ -169,29 +171,27 @@ public class RfidWriteService {
 				}
 				if (effectiveItems.size() == 1) {
 					TagWriteItem single = effectiveItems.get(0);
-					return WriteTagResponsePayload.error(single.getUid(), single.getItemId(), e.getMessage(), "", clientName, effectiveReaderId);
+					return WriteTagResponseData.error(single.getUid(), single.getItemId(), e.getMessage(), effectiveReaderId);
 				}
-				return WriteTagResponsePayload.batchResult(targetUids, successfulUids, failedUids, results, "", clientName, effectiveReaderId);
+				return WriteTagResponseData.batchResult(targetUids, successfulUids, failedUids, results, effectiveReaderId);
 			}
 		});
 
-		return future.thenCompose(payload -> {
+		return future.thenCompose(data -> {
 			if (active && client != null && target != null && !target.isBlank()) {
-				Event reply = Event.createMessage(clientName, target, payload);
-				if (payload.getSession() != null && !payload.getSession().isBlank()) {
-					reply.setSession(payload.getSession());
-				}
+				RfidPayload<WriteTagResponseData> payload = RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, data);
+				Event<RfidPayload<WriteTagResponseData>> reply = Event.createMessage(clientName, target, payload);
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
 				}
-				reply.setMessage(payload.getSummaryMessage());
-				return client.send(reply).thenApply(v -> payload);
+				reply.setMessage(data.getSummaryMessage());
+				return client.send(reply).thenApply(v -> data);
 			}
-			return CompletableFuture.completedFuture(payload);
+			return CompletableFuture.completedFuture(data);
 		});
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfiOnReader(
+	public CompletableFuture<WriteAfiResponseData> writeAfiOnReader(
 			HeadlessReaderInstance readerInstance,
 			List<String> uids,
 			Object afiObj,
@@ -200,7 +200,7 @@ public class RfidWriteService {
 			String refId,
 			WSBrokerClient client,
 			boolean active) {
-		CompletableFuture<WriteAfiResponsePayload> future = CompletableFuture.supplyAsync(() -> {
+		CompletableFuture<WriteAfiResponseData> future = CompletableFuture.supplyAsync(() -> {
 			String effectiveReaderId = readerInstance != null ? readerInstance.getReaderId() : clientName;
 
 			Byte parsedAfi = WsBrokerPayloadParser.parseAfi(afiObj);
@@ -209,8 +209,8 @@ public class RfidWriteService {
 			if (readerInstance != null && readerInstance.isReadOnly()) {
 				logger.warn("[WSBroker] Rejecting writeAfi on read-only reader '{}'", effectiveReaderId);
 				String primaryUid = (uids != null && !uids.isEmpty()) ? uids.get(0) : "";
-				return WriteAfiResponsePayload.error(primaryUid, (afiHex != null ? afiHex : ""),
-						"Reader '" + effectiveReaderId + "' is configured as read-only", "", clientName, effectiveReaderId);
+				return WriteAfiResponseData.error(primaryUid, (afiHex != null ? afiHex : ""),
+						"Reader '" + effectiveReaderId + "' is configured as read-only", effectiveReaderId);
 			}
 
 			List<String> targetUids = new ArrayList<>();
@@ -227,7 +227,7 @@ public class RfidWriteService {
 
 			if (parsedAfi == null) {
 				String primaryUid = !targetUids.isEmpty() ? targetUids.get(0) : "";
-				return WriteAfiResponsePayload.error(primaryUid, null, "AFI parameter is missing or invalid", "", clientName, effectiveReaderId);
+				return WriteAfiResponseData.error(primaryUid, null, "AFI parameter is missing or invalid", effectiveReaderId);
 			}
 
 			HeadlessReaderCallback effectiveCallback = readerInstance != null ? readerInstance.getCallback() : registry.getCallback();
@@ -276,7 +276,7 @@ public class RfidWriteService {
 					registry.executeExclusive(task);
 				}
 
-				return WriteAfiResponsePayload.batchResult(targetUids, successfulUids, failedUids, afiHex, "", clientName, effectiveReaderId);
+				return WriteAfiResponseData.batchResult(targetUids, successfulUids, failedUids, afiHex, effectiveReaderId);
 			} catch (Exception e) {
 				logger.error("[WSBroker] Error executing exclusive batch write AFI on reader '{}': {}", effectiveReaderId, e.getMessage(), e);
 				for (String effectiveUid : targetUids) {
@@ -284,23 +284,21 @@ public class RfidWriteService {
 						failedUids.put(effectiveUid, e.getMessage() != null ? e.getMessage() : "Reader error");
 					}
 				}
-				return WriteAfiResponsePayload.batchResult(targetUids, successfulUids, failedUids, afiHex, "", clientName, effectiveReaderId);
+				return WriteAfiResponseData.batchResult(targetUids, successfulUids, failedUids, afiHex, effectiveReaderId);
 			}
 		});
 
-		return future.thenCompose(payload -> {
+		return future.thenCompose(data -> {
 			if (active && client != null && target != null && !target.isBlank()) {
-				Event reply = Event.createMessage(clientName, target, payload);
-				if (payload.getSession() != null && !payload.getSession().isBlank()) {
-					reply.setSession(payload.getSession());
-				}
+				RfidPayload<WriteAfiResponseData> payload = RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, data);
+				Event<RfidPayload<WriteAfiResponseData>> reply = Event.createMessage(clientName, target, payload);
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
 				}
-				reply.setMessage(payload.getSummaryMessage());
-				return client.send(reply).thenApply(v -> payload);
+				reply.setMessage(data.getSummaryMessage());
+				return client.send(reply).thenApply(v -> data);
 			}
-			return CompletableFuture.completedFuture(payload);
+			return CompletableFuture.completedFuture(data);
 		});
 	}
 }

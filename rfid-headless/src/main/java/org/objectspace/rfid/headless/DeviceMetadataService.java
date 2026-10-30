@@ -1,6 +1,7 @@
 package org.objectspace.rfid.headless;
 
-import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
+import org.objectspace.rfid.headless.payload.DeviceMetadataData;
+import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.event.Event;
@@ -10,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Service for querying reader hardware metadata and sending DeviceMetadataPayload responses.
+ * Service for querying reader hardware metadata and sending DeviceMetadataData responses.
  */
 public class DeviceMetadataService {
 
@@ -22,7 +23,7 @@ public class DeviceMetadataService {
 		this.clientName = clientName;
 	}
 
-	public DeviceMetadataPayload queryDeviceMetadata(HeadlessReaderInstance inst, ISO15693Reader fallbackReader) {
+	public DeviceMetadataData queryDeviceMetadata(HeadlessReaderInstance inst, ISO15693Reader fallbackReader) {
 		if (inst != null) {
 			String devId = inst.getDeviceId();
 			String devType = inst.getDeviceType();
@@ -30,7 +31,7 @@ public class DeviceMetadataService {
 			if (initDesc == null || initDesc.isBlank()) {
 				initDesc = inst.getDeviceInfo();
 			}
-			return new DeviceMetadataPayload(devId, devType, initDesc, "", System.currentTimeMillis(), clientName, inst.getReaderId(), "ok", DeviceMetadataPayload.EVENT_RESPONSE);
+			return new DeviceMetadataData(devId, devType, initDesc, inst.getReaderId(), "ok");
 		}
 
 		String devId = (fallbackReader != null) ? fallbackReader.getDeviceId() : null;
@@ -40,7 +41,7 @@ public class DeviceMetadataService {
 			initDesc = (fallbackReader != null) ? fallbackReader.getDeviceInfo() : null;
 		}
 
-		return new DeviceMetadataPayload(devId, devType, initDesc, "", System.currentTimeMillis(), clientName);
+		return new DeviceMetadataData(devId, devType, initDesc, null, "ok");
 	}
 
 	public CompletableFuture<Void> sendDeviceMetadata(String target, String refId, HeadlessReaderInstance inst,
@@ -48,20 +49,15 @@ public class DeviceMetadataService {
 		if (!active || client == null) {
 			return CompletableFuture.completedFuture(null);
 		}
-		DeviceMetadataPayload payload = queryDeviceMetadata(inst, fallbackReader);
-		Event<DeviceMetadataPayload> event = Event.createMessage(clientName, target, payload);
-		if (payload.getSession() != null && !payload.getSession().isBlank()) {
-			event.setSession(payload.getSession());
-		}
-		if (payload.getTimestamp() > 0) {
-			event.setTime(java.time.Instant.ofEpochMilli(payload.getTimestamp()));
-		}
+		DeviceMetadataData data = queryDeviceMetadata(inst, fallbackReader);
+		RfidPayload<DeviceMetadataData> payload = RfidPayload.of(DeviceMetadataData.EVENT_RESPONSE, data);
+		Event<RfidPayload<DeviceMetadataData>> event = Event.createMessage(clientName, target, payload);
 		if (refId != null && !refId.isBlank()) {
 			event.setRefId(refId);
 		}
-		event.setMessage(payload.getSummaryMessage());
+		event.setMessage(data.getSummaryMessage());
 		logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', readerId: '{}', refId: '{}')",
-				target, payload.getDeviceId(), payload.getDeviceType(), payload.getReaderId(), refId);
+				target, data.deviceId(), data.deviceType(), data.readerId(), refId);
 		return client.send(event);
 	}
 }

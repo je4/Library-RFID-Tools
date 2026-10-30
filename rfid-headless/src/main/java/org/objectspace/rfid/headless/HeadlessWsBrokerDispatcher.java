@@ -13,13 +13,13 @@ import org.objectspace.certmanager.CertManager;
 import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.loader.CertLoader;
 import org.objectspace.rfid.FinnishDataModel;
-import org.objectspace.rfid.headless.payload.BaseRfidPayload;
-import org.objectspace.rfid.headless.payload.DeviceMetadataPayload;
-import org.objectspace.rfid.headless.payload.TagReadPayload;
+import org.objectspace.rfid.headless.payload.DeviceMetadataData;
+import org.objectspace.rfid.headless.payload.RfidPayload;
+import org.objectspace.rfid.headless.payload.TagReadData;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
-import org.objectspace.rfid.headless.payload.TagsClearedPayload;
-import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
-import org.objectspace.rfid.headless.payload.WriteTagResponsePayload;
+import org.objectspace.rfid.headless.payload.TagsClearedData;
+import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
+import org.objectspace.rfid.headless.payload.WriteTagResponseData;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.WSBroker;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
@@ -205,30 +205,30 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	}
 
 	/**
-	 * Dispatches an RFID event payload to configured WSBroker channels.
-	 * If the payload contains a readerId with dedicated channels, only those channels are targeted.
+	 * Dispatches a strongly-typed RFID event payload to configured WSBroker channels.
+	 * If readerId is present with dedicated channels, only those channels are targeted.
 	 * Otherwise, falls back to the globally configured channels.
 	 */
-	public void dispatch(BaseRfidPayload payload) {
-		if (!active || client == null || payload == null) {
+	public <T> void dispatch(String eventName, T data, String summaryMsg, String session, long timestamp, String readerId) {
+		if (!active || client == null || data == null) {
 			return;
 		}
 
-		List<String> targetChannels = getTargetChannelsForPayload(payload);
+		List<String> targetChannels = getTargetChannelsForReader(readerId);
 		if (targetChannels.isEmpty()) {
 			return;
 		}
 
-		String summaryMsg = payload.getSummaryMessage();
+		RfidPayload<T> payload = RfidPayload.of(eventName, data);
 
 		for (String channel : targetChannels) {
 			try {
-				Event<BaseRfidPayload> event = Event.createMessage(clientName, channel, payload);
-				if (payload.getSession() != null && !payload.getSession().isBlank()) {
-					event.setSession(payload.getSession());
+				Event<RfidPayload<T>> event = Event.createMessage(clientName, channel, payload);
+				if (session != null && !session.isBlank()) {
+					event.setSession(session);
 				}
-				if (payload.getTimestamp() > 0) {
-					event.setTime(java.time.Instant.ofEpochMilli(payload.getTimestamp()));
+				if (timestamp > 0) {
+					event.setTime(java.time.Instant.ofEpochMilli(timestamp));
 				}
 				if (summaryMsg != null && !summaryMsg.isBlank()) {
 					event.setMessage(summaryMsg);
@@ -237,19 +237,25 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 					logger.debug("Failed to dispatch to channel #{}: {}", channel, ex.getMessage());
 					return null;
 				});
-				logger.debug("[WSBroker] Dispatched {} to channel #{}", payload.getEvent(), channel);
+				logger.debug("[WSBroker] Dispatched {} to channel #{}", eventName, channel);
 			} catch (Exception e) {
-				logger.warn("[WSBroker] Failed to send {} to channel #{}: {}", payload.getEvent(), channel, e.getMessage());
+				logger.warn("[WSBroker] Failed to send {} to channel #{}: {}", eventName, channel, e.getMessage());
 			}
 		}
 	}
 
+	public <T> void dispatch(RfidPayload<T> payload, String summaryMsg, String session, long timestamp, String readerId) {
+		if (payload != null) {
+			dispatch(payload.event(), payload.data(), summaryMsg, session, timestamp, readerId);
+		}
+	}
+
 	/**
-	 * Determines the target WSBroker channels for a given payload based on its readerId.
+	 * Determines the target WSBroker channels for a given readerId.
 	 */
-	public List<String> getTargetChannelsForPayload(BaseRfidPayload payload) {
-		if (payload != null && payload.getReaderId() != null && !payload.getReaderId().isBlank()) {
-			HeadlessReaderInstance instance = getReaderInstance(payload.getReaderId());
+	public List<String> getTargetChannelsForReader(String readerId) {
+		if (readerId != null && !readerId.isBlank()) {
+			HeadlessReaderInstance instance = getReaderInstance(readerId);
 			if (instance != null && instance.getConfig() != null) {
 				List<String> instanceChannels = instance.getConfig().getChannels();
 				if (instanceChannels != null && !instanceChannels.isEmpty()) {
@@ -261,10 +267,16 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	}
 
 	/**
-	 * Dispatches a scanned RFID tag payload to all configured WSBroker channels.
+	 * Dispatches a scanned RFID tag data to all configured WSBroker channels.
 	 */
-	public void dispatchTag(TagReadPayload payload) {
-		dispatch(payload);
+	public void dispatchTag(TagReadData data, String sessionName, long timestamp) {
+		if (data != null) {
+			dispatch(TagReadData.EVENT_NAME, data, data.getSummaryMessage(), sessionName, timestamp, data.readerId());
+		}
+	}
+
+	public void dispatchTag(TagReadData data) {
+		dispatchTag(data, null, System.currentTimeMillis());
 	}
 
 	/**
@@ -291,44 +303,54 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
 							boolean crcOk, String tagName, String sessionName, long timestamp,
 							String clientId, String readerId, FinnishDataModel metadata, String afi) {
-		dispatch(new TagReadPayload(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, readerId, metadata, afi));
+		TagReadData data = new TagReadData(uid, itemId, rawHex, isil, country, crcOk, tagName, metadata, afi, readerId);
+		dispatchTag(data, sessionName, timestamp);
 	}
 
 	/**
-	 * Dispatches a reader cleared payload to all configured WSBroker channels.
+	 * Dispatches a reader cleared data to all configured WSBroker channels.
 	 */
-	public void dispatchEmpty(TagsClearedPayload payload) {
-		dispatch(payload);
+	public void dispatchEmpty(TagsClearedData data, String sessionName, long timestamp) {
+		if (data != null) {
+			dispatch(TagsClearedData.EVENT_NAME, data, data.getSummaryMessage(), sessionName, timestamp, data.readerId());
+		}
+	}
+
+	public void dispatchEmpty(TagsClearedData data) {
+		dispatchEmpty(data, null, System.currentTimeMillis());
 	}
 
 	/**
 	 * Dispatches a reader cleared / all tags removed event to all configured WSBroker channels.
 	 */
 	public void dispatchEmpty(String sessionName, long timestamp, String clientId) {
-		dispatch(new TagsClearedPayload(sessionName, timestamp, clientId));
+		dispatchEmpty(sessionName, timestamp, clientId, clientId);
 	}
 
 	/**
 	 * Dispatches a reader cleared event with readerId to all configured WSBroker channels.
 	 */
 	public void dispatchEmpty(String sessionName, long timestamp, String clientId, String readerId) {
-		dispatch(new TagsClearedPayload(sessionName, timestamp, clientId, readerId));
+		TagsClearedData data = new TagsClearedData(readerId);
+		dispatchEmpty(data, sessionName, timestamp);
 	}
 
 	/**
 	 * Dispatches current device metadata to all configured WSBroker channels.
 	 */
 	public void dispatchDeviceMetadata() {
-		dispatch(queryDeviceMetadata());
+		dispatchDeviceMetadata(queryDeviceMetadata());
 	}
 
 	/**
-	 * Dispatches specific device metadata payload to all configured WSBroker channels.
+	 * Dispatches specific device metadata data to all configured WSBroker channels.
 	 *
-	 * @param payload device metadata payload
+	 * @param data device metadata data
 	 */
-	public void dispatchDeviceMetadata(DeviceMetadataPayload payload) {
-		dispatch(payload);
+	public void dispatchDeviceMetadata(DeviceMetadataData data) {
+		if (data != null) {
+			dispatch(DeviceMetadataData.EVENT_RESPONSE, data, data.getSummaryMessage(), null, System.currentTimeMillis(), data.readerId());
+		}
 	}
 
 	/**
@@ -408,36 +430,36 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		return WsBrokerPayloadParser.formatAfiHex(afi);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
+	public CompletableFuture<WriteTagResponseData> writeTag(String uid, String itemId, String isil, String country,
 															   int parts, int partNo, int usageType, Object afiObj,
 															   String target, String token) {
 		return writeTag(uid, itemId, isil, country, parts, partNo, usageType, afiObj, target, token, null);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTag(String uid, String itemId, String isil, String country,
+	public CompletableFuture<WriteTagResponseData> writeTag(String uid, String itemId, String isil, String country,
 															   int parts, int partNo, int usageType, Object afiObj,
 															   String target, String token, String refId) {
 		TagWriteItem item = new TagWriteItem(uid, itemId, isil, country, parts, partNo, usageType, afiObj);
 		return writeTags(List.of(item), target, token, refId);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTag(List<TagWriteItem> items, String target, String token) {
+	public CompletableFuture<WriteTagResponseData> writeTag(List<TagWriteItem> items, String target, String token) {
 		return writeTags(items, target, token, null);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTag(List<TagWriteItem> items, String target, String token, String refId) {
+	public CompletableFuture<WriteTagResponseData> writeTag(List<TagWriteItem> items, String target, String token, String refId) {
 		return writeTags(items, target, token, refId);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTags(List<TagWriteItem> items, String target, String token) {
+	public CompletableFuture<WriteTagResponseData> writeTags(List<TagWriteItem> items, String target, String token) {
 		return writeTags(items, target, token, null);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTags(List<TagWriteItem> items, String target, String token, String refId) {
+	public CompletableFuture<WriteTagResponseData> writeTags(List<TagWriteItem> items, String target, String token, String refId) {
 		return writeTagsOnReader(resolveTargetReader(null, null), items, target, token, refId);
 	}
 
-	public CompletableFuture<WriteTagResponsePayload> writeTagsOnReader(
+	public CompletableFuture<WriteTagResponseData> writeTagsOnReader(
 			HeadlessReaderInstance readerInstance,
 			List<TagWriteItem> items,
 			String target,
@@ -446,24 +468,24 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		return writeService.writeTagsOnReader(readerInstance, items, target, token, refId, client, active);
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token) {
+	public CompletableFuture<WriteAfiResponseData> writeAfi(String uid, Object afiObj, String target, String token) {
 		return writeAfi(uid, afiObj, target, token, null);
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfi(String uid, Object afiObj, String target, String token, String refId) {
+	public CompletableFuture<WriteAfiResponseData> writeAfi(String uid, Object afiObj, String target, String token, String refId) {
 		List<String> uids = (uid != null && !uid.isBlank()) ? List.of(uid.trim()) : Collections.emptyList();
 		return writeAfi(uids, afiObj, target, token, refId);
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfi(List<String> uids, Object afiObj, String target, String token) {
+	public CompletableFuture<WriteAfiResponseData> writeAfi(List<String> uids, Object afiObj, String target, String token) {
 		return writeAfi(uids, afiObj, target, token, null);
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfi(List<String> uids, Object afiObj, String target, String token, String refId) {
+	public CompletableFuture<WriteAfiResponseData> writeAfi(List<String> uids, Object afiObj, String target, String token, String refId) {
 		return writeAfiOnReader(resolveTargetReader(null, null), uids, afiObj, target, token, refId);
 	}
 
-	public CompletableFuture<WriteAfiResponsePayload> writeAfiOnReader(
+	public CompletableFuture<WriteAfiResponseData> writeAfiOnReader(
 			HeadlessReaderInstance readerInstance,
 			List<String> uids,
 			Object afiObj,
@@ -481,24 +503,24 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		router.handleWriteAfiCommand(evt, target);
 	}
 
-	public CompletableFuture<Void> sendReply(String target, BaseRfidPayload payload) {
+	public <T> CompletableFuture<Void> sendReply(String target, RfidPayload<T> payload) {
 		return router.sendReply(target, payload);
 	}
 
-	public CompletableFuture<Void> sendReply(String target, String refId, BaseRfidPayload payload) {
-		return router.sendReply(target, refId, payload);
+	public <T> CompletableFuture<Void> sendReply(String target, String refId, RfidPayload<T> payload, String summaryMessage) {
+		return router.sendReply(target, refId, payload, summaryMessage);
 	}
 
-	public DeviceMetadataPayload queryDeviceMetadata() {
+	public DeviceMetadataData queryDeviceMetadata() {
 		return queryDeviceMetadata((HeadlessReaderInstance) null);
 	}
 
-	public DeviceMetadataPayload queryDeviceMetadata(String readerId) {
+	public DeviceMetadataData queryDeviceMetadata(String readerId) {
 		HeadlessReaderInstance inst = (readerId != null) ? getReaderInstance(readerId) : null;
 		return queryDeviceMetadata(inst);
 	}
 
-	public DeviceMetadataPayload queryDeviceMetadata(HeadlessReaderInstance inst) {
+	public DeviceMetadataData queryDeviceMetadata(HeadlessReaderInstance inst) {
 		return metadataService.queryDeviceMetadata(inst, registry.getReader());
 	}
 
