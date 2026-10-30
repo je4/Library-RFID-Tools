@@ -27,9 +27,6 @@ class EventTest {
                 .session("sess-12345")
                 .data(payload)
                 .message("Sensor measurement report")
-                .addAction("report")
-                .addAction("telemetry")
-                .subprotocols(List.of("proto-v1", "proto-v2"))
                 .build();
 
         String json = original.toJson();
@@ -48,8 +45,6 @@ class EventTest {
         assertThat(deserialized.isType(EventType.CLIENT_MESSAGE)).isTrue();
         assertThat(deserialized.getSession()).isEqualTo("sess-12345");
         assertThat(deserialized.getMessage()).isEqualTo("Sensor measurement report");
-        assertThat(deserialized.getActions()).containsExactly("report", "telemetry");
-        assertThat(deserialized.getSubprotocols()).containsExactly("proto-v1", "proto-v2");
 
         SamplePayload extracted = deserialized.getDataAs(SamplePayload.class);
         assertThat(extracted).isNotNull();
@@ -101,7 +96,7 @@ class EventTest {
 
         Event action = Event.createAction("src", "dst", "openDoor", Map.of("doorId", "D1"));
         assertThat(action.getType()).isEqualTo(EventType.CLIENT_ACTION.getValue());
-        assertThat(action.getActions()).containsExactly("openDoor");
+        assertThat(action.getMessage()).isEqualTo("openDoor");
 
         Event broadcast = Event.createBroadcast("src", "All systems go");
         assertThat(broadcast.getType()).isEqualTo(EventType.CLIENT_BROADCAST.getValue());

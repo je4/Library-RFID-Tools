@@ -76,12 +76,6 @@ public class BaseEvent {
     @JsonProperty("error")
     private String error;
 
-    @JsonProperty("actions")
-    private List<String> actions;
-
-    @JsonProperty("subprotocols")
-    private List<String> subprotocols;
-
     public BaseEvent() {
         this.id = generateEventId();
     }
@@ -213,35 +207,6 @@ public class BaseEvent {
         return (E) this;
     }
 
-    public List<String> getActions() {
-        return actions;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <E extends BaseEvent> E setActions(List<String> actions) {
-        this.actions = actions;
-        return (E) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <E extends BaseEvent> E addAction(String action) {
-        if (this.actions == null) {
-            this.actions = new ArrayList<>();
-        }
-        this.actions.add(action);
-        return (E) this;
-    }
-
-    public List<String> getSubprotocols() {
-        return subprotocols;
-    }
-
-    @SuppressWarnings("unchecked")
-    public <E extends BaseEvent> E setSubprotocols(List<String> subprotocols) {
-        this.subprotocols = subprotocols;
-        return (E) this;
-    }
-
     /**
      * Creates a reply Event correlated with this request Event.
      * Sets {@code id} to a newly generated unique identifier, {@code refId} to this event's {@code id},
@@ -319,14 +284,12 @@ public class BaseEvent {
                 Objects.equals(type, that.type) &&
                 Objects.equals(session, that.session) &&
                 Objects.equals(message, that.message) &&
-                Objects.equals(error, that.error) &&
-                Objects.equals(actions, that.actions) &&
-                Objects.equals(subprotocols, that.subprotocols);
+                Objects.equals(error, that.error);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, refId, channel, time, source, target, type, session, message, error, actions, subprotocols);
+        return Objects.hash(id, refId, channel, time, source, target, type, session, message, error);
     }
 
     @Override
@@ -342,7 +305,6 @@ public class BaseEvent {
                 ", session='" + session + '\'' +
                 ", message='" + message + '\'' +
                 ", error='" + error + '\'' +
-                ", actions=" + actions +
                 '}';
     }
 }

@@ -219,16 +219,13 @@ public class Event<T> extends BaseEvent {
     }
 
     public static <T> Event<T> createAction(String source, String target, String action, T payload) {
-        Event<T> event = Event.<T>builder()
+        return Event.<T>builder()
                 .type(EventType.CLIENT_ACTION)
                 .source(source)
                 .target(target)
+                .message(action)
                 .data(payload)
                 .build();
-        if (action != null && !action.isBlank()) {
-            event.addAction(action);
-        }
-        return event;
     }
 
     public static <T> Event<T> createBroadcast(String source, T payload) {
@@ -346,7 +343,6 @@ public class Event<T> extends BaseEvent {
                 ", data=" + data +
                 ", message='" + getMessage() + '\'' +
                 ", error='" + getError() + '\'' +
-                ", actions=" + getActions() +
                 '}';
     }
 
@@ -410,21 +406,6 @@ public class Event<T> extends BaseEvent {
 
         public Builder<T> error(String error) {
             event.setError(error);
-            return this;
-        }
-
-        public Builder<T> actions(List<String> actions) {
-            event.setActions(actions != null ? new ArrayList<>(actions) : null);
-            return this;
-        }
-
-        public Builder<T> addAction(String action) {
-            event.addAction(action);
-            return this;
-        }
-
-        public Builder<T> subprotocols(List<String> subprotocols) {
-            event.setSubprotocols(subprotocols != null ? new ArrayList<>(subprotocols) : null);
             return this;
         }
 
