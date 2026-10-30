@@ -190,7 +190,7 @@ WebSocket settings are defined inside the `<wsbroker>` element of `inventory.xml
 
 ## 3. Message Envelope Format
 
-All communication via WSBroker conforms to the standard JSON event envelope:
+All communication via WSBroker conforms to the standard JSON event envelope (`Event<RfidPayload<T>>`):
 
 ```json
 {
@@ -201,21 +201,29 @@ All communication via WSBroker conforms to the standard JSON event envelope:
   "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
-  "token": "optional-correlation-token-12345",
-  "data": { ... }
+  "session": "main-scan",
+  "message": "[TAG READ] Reader: gate-01 | UID: E004010000001234 ...",
+  "data": {
+    "event": "rfid:tag_read",
+    "data": { ... }
+  }
 }
 ```
 
 ### Envelope Fields:
-* **`id`** *(string, optional)*: Unique message identifier assigned by WSBroker or sender (differentiates and tracks the specific message/envelope).
+* **`id`** *(string, optional)*: Unique message identifier assigned by WSBroker or sender.
 * **`refId`** *(string, optional)*: Reference message ID correlating a response directly to the `id` of the originating request message.
 * **`channel`** *(string, optional)*: Channel name through which the message was routed/broadcast.
 * **`time`** *(string, ISO-8601)*: Timestamp when the message was generated.
 * **`source`** *(string)*: Unique client identifier of the sender.
 * **`target`** *(string)*: Target client identifier or channel name (`"all"`, `"intern"`, or specific client name).
-* **`type`** *(string)*: Event type. Standard data exchanges and commands utilize `"message"`.
-* **`token`** *(string, optional)*: Correlation ID used to correlate request commands with response messages.
-* **`data`** *(object)*: Concrete payload (such as `TagReadPayload` or `DeviceMetadataPayload`). Note that reader identification (`readerId` / `reader_id`) is encapsulated within this payload, clearly separated from the envelope message `id`.
+* **`type`** *(string)*: Event type (standard data exchanges and commands utilize `"message"`).
+* **`session`** *(string, optional)*: Active reader inventory session identifier.
+* **`message`** *(string, optional)*: Human-readable summary log line for quick inspection.
+* **`error`** *(string, optional)*: High-level error message if the event represents an error condition.
+* **`data`** *(object)*: `RfidPayload<T>` envelope containing:
+  * **`event`** *(string)*: RFID event identifier (e.g. `"rfid:tag_read"`, `"rfid:tags_cleared"`, `"rfid:device_metadata_response"`, `"rfid:write_tag_response"`, `"rfid:write_afi_response"`).
+  * **`data`** *(object)*: Strongly-typed data record (e.g. `TagReadData`, `TagsClearedData`, `DeviceMetadataData`, `WriteTagResponseData`, `WriteAfiResponseData`). Logical reader identification (`readerId`) is cleanly encapsulated inside this data object.
 
 ---
 
@@ -225,7 +233,7 @@ All communication via WSBroker conforms to the standard JSON event envelope:
 
 ### 4.1 Tag Read (`rfid:tag_read`)
 
-When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headless` sends a `rfid:tag_read` event to all configured channels.
+When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headless` sends a `rfid:tag_read` event with a `TagReadData` payload to all configured channels.
 
 #### Tag Read JSON Example:
 ```json
@@ -234,54 +242,52 @@ When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headle
   "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
+  "message": "[TAG READ] Reader: gate-01 | UID: E004010000001234 | ItemID: 3012345678 | ISIL: 000001-1 | Country: CH | CRC: OK | AFI: 07 | TagType: ISO 15693 : NXP I-Code SLIX",
   "data": {
     "event": "rfid:tag_read",
-    "uid": "E004010000001234",
-    "itemId": "3012345678",
-    "isil": "000001-1",
-    "country": "CH",
-    "crcOk": true,
-    "isCrcValid": true,
-    "crc": "OK",
-    "tagName": "ISO 15693 : NXP I-Code SLIX",
-    "raw": "0102030405060708090A0B0C...",
-    "parts": 1,
-    "partNo": 1,
-    "usageType": 1,
-    "version": 1,
-    "afi": "07",
-    "session": "main-scan",
-    "timestamp": 1792756801123,
-    "readerId": "gate-01"
+    "data": {
+      "uid": "E004010000001234",
+      "itemId": "3012345678",
+      "rawHex": "0102030405060708090A0B0C...",
+      "isil": "000001-1",
+      "country": "CH",
+      "crcOk": true,
+      "tagName": "ISO 15693 : NXP I-Code SLIX",
+      "metadata": {
+        "primaryItemId": "3012345678",
+        "countryOfOwnerLib": "CH",
+        "ownerLibISIL": "000001-1",
+        "partNumber": 1,
+        "partsInItem": 1,
+        "typeOfUsage": 1,
+        "version": 1
+      },
+      "afi": "07",
+      "readerId": "gate-01"
+    }
   }
 }
 ```
 
-#### Payload Fields:
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `event` | string | Constant identifier: `"rfid:tag_read"`. |
-| `uid` | string | Tag Unique Identifier (UID / Serial Hex, e.g. `E004010000001234`). |
-| `itemId` | string | Decoded primary item identifier / barcode from the ISO 28560-2 data model. |
-| `isil` | string | Library ISIL identifier (e.g. `000001-1`). |
-| `country` | string | Country code from the data model (e.g. `CH`, `DE`). |
-| `crcOk` / `isCrcValid` | boolean | `true` if ISO 28560 CRC-16 checksum validation passed. |
-| `crc` | string | Human-readable CRC validation status (`"OK"` or `"ERROR"`). |
-| `tagName` | string | Transponder / chip type identified by the reader driver. |
-| `raw` | string | Raw hex dump of the decoded memory blocks. |
-| `parts` | integer | Total parts in item (multi-part sets). |
-| `partNo` | integer | Current part number (1-based index). |
-| `usageType` | integer | Type of usage as defined in ISO 28560-2 (e.g. 1 = circulating). |
-| `version` | integer | Data model format version (typically 1). |
-| `afi` | string | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). Optional / omitted (`null`) if transponder system information is not accessible or not supported. |
-| `timestamp` | long | Epoch millisecond timestamp of the scan event. |
-| `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`) configured in `inventory.xml`. |
+#### `TagReadData` Payload Fields:
+| Field | Type | Aliases | Description |
+| :--- | :--- | :--- | :--- |
+| `uid` | string | `uid` | Tag Unique Identifier (UID / Serial Hex, e.g. `E004010000001234`). |
+| `itemId` | string | `item_id`, `itemID` | Decoded primary item identifier / barcode from the ISO 28560-2 data model. |
+| `rawHex` | string | `raw`, `raw_hex`, `raw_data` | Raw hex dump of the decoded memory blocks. |
+| `isil` | string | `isil` | Library ISIL identifier (e.g. `000001-1`). |
+| `country` | string | `country` | ISO country code from the data model (e.g. `CH`, `DE`). |
+| `crcOk` | boolean | `crc_ok`, `isCrcValid`, `crc` | `true` if ISO 28560 CRC-16 checksum validation passed. |
+| `tagName` | string | `tag_name`, `type` | Transponder / chip type identified by the reader driver (e.g. `SLIX`, `SLIX2`). |
+| `metadata` | object | `metadata` | Full decoded ISO 28560 `FinnishDataModel` structure. |
+| `afi` | string | `afi` | Application Family Identifier (2-digit hex string, e.g. `"07"` for items in stock / secured, `"C2"` for loaned items). |
+| `readerId` | string | `reader_id`, `readerID` | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`) configured in `inventory.xml`. |
 
 ---
 
 ### 4.2 Reader / Plate Cleared (`rfid:tags_cleared`)
 
-When transponders are no longer detected on the reader antenna, or when the reader hardware disconnects, `rfid-headless` immediately broadcasts a `rfid:tags_cleared` event. This guarantees that client UIs, automated sorter PLCs, and ILS systems clear displayed items instantly and do not retain stale state.
+When transponders are no longer detected on the reader antenna, or when the reader hardware disconnects, `rfid-headless` immediately broadcasts a `rfid:tags_cleared` event with a `TagsClearedData` payload. This guarantees that client UIs, automated sorter PLCs, and ILS systems clear displayed items instantly and do not retain stale state.
 
 #### Trigger Conditions:
 1. **Physical Tag Removal**: When all tags are removed from the RF field (detected by the inventory cycle encountering an empty plate).
@@ -296,26 +302,24 @@ When transponders are no longer detected on the reader antenna, or when the read
   "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
+  "message": "[READER CLEARED] Reader: gate-01 | All RFID tags removed from reader field",
   "data": {
     "event": "rfid:tags_cleared",
-    "status": "empty",
-    "totalTags": 0,
-    "session": "main-scan",
-    "timestamp": 1792756805100,
-    "readerId": "gate-01"
+    "data": {
+      "status": "empty",
+      "totalTags": 0,
+      "readerId": "gate-01"
+    }
   }
 }
 ```
 
-#### Payload Fields:
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `event` | string | Constant identifier: `"rfid:tags_cleared"`. |
-| `status` | string | Clearance status indicator (`"empty"`). |
-| `totalTags` | integer | Total count of active tags remaining on the plate (`0`). |
-| `session` | string | Name of the active reader inventory session. |
-| `timestamp` | long | Epoch millisecond timestamp when the plate was cleared or reader disconnected. |
-| `readerId` | string | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`). |
+#### `TagsClearedData` Payload Fields:
+| Field | Type | Aliases | Description |
+| :--- | :--- | :--- | :--- |
+| `status` | string | `status` | Clearance status indicator (`"empty"`). |
+| `totalTags` | integer | `total_tags`, `count` | Total count of active tags remaining on the plate (`0`). |
+| `readerId` | string | `reader_id`, `readerID` | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`). |
 
 ---
 
@@ -358,20 +362,28 @@ To query device details (Device ID, Device Type, and initial initialization star
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-98765-meta",
+  "message": "[DEVICE METADATA] Status: ok | ID: 0052E688 | Type: ISC.MR102-USB | Description: FEIG Electronic ISC.MR102-USB (0052E688)...",
   "data": {
     "event": "rfid:device_metadata_response",
-    "status": "ok",
-    "deviceId": "0052E688",
-    "deviceType": "ISC.MR102-USB",
-    "initDescription": "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00\nSDK: Gen3 Java v7.1.0\nInterface: USB (Native Lib: libfecom.so)\nReader initialized successfully. RF Field active.",
-    "session": "",
-    "timestamp": 1792756802045,
-    "clientId": "rfid:reader:01",
-    "readerId": "gate-01"
+    "data": {
+      "status": "ok",
+      "deviceId": "0052E688",
+      "deviceType": "ISC.MR102-USB",
+      "initDescription": "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00\nSDK: Gen3 Java v7.1.0\nInterface: USB (Native Lib: libfecom.so)\nReader initialized successfully. RF Field active.",
+      "readerId": "gate-01"
+    }
   }
 }
 ```
+
+#### `DeviceMetadataData` Payload Fields:
+| Field | Type | Aliases | Description |
+| :--- | :--- | :--- | :--- |
+| `status` | string | `status` | Query status (`"ok"` or `"error"`). |
+| `deviceId` | string | `deviceID`, `Device ID`, `device_id` | Unique hardware identifier / USB serial of the FEIG RFID reader. |
+| `deviceType` | string | `Device Type`, `device_type` | Hardware reader model (e.g. `"ISC.MR102-USB"`). |
+| `initDescription` | string | `description`, `completeDescription`, `init_description` | Detailed hardware startup diagnostics report from initialization. |
+| `readerId` | string | `reader_id`, `readerID` | Logical reader identifier (e.g. `"gate-01"`, `"return-station"`). |
 
 ---
 
@@ -474,22 +486,24 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-write-001",
+  "message": "[WRITE TAG] Status: ok | UID: E004015099887766 | ItemID: 3012345678 | AFI: 07",
   "data": {
     "event": "rfid:write_tag_response",
-    "status": "ok",
-    "uid": "E004015099887766",
-    "itemId": "3012345678",
-    "isil": "000001-1",
-    "country": "CH",
-    "parts": 1,
-    "partNo": 1,
-    "usageType": 1,
-    "afi": "07",
-    "message": "Tag written successfully",
-    "timestamp": 1792756803350,
-    "clientId": "rfid:reader:01",
-    "readerId": "gate-01"
+    "data": {
+      "status": "ok",
+      "uid": "E004015099887766",
+      "itemId": "3012345678",
+      "isil": "000001-1",
+      "country": "CH",
+      "parts": 1,
+      "partNo": 1,
+      "afi": "07",
+      "successfulUids": ["E004015099887766"],
+      "failedUids": [],
+      "errors": {},
+      "error": null,
+      "readerId": "gate-01"
+    }
   }
 }
 ```
@@ -503,20 +517,41 @@ Both single-tag writing and multi-tag batch writing with individual data per tra
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-write-001",
+  "message": "[WRITE TAG] Status: error | UID: E004015099887766 | Error: Reader 'return-station' is configured as read-only",
   "data": {
     "event": "rfid:write_tag_response",
-    "status": "error",
-    "uid": "E004015099887766",
-    "itemId": "3012345678",
-    "message": "Reader 'return-station' is configured as read-only",
-    "error": "Reader 'return-station' is configured as read-only",
-    "timestamp": 1792756803350,
-    "clientId": "rfid:reader:01",
-    "readerId": "return-station"
+    "data": {
+      "status": "error",
+      "uid": "E004015099887766",
+      "itemId": "3012345678",
+      "error": "Reader 'return-station' is configured as read-only",
+      "successfulUids": [],
+      "failedUids": ["E004015099887766"],
+      "errors": {
+        "E004015099887766": "Reader 'return-station' is configured as read-only"
+      },
+      "readerId": "return-station"
+    }
   }
 }
 ```
+
+#### `WriteTagResponseData` Payload Fields:
+| Field | Type | Aliases | Description |
+| :--- | :--- | :--- | :--- |
+| `status` | string | `status` | Operation status (`"ok"`, `"partial"`, or `"error"`). |
+| `uid` | string | `uid` | Primary transponder UID written. |
+| `itemId` | string | `item_id`, `itemID` | Item barcode / identifier written to the tag. |
+| `isil` | string | `isil` | Library ISIL identifier written to the tag. |
+| `country` | string | `country` | ISO country code written to the tag. |
+| `parts` | integer | `parts` | Total count of parts in item set. |
+| `partNo` | integer | `partno`, `part_no` | Part number written to the tag. |
+| `afi` | string | `afi` | AFI byte written to the tag (2-digit hex). |
+| `successfulUids` | list of strings | `successful_uids`, `successUids` | List of transponder UIDs that were successfully programmed. |
+| `failedUids` | list of strings | `failed_uids`, `failureUids` | List of transponder UIDs that failed to be programmed. |
+| `errors` | map | `errors` | Map of UID to error description for failed transponders. |
+| `error` | string | `error` | Error message description (or `null` on full success). |
+| `readerId` | string | `reader_id`, `readerID` | Logical reader identifier where the command was executed. |
 
 ---
 
@@ -534,7 +569,6 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "source": "dashboard-ui",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "req-afi-002",
   "data": {
     "event": "rfid:write_afi",
     "readerId": "gate-01",
@@ -552,7 +586,6 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "source": "dashboard-ui",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "req-afi-batch-003",
   "data": {
     "event": "rfid:write_afi",
     "readerId": "gate-01",
@@ -580,24 +613,19 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-afi-002",
+  "message": "[WRITE AFI] Status: ok | UID: E004015099887766 | AFI: 07",
   "data": {
     "event": "rfid:write_afi_response",
-    "status": "ok",
-    "uid": "E004015099887766",
-    "uids": ["E004015099887766"],
-    "successfulUids": ["E004015099887766"],
-    "results": [
-      {
-        "uid": "E004015099887766",
-        "status": "ok"
-      }
-    ],
-    "afi": "07",
-    "message": "AFI written successfully",
-    "timestamp": 1792756804280,
-    "clientId": "rfid:reader:01",
-    "readerId": "gate-01"
+    "data": {
+      "status": "ok",
+      "uid": "E004015099887766",
+      "afi": "07",
+      "successfulUids": ["E004015099887766"],
+      "failedUids": [],
+      "errors": {},
+      "error": null,
+      "readerId": "gate-01"
+    }
   }
 }
 ```
@@ -611,27 +639,19 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-afi-batch-003",
+  "message": "[WRITE AFI] Status: ok | 2 tags written | AFI: C2",
   "data": {
     "event": "rfid:write_afi_response",
-    "status": "ok",
-    "uids": ["E004015099887766", "E004015099887777"],
-    "successfulUids": ["E004015099887766", "E004015099887777"],
-    "results": [
-      {
-        "uid": "E004015099887766",
-        "status": "ok"
-      },
-      {
-        "uid": "E004015099887777",
-        "status": "ok"
-      }
-    ],
-    "afi": "C2",
-    "message": "AFI written to 2/2 tags successfully",
-    "timestamp": 1792756804350,
-    "clientId": "rfid:reader:01",
-    "readerId": "gate-01"
+    "data": {
+      "status": "ok",
+      "uid": "E004015099887766",
+      "afi": "C2",
+      "successfulUids": ["E004015099887766", "E004015099887777"],
+      "failedUids": [],
+      "errors": {},
+      "error": null,
+      "readerId": "gate-01"
+    }
   }
 }
 ```
@@ -645,28 +665,36 @@ Both single-UID writes and batch multi-UID writes are supported. When a list of 
   "source": "rfid:reader:01",
   "target": "dashboard-ui",
   "type": "message",
-  "token": "req-afi-batch-004",
+  "message": "[WRITE AFI] Status: partial | 1 succeeded, 1 failed",
   "data": {
     "event": "rfid:write_afi_response",
-    "status": "partial",
-    "uid": "E004015099887766",
-    "uids": ["E004015099887766", "E004015099887777"],
-    "successfulUids": ["E004015099887766"],
-    "failedUids": {
-      "E004015099887777": "Tag AFI lock bit set (ISO error 0x12)"
-    },
-    "results": [
-      {"uid": "E004015099887766", "status": "ok"},
-      {"uid": "E004015099887777", "status": "error", "error": "Tag AFI lock bit set (ISO error 0x12)"}
-    ],
-    "afi": "C2",
-    "message": "AFI written to 1/2 tags (1 failed)",
-    "error": "1 of 2 tags failed",
-    "timestamp": 1792756804420,
-    "clientId": "rfid:reader:01"
+    "data": {
+      "status": "partial",
+      "uid": "E004015099887766",
+      "afi": "C2",
+      "successfulUids": ["E004015099887766"],
+      "failedUids": ["E004015099887777"],
+      "errors": {
+        "E004015099887777": "Tag AFI lock bit set (ISO error 0x12)"
+      },
+      "error": "1 of 2 tags failed",
+      "readerId": "gate-01"
+    }
   }
 }
 ```
+
+#### `WriteAfiResponseData` Payload Fields:
+| Field | Type | Aliases | Description |
+| :--- | :--- | :--- | :--- |
+| `status` | string | `status` | Operation status (`"ok"`, `"partial"`, or `"error"`). |
+| `uid` | string | `uid` | Primary transponder UID programmed. |
+| `afi` | string | `afi` | AFI byte value written (2-digit hex). |
+| `successfulUids` | list of strings | `successful_uids`, `successUids` | List of transponder UIDs successfully programmed. |
+| `failedUids` | list of strings | `failed_uids`, `failureUids` | List of transponder UIDs that failed to be programmed. |
+| `errors` | map | `errors` | Map of UID to error description for failed transponders. |
+| `error` | string | `error` | Error message description (or `null` on full success). |
+| `readerId` | string | `reader_id`, `readerID` | Logical reader identifier where the command was executed. |
 
 ---
 
@@ -935,14 +963,19 @@ ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
     if (msg.type === "message" && msg.data) {
-        if (msg.data.event === "rfid:tag_read") {
-            console.log(`Tag Read: ItemID=${msg.data.itemId}, UID=${msg.data.uid}, AFI=${msg.data.afi || 'n/a'}`);
-        } else if (msg.data.event === "rfid:tags_cleared") {
-            console.log(`Plate Cleared: Status=${msg.data.status}, TotalTags=${msg.data.totalTags}`);
-        } else if (msg.data.event === "rfid:write_tag_response") {
-            console.log(`Write Tag [${msg.data.status}]: UID=${msg.data.uid}, RefID=${msg.refId}, Token=${msg.token}`);
-        } else if (msg.data.event === "rfid:write_afi_response") {
-            console.log(`Write AFI [${msg.data.status}]: Successful=${msg.data.successfulUids?.length || 0}, AFI=${msg.data.afi}, RefID=${msg.refId}, Token=${msg.token}`);
+        const payload = msg.data.data || msg.data;
+        const evtName = msg.data.event || msg.event;
+
+        if (evtName === "rfid:tag_read") {
+            console.log(`Tag Read: ItemID=${payload.itemId}, UID=${payload.uid}, AFI=${payload.afi || 'n/a'}, Reader=${payload.readerId || 'n/a'}`);
+        } else if (evtName === "rfid:tags_cleared") {
+            console.log(`Plate Cleared: Status=${payload.status}, TotalTags=${payload.totalTags}, Reader=${payload.readerId || 'n/a'}`);
+        } else if (evtName === "rfid:device_metadata_response") {
+            console.log(`Device Metadata [${payload.status}]: DeviceID=${payload.deviceId}, Type=${payload.deviceType}, Reader=${payload.readerId || 'n/a'}`);
+        } else if (evtName === "rfid:write_tag_response") {
+            console.log(`Write Tag [${payload.status}]: UID=${payload.uid}, ItemID=${payload.itemId}, RefID=${msg.refId}`);
+        } else if (evtName === "rfid:write_afi_response") {
+            console.log(`Write AFI [${payload.status}]: Successful=${payload.successfulUids?.length || 0}, AFI=${payload.afi}, RefID=${msg.refId}`);
         }
     }
 };

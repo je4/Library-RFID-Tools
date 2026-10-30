@@ -170,7 +170,7 @@ public class WsBrokerCommandRouter {
 
 		if (reqReaderId != null && targetReader == null && !registry.getReaderInstances().isEmpty()) {
 			logger.warn("[WSBroker] Device metadata query failed - Reader '{}' not found", reqReaderId);
-			DeviceMetadataData errData = new DeviceMetadataData("", "", "Reader '" + reqReaderId + "' not found", reqReaderId, "error");
+			DeviceMetadataData errData = new DeviceMetadataData("error", "", "", "Reader '" + reqReaderId + "' not found", reqReaderId);
 			sendReply(target, incomingEvent.getId(), RfidPayload.of(DeviceMetadataData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
 			return;
 		}

@@ -31,7 +31,7 @@ public class DeviceMetadataService {
 			if (initDesc == null || initDesc.isBlank()) {
 				initDesc = inst.getDeviceInfo();
 			}
-			return new DeviceMetadataData(devId, devType, initDesc, inst.getReaderId(), "ok");
+			return new DeviceMetadataData("ok", devId, devType, initDesc, inst.getReaderId());
 		}
 
 		String devId = (fallbackReader != null) ? fallbackReader.getDeviceId() : null;
@@ -41,7 +41,7 @@ public class DeviceMetadataService {
 			initDesc = (fallbackReader != null) ? fallbackReader.getDeviceInfo() : null;
 		}
 
-		return new DeviceMetadataData(devId, devType, initDesc, null, "ok");
+		return new DeviceMetadataData("ok", devId, devType, initDesc, null);
 	}
 
 	public CompletableFuture<Void> sendDeviceMetadata(String target, String refId, HeadlessReaderInstance inst,

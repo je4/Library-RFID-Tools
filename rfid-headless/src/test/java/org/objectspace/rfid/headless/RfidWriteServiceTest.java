@@ -4,8 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
-import org.objectspace.rfid.headless.payload.WriteAfiResponsePayload;
-import org.objectspace.rfid.headless.payload.WriteTagResponsePayload;
+import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
+import org.objectspace.rfid.headless.payload.WriteTagResponseData;
 import org.objectspace.rfid.library.ISO15693Reader;
 
 import java.util.List;
@@ -26,10 +26,10 @@ public class RfidWriteServiceTest {
         HeadlessReaderInstance inst = new HeadlessReaderInstance(cfg, null, null, null);
 
         TagWriteItem item = new TagWriteItem("E00401001111", "ITEM-1", "001596-0", "CH", 1, 1, 1, "07");
-        WriteTagResponsePayload resp = writeService.writeTagsOnReader(inst, List.of(item), null, null, null, null, false).join();
+        WriteTagResponseData resp = writeService.writeTagsOnReader(inst, List.of(item), null, null, null, null, false).join();
 
-        assertEquals("error", resp.getStatus());
-        assertTrue(resp.getError().contains("read-only"));
+        assertEquals("error", resp.status());
+        assertTrue(resp.error().contains("read-only"));
     }
 
     @Test
@@ -49,13 +49,13 @@ public class RfidWriteServiceTest {
         HeadlessReaderInstance inst = new HeadlessReaderInstance(cfg, reader, null, null);
 
         TagWriteItem item = new TagWriteItem("E00401001111", "ITEM-1", "001596-0", "CH", 1, 1, 1, "07");
-        WriteTagResponsePayload resp = writeService.writeTagsOnReader(inst, List.of(item), null, null, null, null, false).join();
+        WriteTagResponseData resp = writeService.writeTagsOnReader(inst, List.of(item), null, null, null, null, false).join();
 
         assertTrue(wrote.get());
-        assertEquals("ok", resp.getStatus());
-        assertEquals("E00401001111", resp.getUid());
-        assertEquals("ITEM-1", resp.getItemId());
-        assertEquals("07", resp.getAfi());
+        assertEquals("ok", resp.status());
+        assertEquals("E00401001111", resp.uid());
+        assertEquals("ITEM-1", resp.itemId());
+        assertEquals("07", resp.afi());
     }
 
     @Test
@@ -75,10 +75,10 @@ public class RfidWriteServiceTest {
         HeadlessReaderConfig cfg = new HeadlessReaderConfig("writer-01");
         HeadlessReaderInstance inst = new HeadlessReaderInstance(cfg, reader, null, null);
 
-        WriteAfiResponsePayload resp = writeService.writeAfiOnReader(inst, List.of("E00401001111"), "07", null, null, null, null, false).join();
+        WriteAfiResponseData resp = writeService.writeAfiOnReader(inst, List.of("E00401001111"), "07", null, null, null, null, false).join();
 
         assertTrue(wroteAfi.get());
-        assertEquals("ok", resp.getStatus());
-        assertEquals("07", resp.getAfi());
+        assertEquals("ok", resp.status());
+        assertEquals("07", resp.afi());
     }
 }

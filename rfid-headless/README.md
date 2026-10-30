@@ -186,7 +186,8 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 
 For complete documentation on event formats, query commands, request-reply flows, and integration examples in Java, Go, and JavaScript, please refer to the dedicated documentation:
 
-👉 **[WebSocket & WSBroker Integration Documentation (`websocket.md`)](websocket.md)**
+👉 **[WebSocket & WSBroker Integration Documentation (`websocket.md`)](websocket.md)**  
+👉 **[Event & Payload Structure Specification (`events.md`)](events.md)**
 
 ---
 
