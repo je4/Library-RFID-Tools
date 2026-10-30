@@ -125,7 +125,7 @@ public class RESTClient implements AutoCloseable {
                 .setSource(event.getSource())
                 .setTarget(event.getTarget())
                 .setType(event.getType())
-                .setToken(event.getToken())
+                .setSession(event.getSession())
                 .setData(event.getData())
                 .setMessage(event.getMessage());
         return publish(req);

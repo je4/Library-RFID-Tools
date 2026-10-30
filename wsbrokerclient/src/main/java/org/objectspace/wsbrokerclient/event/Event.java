@@ -70,8 +70,8 @@ public class Event {
     @JsonProperty("type")
     private String type;
 
-    @JsonProperty("token")
-    private String token;
+    @JsonProperty("session")
+    private String session;
 
     @JsonProperty("data")
     private JsonNode data;
@@ -181,12 +181,12 @@ public class Event {
         return typeString != null && typeString.equalsIgnoreCase(type);
     }
 
-    public String getToken() {
-        return token;
+    public String getSession() {
+        return session;
     }
 
-    public Event setToken(String token) {
-        this.token = token;
+    public Event setSession(String session) {
+        this.session = session;
         return this;
     }
 
@@ -325,19 +325,14 @@ public class Event {
     }
 
     public static Event createPong(String source, String target) {
-        return createPong(source, target, null, null);
+        return createPong(source, target, null);
     }
 
-    public static Event createPong(String source, String target, String token) {
-        return createPong(source, target, token, null);
-    }
-
-    public static Event createPong(String source, String target, String token, String refId) {
+    public static Event createPong(String source, String target, String refId) {
         return builder()
                 .type(EventType.CLIENT_PONG)
                 .source(source)
                 .target(target != null && !target.isBlank() ? target : "wsbroker")
-                .token(token)
                 .refId(refId)
                 .data("pong")
                 .build();
@@ -418,7 +413,7 @@ public class Event {
     /**
      * Creates a reply Event correlated with this request Event.
      * Sets {@code id} to a newly generated unique identifier, {@code refId} to this event's {@code id},
-     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
+     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code session}.
      *
      * @param replyType event type of the reply
      * @param payload   data payload for the reply
@@ -431,7 +426,7 @@ public class Event {
     /**
      * Creates a reply Event correlated with this request Event.
      * Sets {@code id} to a newly generated unique identifier, {@code refId} to this event's {@code id},
-     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code token}.
+     * {@code target} to this event's {@code source} (or channel/target as fallback), and copies over {@code channel} and {@code session}.
      *
      * @param replyType string representation of event type
      * @param payload   data payload for the reply
@@ -449,7 +444,7 @@ public class Event {
                 .type(replyType)
                 .target(replyTarget)
                 .channel(this.channel)
-                .token(this.token)
+                .session(this.session)
                 .refId(this.id)
                 .data(payload)
                 .build();
@@ -518,7 +513,7 @@ public class Event {
                 Objects.equals(source, event.source) &&
                 Objects.equals(target, event.target) &&
                 Objects.equals(type, event.type) &&
-                Objects.equals(token, event.token) &&
+                Objects.equals(session, event.session) &&
                 Objects.equals(data, event.data) &&
                 Objects.equals(message, event.message) &&
                 Objects.equals(error, event.error) &&
@@ -528,7 +523,7 @@ public class Event {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, refId, channel, time, source, target, type, token, data, message, error, actions, subprotocols);
+        return Objects.hash(id, refId, channel, time, source, target, type, session, data, message, error, actions, subprotocols);
     }
 
     @Override
@@ -541,7 +536,7 @@ public class Event {
                 ", source='" + source + '\'' +
                 ", target='" + target + '\'' +
                 ", type='" + type + '\'' +
-                ", token='" + token + '\'' +
+                ", session='" + session + '\'' +
                 ", message='" + message + '\'' +
                 ", error='" + error + '\'' +
                 ", actions=" + actions +
@@ -591,8 +586,8 @@ public class Event {
             return this;
         }
 
-        public Builder token(String token) {
-            event.setToken(token);
+        public Builder session(String session) {
+            event.setSession(session);
             return this;
         }
 

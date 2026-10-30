@@ -142,11 +142,10 @@ class WSBrokerClientTest {
     @Test
     @DisplayName("Test Event createPong overloads with refId correlation")
     void testSendPongWithRefId() {
-        Event pong = Event.createPong("client-1", "client-2", "tok-abc", "ping-id-999");
+        Event pong = Event.createPong("client-1", "client-2", "ping-id-999");
         assertThat(pong.getType()).isEqualTo("pong");
         assertThat(pong.getSource()).isEqualTo("client-1");
         assertThat(pong.getTarget()).isEqualTo("client-2");
-        assertThat(pong.getToken()).isEqualTo("tok-abc");
         assertThat(pong.getRefId()).isEqualTo("ping-id-999");
         assertThat(pong.getId()).isNotNull().hasSize(32);
     }

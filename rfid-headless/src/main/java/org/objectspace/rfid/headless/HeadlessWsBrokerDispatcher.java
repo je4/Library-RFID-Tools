@@ -191,6 +191,9 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		for (String channel : targetChannels) {
 			try {
 				Event event = Event.createMessage(clientName, channel, payload);
+				if (payload.getSession() != null && !payload.getSession().isBlank()) {
+					event.setSession(payload.getSession());
+				}
 				if (summaryMsg != null && !summaryMsg.isBlank()) {
 					event.setMessage(summaryMsg);
 				}
@@ -889,8 +892,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		return future.thenCompose(payload -> {
 			if (active && client != null && target != null && !target.isBlank()) {
 				Event reply = Event.createMessage(clientName, target, payload);
-				if (token != null && !token.isBlank()) {
-					reply.setToken(token);
+				if (payload.getSession() != null && !payload.getSession().isBlank()) {
+					reply.setSession(payload.getSession());
 				}
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
@@ -1059,8 +1062,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		return future.thenCompose(payload -> {
 			if (active && client != null && target != null && !target.isBlank()) {
 				Event reply = Event.createMessage(clientName, target, payload);
-				if (token != null && !token.isBlank()) {
-					reply.setToken(token);
+				if (payload.getSession() != null && !payload.getSession().isBlank()) {
+					reply.setSession(payload.getSession());
 				}
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
@@ -1083,7 +1086,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] write_tag failed - Reader '{}' not found", reqReaderId);
 			WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 					"", "", "Reader '" + reqReaderId + "' not found", "", clientName, reqReaderId);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1098,7 +1101,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] write_tag failed - No active reader configured");
 			WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 					"", "", "No active RFID reader available", "", clientName);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1112,7 +1115,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 					primaryUid, primaryItemId, "Reader '" + effectiveReaderId + "' is configured as read-only",
 					"", clientName, effectiveReaderId);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1120,7 +1123,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] Received write_tag command with no valid tag data from '{}'", evt.getSource());
 			WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 					"", "", "No tag data provided in write_tag command", "", clientName, effectiveReaderId);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1163,7 +1166,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 							logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on reader '{}'", single.getUid(), effectiveReaderId);
 							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 									single.getUid(), single.getItemId(), "Tag '" + single.getUid() + "' not present on reader station", "", clientName, effectiveReaderId);
-							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							sendReply(target, evt.getId(), errPayload);
 							return;
 						}
 					} else {
@@ -1172,13 +1175,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 							logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on reader '{}'", effectiveReaderId);
 							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 									"", single.getItemId(), "No RFID tag present on reader station", "", clientName, effectiveReaderId);
-							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							sendReply(target, evt.getId(), errPayload);
 							return;
 						} else if (presentCount > 1) {
 							logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on reader '{}'", presentCount, effectiveReaderId);
 							WriteTagResponsePayload errPayload = WriteTagResponsePayload.error(
 									"", single.getItemId(), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName, effectiveReaderId);
-							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							sendReply(target, evt.getId(), errPayload);
 							return;
 						} else {
 							String singleUid = effectiveCallback.getPresentUids().iterator().next();
@@ -1190,7 +1193,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
-		writeTagsOnReader(readerInstance, items, target, evt.getToken(), evt.getId());
+		writeTagsOnReader(readerInstance, items, target, null, evt.getId());
 	}
 
 	private List<TagWriteItem> parseTagWriteItems(JsonNode data) {
@@ -1477,7 +1480,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] write_afi failed - Reader '{}' not found", reqReaderId);
 			WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 					"", "", "Reader '" + reqReaderId + "' not found", "", clientName, reqReaderId);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1492,7 +1495,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] write_afi failed - No active reader configured");
 			WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 					"", "", "No active RFID reader available", "", clientName);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1538,7 +1541,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 					primaryUid, (afiHex != null ? afiHex : ""), "Reader '" + effectiveReaderId + "' is configured as read-only",
 					"", clientName, effectiveReaderId);
-			sendReply(target, evt.getToken(), evt.getId(), errPayload);
+			sendReply(target, evt.getId(), errPayload);
 			return;
 		}
 
@@ -1577,7 +1580,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 							logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on reader '{}'", reqUid, effectiveReaderId);
 							WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 									reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", "", clientName, effectiveReaderId);
-							sendReply(target, evt.getToken(), evt.getId(), errPayload);
+							sendReply(target, evt.getId(), errPayload);
 							return;
 						}
 					}
@@ -1587,13 +1590,13 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - no tags present on reader '{}'", effectiveReaderId);
 						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 								"", (afiHex != null ? afiHex : ""), "No RFID tag present on reader station", "", clientName, effectiveReaderId);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
+						sendReply(target, evt.getId(), errPayload);
 						return;
 					} else if (presentCount > 1) {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - {} tags present on reader '{}'", presentCount, effectiveReaderId);
 						WriteAfiResponsePayload errPayload = WriteAfiResponsePayload.error(
 								"", (afiHex != null ? afiHex : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", "", clientName, effectiveReaderId);
-						sendReply(target, evt.getToken(), evt.getId(), errPayload);
+						sendReply(target, evt.getId(), errPayload);
 						return;
 					} else {
 						targetUids = List.of(effectiveCallback.getPresentUids().iterator().next());
@@ -1602,18 +1605,18 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			}
 		}
 
-		writeAfiOnReader(readerInstance, targetUids, afi, target, evt.getToken(), evt.getId());
+		writeAfiOnReader(readerInstance, targetUids, afi, target, null, evt.getId());
 	}
 
-	private CompletableFuture<Void> sendReply(String target, String token, BaseRfidPayload payload) {
-		return sendReply(target, token, null, payload);
+	private CompletableFuture<Void> sendReply(String target, BaseRfidPayload payload) {
+		return sendReply(target, (String) null, payload);
 	}
 
-	private CompletableFuture<Void> sendReply(String target, String token, String refId, BaseRfidPayload payload) {
+	private CompletableFuture<Void> sendReply(String target, String refId, BaseRfidPayload payload) {
 		if (active && client != null && target != null && !target.isBlank()) {
 			Event reply = Event.createMessage(clientName, target, payload);
-			if (token != null && !token.isBlank()) {
-				reply.setToken(token);
+			if (payload.getSession() != null && !payload.getSession().isBlank()) {
+				reply.setSession(payload.getSession());
 			}
 			if (refId != null && !refId.isBlank()) {
 				reply.setRefId(refId);
@@ -1685,45 +1688,38 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 * Sends device metadata directly as a reply message (type="message") to a target client or channel.
 	 *
 	 * @param target destination client name or channel
-	 * @param token  optional request/correlation token
 	 * @return CompletableFuture completing when the message is sent
 	 */
-	public CompletableFuture<Void> sendDeviceMetadata(String target, String token) {
-		return sendDeviceMetadata(target, token, null, null);
+	public CompletableFuture<Void> sendDeviceMetadata(String target) {
+		return sendDeviceMetadata(target, (String) null, null);
 	}
 
 	/**
 	 * Sends device metadata directly as a reply message (type="message") to a target client or channel with RefID correlation.
 	 *
 	 * @param target destination client name or channel
-	 * @param token  optional request/correlation token
 	 * @param refId  correlated request event ID
 	 * @return CompletableFuture completing when the message is sent
 	 */
-	public CompletableFuture<Void> sendDeviceMetadata(String target, String token, String refId) {
-		return sendDeviceMetadata(target, token, refId, null);
+	public CompletableFuture<Void> sendDeviceMetadata(String target, String refId) {
+		return sendDeviceMetadata(target, refId, null);
 	}
 
-	public CompletableFuture<Void> sendDeviceMetadata(String target, String token, String refId, HeadlessReaderInstance inst) {
+	public CompletableFuture<Void> sendDeviceMetadata(String target, String refId, HeadlessReaderInstance inst) {
 		if (!active || client == null) {
 			return CompletableFuture.completedFuture(null);
 		}
 		DeviceMetadataPayload payload = queryDeviceMetadata(inst);
 		Event event = Event.createMessage(clientName, target, payload);
-		if (token != null && !token.isBlank()) {
-			event.setToken(token);
+		if (payload.getSession() != null && !payload.getSession().isBlank()) {
+			event.setSession(payload.getSession());
 		}
 		if (refId != null && !refId.isBlank()) {
 			event.setRefId(refId);
 		}
 		event.setMessage(payload.getSummaryMessage());
-		if (token != null && !token.isBlank()) {
-			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', readerId: '{}', token: '{}', refId: '{}')",
-					target, payload.getDeviceId(), payload.getDeviceType(), payload.getReaderId(), token, refId);
-		} else {
-			logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', readerId: '{}', refId: '{}')",
-					target, payload.getDeviceId(), payload.getDeviceType(), payload.getReaderId(), refId);
-		}
+		logger.info("[WSBroker] Sending device metadata response to '{}' (device: '{}', type: '{}', readerId: '{}', refId: '{}')",
+				target, payload.getDeviceId(), payload.getDeviceType(), payload.getReaderId(), refId);
 		return client.send(event);
 	}
 
@@ -1753,14 +1749,14 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			logger.warn("[WSBroker] Device metadata query failed - Reader '{}' not found", reqReaderId);
 			DeviceMetadataPayload errPayload = new DeviceMetadataPayload("", "", "Reader '" + reqReaderId + "' not found",
 					"", System.currentTimeMillis(), clientName, reqReaderId, "error", DeviceMetadataPayload.EVENT_RESPONSE);
-			sendReply(target, incomingEvent.getToken(), incomingEvent.getId(), errPayload);
+			sendReply(target, incomingEvent.getId(), errPayload);
 			return;
 		}
 
 		logger.info("[WSBroker] Received device metadata query from '{}'{}", incomingEvent.getSource(),
 				(targetReader != null ? " for reader '" + targetReader.getReaderId() + "'" : ""));
 
-		sendDeviceMetadata(target, incomingEvent.getToken(), incomingEvent.getId(), targetReader).exceptionally(ex -> {
+		sendDeviceMetadata(target, incomingEvent.getId(), targetReader).exceptionally(ex -> {
 			logger.warn("[WSBroker] Failed to send device metadata response: {}", ex.getMessage());
 			return null;
 		});

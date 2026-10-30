@@ -14,7 +14,7 @@ public abstract class BaseRfidPayload {
 	@JsonProperty("event")
 	private final String event;
 
-	@JsonProperty("session")
+	@JsonIgnore
 	private final String session;
 
 	@JsonProperty("timestamp")
@@ -43,6 +43,7 @@ public abstract class BaseRfidPayload {
 		return event;
 	}
 
+	@JsonIgnore
 	public String getSession() {
 		return session;
 	}

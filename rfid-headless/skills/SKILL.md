@@ -34,7 +34,7 @@ When generating code, validating payloads, or reasoning about `rfid-headless`, A
 ### Rule 1: Separation of Envelope `id` / `refId` vs. Payload `readerId`
 * **`id`** (`string`, optional/recommended) in the outer JSON envelope: Unique message ID of the request envelope.
 * **`refId`** (`string`, optional) in the outer JSON envelope: Set in responses to mirror the `id` of the originating request for RPC / waiter correlation.
-* **`token`** (`string`, optional) in the outer JSON envelope: Optional application correlation token; transparently mirrored in responses if provided, but not required for RPC request-response matching.
+* **`session`** (`string`, optional) in the outer JSON envelope: Logical scan session or cycle identifier.
 * **`readerId`** (`string`) inside the `data` payload: Logical name of the physical RFID reader instance (e.g., `"gate-01"`, `"return-station"`). Never place `readerId` in the outer envelope header.
 
 ### Rule 2: Standard CamelCase Naming in JSON Payloads
@@ -48,7 +48,7 @@ When generating code, validating payloads, or reasoning about `rfid-headless`, A
 ### Rule 4: Request-Response Correlation
 * When sending a command (`rfid:get_device_metadata`, `rfid:write_tag`, `rfid:write_afi`), set `"id"` in the request envelope (or allow client libraries like Go's `wsbrokerclient` to generate it automatically).
 * The daemon sets `"refId"` in the response envelope equal to the request's `"id"`.
-* The `"token"` field is entirely optional; WSBroker client correlation relies on `id` -> `refId`.
+* WSBroker client correlation relies on `id` -> `refId`.
 
 ### Rule 5: Read-Only Safety & Exclusive Lock Protection
 * During write operations (`rfid:write_tag`, `rfid:write_afi`), the daemon temporarily pauses the target reader's scan loop (`executeExclusive`), programs the tag(s), sends a `rfid:tags_cleared` notification, and resumes scanning.
@@ -69,7 +69,7 @@ All WebSocket communication through WSBroker conforms to this JSON envelope stru
   "source": "client-or-daemon-id",
   "target": "all",
   "type": "message",
-  "token": "req-12345-uuid",
+  "session": "main-scan",
   "data": { ... }
 }
 ```
@@ -84,7 +84,7 @@ All WebSocket communication through WSBroker conforms to this JSON envelope stru
 | `source` | `string` | Required | Sender client identifier (e.g., `"rfid:reader:01"`, `"dashboard-ui"`). |
 | `target` | `string` | Required | Destination client ID (`"rfid:reader:01"`) or broadcast channel (`"all"`). |
 | `type` | `string` | Required | Event message type. Standard data messages use `"message"`. |
-| `token` | `string` | Optional | User correlation token, mirrored back in command responses. |
+| `session` | `string` | Optional | Logical scan session/cycle identifier (e.g., `"main-scan"`). |
 | `data` | `object` | Required | Structured event payload containing the business logic data. |
 
 ---
@@ -100,6 +100,7 @@ Emitted immediately when an ISO 15693 / ISO 28560-2 transponder is detected and 
   "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
+  "session": "main-scan",
   "data": {
     "event": "rfid:tag_read",
     "uid": "E00401080AFD252F",
@@ -116,7 +117,6 @@ Emitted immediately when an ISO 15693 / ISO 28560-2 transponder is detected and 
     "usageType": 1,
     "version": 1,
     "afi": "07",
-    "session": "main-scan",
     "timestamp": 1792756801123,
     "readerId": "gate-01"
   }
@@ -142,11 +142,11 @@ Emitted when all transponders are removed from the reader RF field, when the rea
   "source": "rfid:reader:01",
   "target": "all",
   "type": "message",
+  "session": "main-scan",
   "data": {
     "event": "rfid:tags_cleared",
     "status": "empty",
     "totalTags": 0,
-    "session": "main-scan",
     "timestamp": 1792756805100,
     "readerId": "gate-01"
   }
@@ -166,7 +166,6 @@ Emitted when all transponders are removed from the reader RF field, when the rea
   "source": "controller-agent",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "tok-meta-101",
   "data": {
     "event": "rfid:get_device_metadata",
     "readerId": "gate-01"
@@ -182,14 +181,12 @@ Emitted when all transponders are removed from the reader RF field, when the rea
   "source": "rfid:reader:01",
   "target": "controller-agent",
   "type": "message",
-  "token": "tok-meta-101",
   "data": {
     "event": "rfid:device_metadata_response",
     "status": "ok",
     "deviceId": "0052E688",
     "deviceType": "ISC.MR102-USB",
     "initDescription": "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00\nSDK: Gen3 Java v7.1.0\nInterface: USB\nReader initialized successfully. RF Field active.",
-    "session": "",
     "timestamp": 1792756802045,
     "clientId": "rfid:reader:01",
     "readerId": "gate-01"
@@ -209,7 +206,6 @@ Encodes ISO 28560-2 data blocks into the RFID transponder chip.
   "source": "controller-agent",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "tok-write-201",
   "data": {
     "event": "rfid:write_tag",
     "readerId": "gate-01",
@@ -232,7 +228,6 @@ Encodes ISO 28560-2 data blocks into the RFID transponder chip.
   "source": "controller-agent",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "tok-write-batch-202",
   "data": {
     "event": "rfid:write_tag",
     "readerId": "gate-01",
@@ -268,7 +263,6 @@ Encodes ISO 28560-2 data blocks into the RFID transponder chip.
   "source": "rfid:reader:01",
   "target": "controller-agent",
   "type": "message",
-  "token": "tok-write-201",
   "data": {
     "event": "rfid:write_tag_response",
     "status": "ok",
@@ -300,7 +294,6 @@ Sets or toggles the security state byte independently without altering item meta
   "source": "controller-agent",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "tok-afi-301",
   "data": {
     "event": "rfid:write_afi",
     "readerId": "gate-01",
@@ -317,7 +310,6 @@ Sets or toggles the security state byte independently without altering item meta
   "source": "controller-agent",
   "target": "rfid:reader:01",
   "type": "message",
-  "token": "tok-afi-batch-302",
   "data": {
     "event": "rfid:write_afi",
     "readerId": "gate-01",
@@ -335,7 +327,6 @@ Sets or toggles the security state byte independently without altering item meta
   "source": "rfid:reader:01",
   "target": "controller-agent",
   "type": "message",
-  "token": "tok-afi-batch-302",
   "data": {
     "event": "rfid:write_afi_response",
     "status": "ok",
@@ -362,7 +353,6 @@ Sets or toggles the security state byte independently without altering item meta
   "source": "rfid:reader:01",
   "target": "controller-agent",
   "type": "message",
-  "token": "tok-afi-batch-303",
   "data": {
     "event": "rfid:write_afi_response",
     "status": "partial",
@@ -419,7 +409,7 @@ type Event struct {
 	Source  string          `json:"source,omitempty"`
 	Target  string          `json:"target,omitempty"`
 	Type    string          `json:"type,omitempty"`
-	Token   string          `json:"token,omitempty"`
+	Session string          `json:"session,omitempty"`
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
@@ -452,10 +442,10 @@ func HandleIncomingEvent(evt *Event) error {
 	case "rfid:tag_read":
 		var tag TagReadData
 		_ = json.Unmarshal(evt.Data, &tag)
-		fmt.Printf("Transponder Read: Item=%s, UID=%s, AFI=%s, Reader=%s\n",
-			tag.ItemID, tag.UID, tag.AFI, tag.ReaderID)
+		fmt.Printf("Transponder Read: Item=%s, UID=%s, AFI=%s, Reader=%s, Session=%s\n",
+			tag.ItemID, tag.UID, tag.AFI, tag.ReaderID, evt.Session)
 	case "rfid:tags_cleared":
-		fmt.Println("Reader plate cleared or tags removed.")
+		fmt.Printf("Reader plate cleared or tags removed (Session=%s).\n", evt.Session)
 	case "rfid:write_tag_response":
 		fmt.Printf("Write Tag Response received for RefID=%s\n", evt.RefID)
 	case "rfid:write_afi_response":
@@ -488,7 +478,7 @@ import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.event.Event;
 import java.util.Map;
 
-// Sending AFI write command (id is required for correlation; token is optional)
+// Sending AFI write command (id is required for correlation)
 Event afiCmd = Event.createMessage("my-controller", "rfid:reader:01", Map.of(
     "event", "rfid:write_afi",
     "readerId", "gate-01",

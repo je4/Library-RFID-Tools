@@ -334,7 +334,8 @@ public class HeadlessWsBrokerDispatcherTest {
             assertEquals("rfid:tags_cleared", evt.getData().get("event").asText());
             assertEquals("empty", evt.getData().get("status").asText());
             assertEquals(0, evt.getData().get("totalTags").asInt());
-            assertEquals("Session-99", evt.getData().get("session").asText());
+            assertEquals("Session-99", evt.getSession());
+            assertFalse(evt.getData().has("session"), "session must not be in data payload");
             assertEquals(1234567890L, evt.getData().get("timestamp").asLong());
             assertFalse(evt.getData().has("clientId"), "clientId must not be in data payload");
             assertTrue(evt.getMessage().contains("[READER CLEARED]"));
@@ -566,6 +567,7 @@ public class HeadlessWsBrokerDispatcherTest {
 
         Event eNoAfi = Event.createMessage("Client1", "ch1", tagPayload);
         assertFalse(eNoAfi.getData().has("afi"), "Null AFI should be omitted from JSON");
+        assertFalse(eNoAfi.getData().has("session"), "session should be omitted from data payload JSON (Option A)");
 
         // With AFI
         TagReadPayload tagPayloadWithAfi = new TagReadPayload(
@@ -579,6 +581,7 @@ public class HeadlessWsBrokerDispatcherTest {
         Event eWithAfi = Event.createMessage("Client1", "ch1", tagPayloadWithAfi);
         assertTrue(eWithAfi.getData().has("afi"), "AFI should be present in JSON when set");
         assertEquals("07", eWithAfi.getData().get("afi").asText());
+        assertFalse(eWithAfi.getData().has("session"), "session should be omitted from data payload JSON (Option A)");
 
         TagsClearedPayload clearedPayload = new TagsClearedPayload("Sess1", 12346L, "Client1");
         assertEquals("rfid:tags_cleared", clearedPayload.getEvent());
@@ -764,7 +767,6 @@ public class HeadlessWsBrokerDispatcherTest {
 
         // Incoming message command (Go Controller HandleEvent compatible)
         Event incomingMsg = Event.createMessage("web-dashboard", "rfid-station-1", java.util.Map.of("event", "rfid:get_device_metadata"));
-        incomingMsg.setToken("token-msg-999");
 
         dispatcher.handleIncomingMessage(incomingMsg);
 
@@ -774,7 +776,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals("rfid-station-1", reply.getSource());
         assertEquals("web-dashboard", reply.getTarget());
         assertEquals("message", reply.getType());
-        assertEquals("token-msg-999", reply.getToken());
         assertEquals("rfid:device_metadata_response", reply.getData().get("event").asText());
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals("0052E688", reply.getData().get("deviceId").asText());
@@ -861,7 +862,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "partno", 1,
                 "afi", "07"
         ));
-        writeMsg.setToken("req-write-123");
 
         dispatcher.handleIncomingMessage(writeMsg);
 
@@ -875,7 +875,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals("rfid-station-1", reply.getSource());
         assertEquals("web-ui", reply.getTarget());
         assertEquals("message", reply.getType());
-        assertEquals("req-write-123", reply.getToken());
         assertEquals("rfid:write_tag_response", reply.getData().get("event").asText());
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals("E004015099887766", reply.getData().get("uid").asText());
@@ -947,7 +946,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E004015099887766",
                 "afi", "0xC2"
         ));
-        afiMsg1.setToken("req-afi-001");
 
         dispatcher.handleIncomingMessage(afiMsg1);
         Thread.sleep(400);
@@ -958,7 +956,6 @@ public class HeadlessWsBrokerDispatcherTest {
         Event reply1 = sentEvents.get(0);
         assertEquals("rfid-station-1", reply1.getSource());
         assertEquals("web-ui", reply1.getTarget());
-        assertEquals("req-afi-001", reply1.getToken());
         assertEquals("rfid:write_afi_response", reply1.getData().get("event").asText());
         assertEquals("ok", reply1.getData().get("status").asText());
         assertEquals("E004015099887766", reply1.getData().get("uid").asText());
@@ -971,7 +968,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E004015099887766",
                 "afi", 194 // decimal 194 == 0xC2
         ));
-        afiMsg2.setToken("req-afi-002");
 
         dispatcher.handleIncomingMessage(afiMsg2);
         Thread.sleep(400);
@@ -980,7 +976,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(1, sentEvents.size());
 
         Event reply2 = sentEvents.get(0);
-        assertEquals("req-afi-002", reply2.getToken());
         assertEquals("rfid:write_afi_response", reply2.getData().get("event").asText());
         assertEquals("ok", reply2.getData().get("status").asText());
         assertEquals("C2", reply2.getData().get("afi").asText());
@@ -1046,14 +1041,12 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E004015099887766",
                 "itemId", "3012345678"
         ));
-        writeMsg.setToken("req-err-1");
 
         dispatcher.handleIncomingMessage(writeMsg);
         Thread.sleep(400);
 
         assertEquals(1, sentEvents.size());
         Event reply1 = sentEvents.get(0);
-        assertEquals("req-err-1", reply1.getToken());
         assertEquals("rfid:write_tag_response", reply1.getData().get("event").asText());
         assertEquals("error", reply1.getData().get("status").asText());
         assertTrue(reply1.getData().get("error").asText().contains("Tag write collision"));
@@ -1065,14 +1058,12 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E004015099887766",
                 "afi", "07"
         ));
-        afiMsg.setToken("req-err-2");
 
         dispatcher.handleIncomingMessage(afiMsg);
         Thread.sleep(400);
 
         assertEquals(1, sentEvents.size());
         Event reply2 = sentEvents.get(0);
-        assertEquals("req-err-2", reply2.getToken());
         assertEquals("rfid:write_afi_response", reply2.getData().get("event").asText());
         assertEquals("error", reply2.getData().get("status").asText());
         assertTrue(reply2.getData().get("error").asText().contains("AFI lock bit set"));
@@ -1180,7 +1171,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "isil", "CH-001",
                 "country", "CH"
         ));
-        broadcastEvent.setToken("bcast-tok-1");
 
         // Broadcast reaches all 3 stations
         d1.handleIncomingMessage(broadcastEvent);
@@ -1197,7 +1187,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertNotNull(st1Cleared, "Station 1 should send tags_cleared event after write operation");
         assertNotNull(st1Reply, "Station 1 should send write_tag_response");
         assertEquals("ok", st1Reply.getData().get("status").asText());
-        assertEquals("bcast-tok-1", st1Reply.getToken());
 
         // Stations 2 and 3 must silently ignore the broadcast
         assertFalse(st2Written.get(), "Station 2 (holding UID-2222) should ignore broadcast for UID-1111");
@@ -1280,7 +1269,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "UID-BBBB",
                 "afi", "07"
         ));
-        broadcastAfi.setToken("bcast-afi-tok");
 
         d1.handleIncomingMessage(broadcastAfi);
         d2.handleIncomingMessage(broadcastAfi);
@@ -1343,7 +1331,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "UID-ABSENT",
                 "itemId", "BOOK-ABSENT"
         ));
-        directMsg.setToken("direct-tok-err");
 
         dispatcher.handleIncomingMessage(directMsg);
         Thread.sleep(200);
@@ -1355,7 +1342,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals("rfid:write_tag_response", reply.getData().get("event").asText());
         assertEquals("error", reply.getData().get("status").asText());
         assertTrue(reply.getData().get("error").asText().contains("not present on reader station"));
-        assertEquals("direct-tok-err", reply.getToken());
 
         dispatcher.close();
     }
@@ -1436,7 +1422,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "",
                 "itemId", "WILDCARD-ITEM"
         ));
-        wildcardEvent.setToken("wildcard-tok");
 
         d1.handleIncomingMessage(wildcardEvent);
         d2.handleIncomingMessage(wildcardEvent);
@@ -1500,7 +1485,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", uid,
                 "itemId", "CHAIN-ITEM"
         ));
-        writeTagEvt.setToken("chain-tok-1");
         dispatcher.handleIncomingMessage(writeTagEvt);
 
         Thread.sleep(400);
@@ -1520,7 +1504,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", uid,
                 "afi", "07"
         ));
-        writeAfiEvt.setToken("chain-tok-2");
         dispatcher.handleIncomingMessage(writeAfiEvt);
 
         Thread.sleep(400);
@@ -1571,14 +1554,12 @@ public class HeadlessWsBrokerDispatcherTest {
         // 1. Device metadata command with specific ID
         Event metaCmd = Event.createMessage("dashboard", "rfid-station-1", Map.of("event", "rfid:get_device_metadata"));
         metaCmd.setId("meta-req-id-11111111111111111111");
-        metaCmd.setToken("meta-tok");
         dispatcher.handleIncomingMessage(metaCmd);
 
         Thread.sleep(200);
         assertEquals(1, sentEvents.size());
         Event metaResp = sentEvents.get(0);
         assertEquals("meta-req-id-11111111111111111111", metaResp.getRefId());
-        assertEquals("meta-tok", metaResp.getToken());
         assertEquals("rfid:device_metadata_response", metaResp.getData().get("event").asText());
         assertNotNull(metaResp.getId());
 
@@ -1590,14 +1571,12 @@ public class HeadlessWsBrokerDispatcherTest {
                 "itemId", "ITEM-REFID-1"
         ));
         writeTagCmd.setId("write-tag-id-2222222222222222");
-        writeTagCmd.setToken("write-tag-tok");
         dispatcher.handleIncomingMessage(writeTagCmd);
 
         Thread.sleep(300);
         Event writeTagResp = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
         assertNotNull(writeTagResp, "write_tag_response must be present");
         assertEquals("write-tag-id-2222222222222222", writeTagResp.getRefId());
-        assertEquals("write-tag-tok", writeTagResp.getToken());
         assertEquals("rfid:write_tag_response", writeTagResp.getData().get("event").asText());
         assertEquals("ok", writeTagResp.getData().get("status").asText());
 
@@ -1612,14 +1591,12 @@ public class HeadlessWsBrokerDispatcherTest {
                 "afi", "07"
         ));
         writeAfiCmd.setId("write-afi-id-3333333333333333");
-        writeAfiCmd.setToken("write-afi-tok");
         dispatcher.handleIncomingMessage(writeAfiCmd);
 
         Thread.sleep(300);
         Event writeAfiResp = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElse(null);
         assertNotNull(writeAfiResp, "write_afi_response must be present");
         assertEquals("write-afi-id-3333333333333333", writeAfiResp.getRefId());
-        assertEquals("write-afi-tok", writeAfiResp.getToken());
         assertEquals("rfid:write_afi_response", writeAfiResp.getData().get("event").asText());
         assertEquals("ok", writeAfiResp.getData().get("status").asText());
 
@@ -1631,14 +1608,12 @@ public class HeadlessWsBrokerDispatcherTest {
                 "itemId", "ITEM-FAIL"
         ));
         directMissingWrite.setId("error-req-id-44444444444444");
-        directMissingWrite.setToken("err-tok");
         dispatcher.handleIncomingMessage(directMissingWrite);
 
         Thread.sleep(200);
         assertEquals(1, sentEvents.size());
         Event errResp = sentEvents.get(0);
         assertEquals("error-req-id-44444444444444", errResp.getRefId());
-        assertEquals("err-tok", errResp.getToken());
         assertEquals("error", errResp.getData().get("status").asText());
 
         // 5. handleMetadataQuery via CLIENT_INFO / non-message query
@@ -1648,7 +1623,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 .source("external-service")
                 .target("rfid-station-1")
                 .type(org.objectspace.wsbrokerclient.event.EventType.CLIENT_INFO)
-                .token("info-tok")
                 .build();
         dispatcher.handleMetadataQuery(infoQuery);
 
@@ -1656,7 +1630,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(1, sentEvents.size());
         Event infoResp = sentEvents.get(0);
         assertEquals("info-query-id-55555555555555", infoResp.getRefId());
-        assertEquals("info-tok", infoResp.getToken());
 
         dispatcher.close();
     }
@@ -1727,7 +1700,6 @@ public class HeadlessWsBrokerDispatcherTest {
 
         assertEquals(1, sentEvents.size());
         Event reply = sentEvents.get(0);
-        assertEquals("req-batch-all-ok", reply.getToken());
         assertEquals("ref-batch-001", reply.getRefId());
         assertEquals("rfid:write_afi_response", reply.getData().get("event").asText());
         assertEquals("ok", reply.getData().get("status").asText());
@@ -1893,15 +1865,13 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uids", List.of("E00401-TAG-1", "E00401-TAG-2"),
                 "afi", "C2"
         ));
-        batchMsg.setToken("req-batch-array");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
 
         assertEquals(2, written.size());
         assertEquals(2, sentEvents.size(), "Should have dispatched tags_cleared and write_afi_response");
-        Event reply = sentEvents.stream().filter(e -> "req-batch-array".equals(e.getToken())).findFirst().orElseThrow();
-        assertEquals("req-batch-array", reply.getToken());
+        Event reply = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals("C2", reply.getData().get("afi").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -1978,7 +1948,6 @@ public class HeadlessWsBrokerDispatcherTest {
 
         assertEquals(1, sentEvents.size());
         Event reply = sentEvents.get(0);
-        assertEquals("req-batch-tags-ok", reply.getToken());
         assertEquals("ref-batch-tags-001", reply.getRefId());
         assertEquals("rfid:write_tag_response", reply.getData().get("event").asText());
         assertEquals("ok", reply.getData().get("status").asText());
@@ -2154,7 +2123,6 @@ public class HeadlessWsBrokerDispatcherTest {
                         Map.of("uid", "E00401-TAG-2", "itemId", "BOOK-2", "afi", "C2")
                 )
         ));
-        batchMsg.setToken("req-batch-tags-array");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
@@ -2163,7 +2131,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(written.contains("E00401-TAG-1:BOOK-1:7"));
         assertTrue(written.contains("E00401-TAG-2:BOOK-2:-62")); // 0xC2 signed byte = -62
         Event reply = sentEvents.stream()
-                .filter(e -> "req-batch-tags-array".equals(e.getToken()))
+                .filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText()))
                 .findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -2222,7 +2190,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "country", "DE",
                 "afi", "07"
         ));
-        batchMsg.setToken("req-shared-batch");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
@@ -2231,7 +2198,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(written.contains("E00401-SHARED-1:SHARED-ITEM:DE-101:7"));
         assertTrue(written.contains("E00401-SHARED-2:SHARED-ITEM:DE-101:7"));
         Event reply = sentEvents.stream()
-                .filter(e -> "req-shared-batch".equals(e.getToken()))
+                .filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText()))
                 .findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -2289,7 +2256,6 @@ public class HeadlessWsBrokerDispatcherTest {
                         "E00401-MAP-2", Map.of("itemId", "ITEM-MAP-2", "country", "CH", "afi", "C2")
                 )
         ));
-        batchMsg.setToken("req-map-batch");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
@@ -2298,7 +2264,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(written.contains("E00401-MAP-1:ITEM-MAP-1:DE:7"));
         assertTrue(written.contains("E00401-MAP-2:ITEM-MAP-2:CH:-62"));
         Event reply = sentEvents.stream()
-                .filter(e -> "req-map-batch".equals(e.getToken()))
+                .filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText()))
                 .findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -2354,7 +2320,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "E00401-ROOT-1", Map.of("itemId", "ITEM-ROOT-1", "country", "AT", "afi", "07"),
                 "E00401-ROOT-2", Map.of("itemId", "ITEM-ROOT-2", "country", "CH", "afi", "01")
         ));
-        batchMsg.setToken("req-root-map-batch");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
@@ -2363,7 +2328,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(written.contains("E00401-ROOT-1:ITEM-ROOT-1:AT:7"));
         assertTrue(written.contains("E00401-ROOT-2:ITEM-ROOT-2:CH:1"));
         Event reply = sentEvents.stream()
-                .filter(e -> "req-root-map-batch".equals(e.getToken()))
+                .filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText()))
                 .findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -2420,7 +2385,6 @@ public class HeadlessWsBrokerDispatcherTest {
                 "itemIds", List.of("BOOK-PART-1", "BOOK-PART-2"),
                 "afis", List.of("07", "C2")
         ));
-        batchMsg.setToken("req-parallel-batch");
 
         dispatcher.handleIncomingMessage(batchMsg);
         Thread.sleep(800);
@@ -2429,7 +2393,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(written.contains("E00401-PAR-1:BOOK-PART-1:1/2:7"));
         assertTrue(written.contains("E00401-PAR-2:BOOK-PART-2:2/2:-62"));
         Event reply = sentEvents.stream()
-                .filter(e -> "req-parallel-batch".equals(e.getToken()))
+                .filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText()))
                 .findFirst().orElseThrow();
         assertEquals("ok", reply.getData().get("status").asText());
         assertEquals(2, reply.getData().get("successfulUids").size());
@@ -2557,10 +2521,9 @@ public class HeadlessWsBrokerDispatcherTest {
                 "event", "rfid:get_device_metadata",
                 "reader_id", "gate-01"
         ));
-        queryGate.setToken("req-gate");
         dispatcher.handleIncomingMessage(queryGate);
 
-        Event replyGate = sentEvents.stream().filter(e -> "req-gate".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyGate = sentEvents.stream().filter(e -> "gate-01".equals(e.getData().path("readerId").asText())).findFirst().orElseThrow();
         assertEquals("rfid:device_metadata_response", replyGate.getData().get("event").asText());
         assertEquals("gate-01", replyGate.getData().get("readerId").asText());
         assertEquals("52E101", replyGate.getData().get("deviceId").asText());
@@ -2571,10 +2534,9 @@ public class HeadlessWsBrokerDispatcherTest {
                 "event", "rfid:get_device_metadata",
                 "reader_id", "return-02"
         ));
-        queryReturn.setToken("req-return");
         dispatcher.handleIncomingMessage(queryReturn);
 
-        Event replyReturn = sentEvents.stream().filter(e -> "req-return".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyReturn = sentEvents.stream().filter(e -> "return-02".equals(e.getData().path("readerId").asText())).findFirst().orElseThrow();
         assertEquals("rfid:device_metadata_response", replyReturn.getData().get("event").asText());
         assertEquals("return-02", replyReturn.getData().get("readerId").asText());
         assertEquals("52E102", replyReturn.getData().get("deviceId").asText());
@@ -2585,10 +2547,9 @@ public class HeadlessWsBrokerDispatcherTest {
                 "event", "rfid:get_device_metadata",
                 "reader_id", "non-existent-reader"
         ));
-        queryUnknown.setToken("req-unknown");
         dispatcher.handleIncomingMessage(queryUnknown);
 
-        Event replyUnknown = sentEvents.stream().filter(e -> "req-unknown".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyUnknown = sentEvents.stream().filter(e -> "error".equals(e.getData().path("status").asText())).findFirst().orElseThrow();
         assertEquals("error", replyUnknown.getData().get("status").asText());
         assertTrue(replyUnknown.getData().get("initDescription").asText().contains("not found"));
 
@@ -2684,43 +2645,42 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E00401-RO-1",
                 "itemId", "NEW-BOOK-RO"
         ));
-        writeRoMsg.setToken("req-write-ro");
         dispatcher.handleIncomingMessage(writeRoMsg);
 
-        Event replyWriteRo = sentEvents.stream().filter(e -> "req-write-ro".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyWriteRo = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElseThrow();
         assertEquals("error", replyWriteRo.getData().get("status").asText());
         assertEquals("reader-ro", replyWriteRo.getData().get("readerId").asText());
         assertTrue(replyWriteRo.getData().get("error").asText().contains("read-only"));
         assertTrue(writtenTags.isEmpty());
 
         // 2. Attempt write_afi on READ-ONLY reader -> MUST REJECT
+        sentEvents.clear();
         Event afiRoMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
                 "event", "rfid:write_afi",
                 "reader_id", "reader-ro",
                 "uid", "E00401-RO-1",
                 "afi", "07"
         ));
-        afiRoMsg.setToken("req-afi-ro");
         dispatcher.handleIncomingMessage(afiRoMsg);
 
-        Event replyAfiRo = sentEvents.stream().filter(e -> "req-afi-ro".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyAfiRo = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElseThrow();
         assertEquals("error", replyAfiRo.getData().get("status").asText());
         assertEquals("reader-ro", replyAfiRo.getData().get("readerId").asText());
         assertTrue(replyAfiRo.getData().get("error").asText().contains("read-only"));
         assertTrue(writtenAfis.isEmpty());
 
         // 3. Write tag on R/W reader -> MUST SUCCEED
+        sentEvents.clear();
         Event writeRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
                 "event", "rfid:write_tag",
                 "reader_id", "reader-rw",
                 "uid", "E00401-RW-1",
                 "itemId", "NEW-BOOK-RW"
         ));
-        writeRwMsg.setToken("req-write-rw");
         dispatcher.handleIncomingMessage(writeRwMsg);
         Thread.sleep(400);
 
-        Event replyWriteRw = sentEvents.stream().filter(e -> "req-write-rw".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyWriteRw = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getData().path("event").asText())).findFirst().orElseThrow();
         assertEquals("ok", replyWriteRw.getData().get("status").asText());
         assertEquals("reader-rw", replyWriteRw.getData().get("readerId").asText());
         assertEquals(1, writtenTags.size());
@@ -2729,6 +2689,7 @@ public class HeadlessWsBrokerDispatcherTest {
         // 4. Write AFI on R/W reader -> MUST SUCCEED
         // Place tag back in presence after previous write_tag emptied callback presence
         cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
+        sentEvents.clear();
 
         Event afiRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
                 "event", "rfid:write_afi",
@@ -2736,11 +2697,10 @@ public class HeadlessWsBrokerDispatcherTest {
                 "uid", "E00401-RW-1",
                 "afi", "C2"
         ));
-        afiRwMsg.setToken("req-afi-rw");
         dispatcher.handleIncomingMessage(afiRwMsg);
         Thread.sleep(400);
 
-        Event replyAfiRw = sentEvents.stream().filter(e -> "req-afi-rw".equals(e.getToken())).findFirst().orElseThrow();
+        Event replyAfiRw = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getData().path("event").asText())).findFirst().orElseThrow();
         assertEquals("ok", replyAfiRw.getData().get("status").asText());
         assertEquals("reader-rw", replyAfiRw.getData().get("readerId").asText());
         assertEquals(1, writtenAfis.size());

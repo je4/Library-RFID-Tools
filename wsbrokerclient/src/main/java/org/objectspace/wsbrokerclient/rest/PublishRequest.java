@@ -34,8 +34,8 @@ public class PublishRequest {
     @JsonProperty("type")
     private String type;
 
-    @JsonProperty("token")
-    private String token;
+    @JsonProperty("session")
+    private String session;
 
     @JsonProperty("data")
     private JsonNode data;
@@ -97,12 +97,12 @@ public class PublishRequest {
         return this;
     }
 
-    public String getToken() {
-        return token;
+    public String getSession() {
+        return session;
     }
 
-    public PublishRequest setToken(String token) {
-        this.token = token;
+    public PublishRequest setSession(String session) {
+        this.session = session;
         return this;
     }
 

@@ -491,23 +491,9 @@ public class WSBrokerClient implements AutoCloseable {
      * @return CompletableFuture completing when the query message is sent
      */
     public CompletableFuture<Void> queryDeviceMetadata(String target) {
-        return queryDeviceMetadata(target, null);
-    }
-
-    /**
-     * Sends a device metadata query command message (type = "message") to the specified target reader client or channel with a correlation token.
-     *
-     * @param target the target reader client name or channel
-     * @param token  optional request/correlation token
-     * @return CompletableFuture completing when the query message is sent
-     */
-    public CompletableFuture<Void> queryDeviceMetadata(String target, String token) {
         Map<String, Object> command = new HashMap<>();
         command.put("event", "rfid:get_device_metadata");
         Event event = Event.createMessage(clientName, target, command);
-        if (token != null && !token.isBlank()) {
-            event.setToken(token);
-        }
         return send(event);
     }
 
@@ -537,30 +523,18 @@ public class WSBrokerClient implements AutoCloseable {
      * @return CompletableFuture
      */
     public CompletableFuture<Void> sendPong(String target) {
-        return sendPong(target, null, null);
+        return sendPong(target, null);
     }
 
     /**
-     * Sends a heartbeat pong reply event with token.
+     * Sends a heartbeat pong reply event with refId correlation.
      *
      * @param target destination client or broker
-     * @param token  optional token
-     * @return CompletableFuture
-     */
-    public CompletableFuture<Void> sendPong(String target, String token) {
-        return sendPong(target, token, null);
-    }
-
-    /**
-     * Sends a heartbeat pong reply event with token and refId correlation.
-     *
-     * @param target destination client or broker
-     * @param token  optional token
      * @param refId  correlated request event ID
      * @return CompletableFuture
      */
-    public CompletableFuture<Void> sendPong(String target, String token, String refId) {
-        return send(Event.createPong(clientName, target != null ? target : "wsbroker", token, refId));
+    public CompletableFuture<Void> sendPong(String target, String refId) {
+        return send(Event.createPong(clientName, target != null ? target : "wsbroker", refId));
     }
 
     // --- NTP Time Synchronization over WebSocket ---
@@ -688,7 +662,7 @@ public class WSBrokerClient implements AutoCloseable {
             if (target == null || target.isBlank()) {
                 target = "wsbroker";
             }
-            sendPong(target, evt.getToken(), evt.getId()).exceptionally(err -> {
+            sendPong(target, evt.getId()).exceptionally(err -> {
                 log.debug("Auto-pong response failed: {}", err.getMessage());
                 return null;
             });

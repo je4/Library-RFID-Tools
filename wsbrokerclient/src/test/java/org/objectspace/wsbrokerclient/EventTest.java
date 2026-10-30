@@ -24,7 +24,7 @@ class EventTest {
                 .source("sensor-1")
                 .target("hub-main")
                 .type(EventType.CLIENT_MESSAGE)
-                .token("tok-12345")
+                .session("sess-12345")
                 .data(payload)
                 .message("Sensor measurement report")
                 .addAction("report")
@@ -36,6 +36,7 @@ class EventTest {
         assertThat(json).contains("\"type\":\"message\"");
         assertThat(json).contains("\"source\":\"sensor-1\"");
         assertThat(json).contains("\"target\":\"hub-main\"");
+        assertThat(json).contains("\"session\":\"sess-12345\"");
         assertThat(json).contains("\"name\":\"ItemA\"");
         assertThat(json).contains("\"count\":42");
 
@@ -45,7 +46,7 @@ class EventTest {
         assertThat(deserialized.getType()).isEqualTo("message");
         assertThat(deserialized.getEventType()).isEqualTo(EventType.CLIENT_MESSAGE);
         assertThat(deserialized.isType(EventType.CLIENT_MESSAGE)).isTrue();
-        assertThat(deserialized.getToken()).isEqualTo("tok-12345");
+        assertThat(deserialized.getSession()).isEqualTo("sess-12345");
         assertThat(deserialized.getMessage()).isEqualTo("Sensor measurement report");
         assertThat(deserialized.getActions()).containsExactly("report", "telemetry");
         assertThat(deserialized.getSubprotocols()).containsExactly("proto-v1", "proto-v2");
@@ -133,7 +134,7 @@ class EventTest {
                 "\"source\":\"rfid:reader:01\"," +
                 "\"target\":\"all\"," +
                 "\"type\":\"message\"," +
-                "\"token\":\"tok-abc\"," +
+                "\"session\":\"sess-abc\"," +
                 "\"unknown_field_123\":true," +
                 "\"extra_future_property\":\"ignored\"" +
                 "}";
@@ -144,7 +145,7 @@ class EventTest {
         assertThat(event.getSource()).isEqualTo("rfid:reader:01");
         assertThat(event.getTarget()).isEqualTo("all");
         assertThat(event.getType()).isEqualTo("message");
-        assertThat(event.getToken()).isEqualTo("tok-abc");
+        assertThat(event.getSession()).isEqualTo("sess-abc");
 
         Event built = Event.builder()
                 .id("custom-id")
@@ -202,20 +203,20 @@ class EventTest {
         String jsonWithoutRefId = eventWithoutRef.toJson();
         assertThat(jsonWithoutRefId).doesNotContain("\"refId\"");
 
-        Event pongWithRef = Event.createPong("me", "sender", "token-99", "ping-id-777");
+        Event pongWithRef = Event.createPong("me", "sender", "ping-id-777");
         assertThat(pongWithRef.getRefId()).isEqualTo("ping-id-777");
         assertThat(pongWithRef.toJson()).contains("\"refId\":\"ping-id-777\"");
     }
 
     @Test
-    @DisplayName("Test createReply correlations for source, channel, token, refId and id")
+    @DisplayName("Test createReply correlations for source, channel, session, refId and id")
     void testCreateReply() {
         Event request = Event.builder()
                 .id("req-1234567890abcdef1234567890abcdef")
                 .source("client-alpha")
                 .target("rfid-reader")
                 .channel("rfid-events")
-                .token("auth-token-xyz")
+                .session("session-xyz")
                 .type(EventType.CLIENT_ACTION)
                 .data(Map.of("command", "get_status"))
                 .build();
@@ -226,7 +227,7 @@ class EventTest {
         assertThat(reply.getRefId()).isEqualTo(request.getId());
         assertThat(reply.getTarget()).isEqualTo("client-alpha");
         assertThat(reply.getChannel()).isEqualTo("rfid-events");
-        assertThat(reply.getToken()).isEqualTo("auth-token-xyz");
+        assertThat(reply.getSession()).isEqualTo("session-xyz");
         assertThat(reply.getType()).isEqualTo(EventType.CLIENT_MESSAGE.getValue());
 
         // Test fallback to channel when source is missing
