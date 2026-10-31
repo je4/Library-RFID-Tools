@@ -458,11 +458,11 @@ public class HeadlessReaderCallbackTest {
     }
 
     @Test
-    @DisplayName("Test RfidPayload serialization with strongly typed data records")
+    @DisplayName("Test Event serialization with strongly typed data records")
     public void testPayloadReaderIdSerialization() throws Exception {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
-        // 1. TagReadData + RfidPayload
+        // 1. TagReadData + Event
         org.objectspace.rfid.headless.payload.TagReadData tagData =
                 new org.objectspace.rfid.headless.payload.TagReadData(
                         "E00401001234", "ITEM-1", "AABB", "001596-0", "CH", true, "SLIX",
@@ -472,63 +472,63 @@ public class HeadlessReaderCallbackTest {
         assertEquals("E00401001234", tagData.uid());
         assertEquals("ITEM-1", tagData.itemId());
 
-        org.objectspace.rfid.headless.payload.RfidPayload<org.objectspace.rfid.headless.payload.TagReadData> tagPayload =
-                org.objectspace.rfid.headless.payload.RfidPayload.of(org.objectspace.rfid.headless.payload.TagReadData.EVENT_NAME, tagData);
-        String tagJson = mapper.writeValueAsString(tagPayload);
-        assertTrue(tagJson.contains("\"event\":\"rfid:tag_read\""));
+        org.objectspace.wsbrokerclient.event.Event<org.objectspace.rfid.headless.payload.TagReadData> tagEvent =
+                org.objectspace.wsbrokerclient.event.Event.of(org.objectspace.rfid.headless.payload.TagReadData.EVENT_NAME, "client-1", "channel-1", tagData);
+        String tagJson = tagEvent.toJson();
+        assertTrue(tagJson.contains("\"type\":\"rfid/tag_read\""));
         assertTrue(tagJson.contains("\"data\":"));
         assertTrue(tagJson.contains("\"uid\":\"E00401001234\""));
         assertTrue(tagJson.contains("\"itemId\":\"ITEM-1\""));
 
-        // 2. TagsClearedData + RfidPayload
+        // 2. TagsClearedData + Event
         org.objectspace.rfid.headless.payload.TagsClearedData clearData =
                 new org.objectspace.rfid.headless.payload.TagsClearedData("reader-gate-02");
         assertEquals("reader-gate-02", clearData.readerId());
 
-        org.objectspace.rfid.headless.payload.RfidPayload<org.objectspace.rfid.headless.payload.TagsClearedData> clearPayload =
-                org.objectspace.rfid.headless.payload.RfidPayload.of(org.objectspace.rfid.headless.payload.TagsClearedData.EVENT_NAME, clearData);
-        String clearJson = mapper.writeValueAsString(clearPayload);
-        assertTrue(clearJson.contains("\"event\":\"rfid:tags_cleared\""));
+        org.objectspace.wsbrokerclient.event.Event<org.objectspace.rfid.headless.payload.TagsClearedData> clearEvent =
+                org.objectspace.wsbrokerclient.event.Event.of(org.objectspace.rfid.headless.payload.TagsClearedData.EVENT_NAME, "client-1", "channel-1", clearData);
+        String clearJson = clearEvent.toJson();
+        assertTrue(clearJson.contains("\"type\":\"rfid/tags_cleared\""));
         assertTrue(clearJson.contains("\"status\":\"empty\""));
 
-        // 3. DeviceMetadataData + RfidPayload
+        // 3. DeviceMetadataData + Event
         org.objectspace.rfid.headless.payload.DeviceMetadataData metaData =
                 new org.objectspace.rfid.headless.payload.DeviceMetadataData(
                         "52E688", "MR102", "Desc", "reader-gate-03"
                 );
         assertEquals("reader-gate-03", metaData.readerId());
 
-        org.objectspace.rfid.headless.payload.RfidPayload<org.objectspace.rfid.headless.payload.DeviceMetadataData> metaPayload =
-                org.objectspace.rfid.headless.payload.RfidPayload.of(org.objectspace.rfid.headless.payload.DeviceMetadataData.EVENT_RESPONSE, metaData);
-        String metaJson = mapper.writeValueAsString(metaPayload);
-        assertTrue(metaJson.contains("\"event\":\"rfid:device_metadata_response\""));
+        org.objectspace.wsbrokerclient.event.Event<org.objectspace.rfid.headless.payload.DeviceMetadataData> metaEvent =
+                org.objectspace.wsbrokerclient.event.Event.of(org.objectspace.rfid.headless.payload.DeviceMetadataData.EVENT_RESPONSE, "client-1", "client-2", metaData);
+        String metaJson = metaEvent.toJson();
+        assertTrue(metaJson.contains("\"type\":\"rfid/device_metadata_response\""));
         assertTrue(metaJson.contains("\"deviceId\":\"52E688\""));
         assertTrue(metaJson.contains("\"deviceType\":\"MR102\""));
 
-        // 4. WriteTagResponseData + RfidPayload
+        // 4. WriteTagResponseData + Event
         org.objectspace.rfid.headless.payload.WriteTagResponseData writeTagData =
                 org.objectspace.rfid.headless.payload.WriteTagResponseData.success(
                         "E00401001234", "ITEM-1", "001596-0", "CH", 1, 1, 1, "07", "reader-gate-01"
                 );
         assertEquals("reader-gate-01", writeTagData.readerId());
 
-        org.objectspace.rfid.headless.payload.RfidPayload<org.objectspace.rfid.headless.payload.WriteTagResponseData> writeTagPayload =
-                org.objectspace.rfid.headless.payload.RfidPayload.of(org.objectspace.rfid.headless.payload.WriteTagResponseData.EVENT_RESPONSE, writeTagData);
-        String writeTagJson = mapper.writeValueAsString(writeTagPayload);
-        assertTrue(writeTagJson.contains("\"event\":\"rfid:write_tag_response\""));
+        org.objectspace.wsbrokerclient.event.Event<org.objectspace.rfid.headless.payload.WriteTagResponseData> writeTagEvent =
+                org.objectspace.wsbrokerclient.event.Event.of(org.objectspace.rfid.headless.payload.WriteTagResponseData.EVENT_RESPONSE, "client-1", "client-2", writeTagData);
+        String writeTagJson = writeTagEvent.toJson();
+        assertTrue(writeTagJson.contains("\"type\":\"rfid/write_tag_response\""));
         assertTrue(writeTagJson.contains("\"status\":\"ok\""));
 
-        // 5. WriteAfiResponseData + RfidPayload
+        // 5. WriteAfiResponseData + Event
         org.objectspace.rfid.headless.payload.WriteAfiResponseData writeAfiData =
                 org.objectspace.rfid.headless.payload.WriteAfiResponseData.success(
                         "E00401001234", "07", "reader-gate-02"
                 );
         assertEquals("reader-gate-02", writeAfiData.readerId());
 
-        org.objectspace.rfid.headless.payload.RfidPayload<org.objectspace.rfid.headless.payload.WriteAfiResponseData> writeAfiPayload =
-                org.objectspace.rfid.headless.payload.RfidPayload.of(org.objectspace.rfid.headless.payload.WriteAfiResponseData.EVENT_RESPONSE, writeAfiData);
-        String writeAfiJson = mapper.writeValueAsString(writeAfiPayload);
-        assertTrue(writeAfiJson.contains("\"event\":\"rfid:write_afi_response\""));
+        org.objectspace.wsbrokerclient.event.Event<org.objectspace.rfid.headless.payload.WriteAfiResponseData> writeAfiEvent =
+                org.objectspace.wsbrokerclient.event.Event.of(org.objectspace.rfid.headless.payload.WriteAfiResponseData.EVENT_RESPONSE, "client-1", "client-2", writeAfiData);
+        String writeAfiJson = writeAfiEvent.toJson();
+        assertTrue(writeAfiJson.contains("\"type\":\"rfid/write_afi_response\""));
         assertTrue(writeAfiJson.contains("\"status\":\"ok\""));
     }
 

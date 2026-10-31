@@ -247,4 +247,42 @@ class EventTest {
         assertThat(replyOnlyTarget.getTarget()).isEqualTo("default-destination");
         assertThat(replyOnlyTarget.getRefId()).isEqualTo("req-only-target");
     }
+
+    record CustomPayload(String uid, String title, int year) {}
+
+    @Test
+    @DisplayName("Test PayloadRegistry dynamic payload registration and unmarshaling")
+    void testPayloadRegistryDynamicUnmarshaling() {
+        org.objectspace.wsbrokerclient.event.PayloadRegistry.register("library/book_scanned", CustomPayload.class);
+        assertThat(org.objectspace.wsbrokerclient.event.PayloadRegistry.isRegistered("library/book_scanned")).isTrue();
+
+        String json = "{" +
+                "\"id\":\"evt-001\"," +
+                "\"type\":\"library/book_scanned\"," +
+                "\"source\":\"station-1\"," +
+                "\"target\":\"shelf-A\"," +
+                "\"data\":{\"uid\":\"E00401\",\"title\":\"Clean Code\",\"year\":2008}" +
+                "}";
+
+        org.objectspace.wsbrokerclient.event.RawEvent raw = org.objectspace.wsbrokerclient.event.RawEvent.fromJson(json);
+        assertThat(raw.getType()).isEqualTo("library/book_scanned");
+
+        Object dynamicData = raw.getDynamicData();
+        assertThat(dynamicData).isInstanceOf(CustomPayload.class);
+        CustomPayload payload = (CustomPayload) dynamicData;
+        assertThat(payload.uid()).isEqualTo("E00401");
+        assertThat(payload.title()).isEqualTo("Clean Code");
+        assertThat(payload.year()).isEqualTo(2008);
+
+        Event<?> event = Event.fromJson(json);
+        Object eventRegisteredData = event.getRegisteredData();
+        assertThat(eventRegisteredData).isInstanceOf(CustomPayload.class);
+
+        Event<CustomPayload> created = Event.of("library/book_scanned", "station-1", "shelf-A", new CustomPayload("E00402", "Refactoring", 1999));
+        assertThat(created.getType()).isEqualTo("library/book_scanned");
+        assertThat(created.getData().title()).isEqualTo("Refactoring");
+        String serialized = created.toJson();
+        assertThat(serialized).contains("\"type\":\"library/book_scanned\"");
+        assertThat(serialized).contains("\"title\":\"Refactoring\"");
+    }
 }

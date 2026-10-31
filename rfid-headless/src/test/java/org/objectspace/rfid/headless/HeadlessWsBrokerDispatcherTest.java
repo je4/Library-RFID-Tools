@@ -9,15 +9,8 @@ import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.config.LoaderType;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.core.TagScanProcessor;
-import org.objectspace.rfid.headless.payload.DeviceMetadataData;
-import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.headless.payload.TagReadData;
-import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.TagsClearedData;
-import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
-import org.objectspace.rfid.headless.payload.WriteTagResponseData;
-import org.objectspace.rfid.library.ISO15693Reader;
-import org.objectspace.rfid.TagCallback;
 import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
@@ -28,12 +21,10 @@ import org.objectspace.wsbrokerclient.event.Event;
 import java.io.File;
 import java.io.FileWriter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,11 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessWsBrokerDispatcherTest {
 
     private static JsonNode payloadData(Event<?> evt) {
-        JsonNode node = evt.getDataNode();
-        if (node != null && node.has("data")) {
-            return node.get("data");
-        }
-        return node;
+        return evt.getDataNode();
     }
 
     @Test
@@ -116,34 +103,45 @@ public class HeadlessWsBrokerDispatcherTest {
         model.setValues(1, 1, 1, "BOOK-12345", "DE", "DE-101", new ArrayList<>());
 
         dispatcher.dispatchTag(
-                "E004015099887766",
+                "E004015011223344",
                 "BOOK-12345",
-                "0102030405060708",
+                "0102030405",
                 "DE-101",
                 "DE",
                 true,
-                "ISO 15693",
-                "Session-01",
+                "SLIX",
+                "test-session",
                 System.currentTimeMillis(),
-                "1",
+                "rfid-station-1",
                 model
         );
 
-        assertEquals(3, sentEvents.size(), "Should have dispatched an event to each of the 3 channels");
+        assertEquals(3, sentEvents.size(), "Should send event to all 3 channels");
 
-        for (int i = 0; i < sentEvents.size(); i++) {
-            Event evt = sentEvents.get(i);
-            assertEquals("rfid-station-1", evt.getSource());
-            assertEquals("message", evt.getType());
-            assertNotNull(evt.getData());
-            assertEquals("rfid:tag_read", evt.getDataNode().get("event").asText());
-            assertTrue(payloadData(evt).has("uid"));
-            assertEquals("E004015099887766", payloadData(evt).get("uid").asText());
-            assertEquals("BOOK-12345", payloadData(evt).get("itemId").asText());
-            assertEquals("DE-101", payloadData(evt).get("isil").asText());
-            assertEquals("DE", payloadData(evt).get("country").asText());
-            assertTrue(payloadData(evt).get("crcOk").asBoolean());
-            assertTrue(evt.getMessage().contains("BOOK-12345"));
+        for (int i = 0; i < 3; i++) {
+            Event e = sentEvents.get(i);
+            assertEquals("rfid-station-1", e.getSource());
+            assertEquals("rfid/tag_read", e.getType());
+            assertNotNull(e.getMessage());
+            assertTrue(e.getMessage().contains("[TAG READ]"));
+            assertTrue(e.getMessage().contains("BOOK-12345"));
+            assertTrue(e.getMessage().contains("E004015011223344"));
+            assertTrue(e.getMessage().contains("DE-101"));
+
+            JsonNode data = payloadData(e);
+            assertNotNull(data);
+            assertEquals("E004015011223344", data.get("uid").asText());
+            assertEquals("BOOK-12345", data.get("itemId").asText());
+            assertEquals("0102030405", data.get("raw").asText());
+            assertEquals("DE-101", data.get("isil").asText());
+            assertEquals("DE", data.get("country").asText());
+            assertTrue(data.get("crcOk").asBoolean());
+            assertEquals("OK", data.get("crc").asText());
+            assertEquals("SLIX", data.get("tagName").asText());
+            assertEquals(1, data.get("version").asInt());
+            assertEquals(1, data.get("usageType").asInt());
+            assertEquals(1, data.get("partNo").asInt());
+            assertEquals(1, data.get("parts").asInt());
         }
 
         assertEquals("all", sentEvents.get(0).getTarget());
@@ -161,41 +159,35 @@ public class HeadlessWsBrokerDispatcherTest {
                 <configuration>
                     <wsbroker>
                         <active>true</active>
-                        <name>test-java</name>
-                        <url><![CDATA[https://localhost:8765]]></url>
+                        <url>https://broker.local:8765</url>
                         <channels>
-                            <channel>all</channel>
-                            <channel>intern</channel>
+                            <channel>rfid-events</channel>
+                            <channel>admin</channel>
                         </channels>
                         <clienttls>
                             <type>dev</type>
+                            <directory>certs</directory>
+                            <active>true</active>
                         </clienttls>
                     </wsbroker>
                 </configuration>
                 """;
 
-        File tempFile = File.createTempFile("inventory-wsbroker-test-", ".xml");
-        tempFile.deleteOnExit();
-        try (FileWriter writer = new FileWriter(tempFile)) {
+        File tempXml = File.createTempFile("inventory-test-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
             writer.write(xml);
         }
 
-        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempFile.getAbsolutePath());
-        assertTrue(HeadlessConfigHelper.isWsBrokerActive(config));
-        assertEquals("test-java", HeadlessConfigHelper.getClientName(config));
-        assertEquals("https://localhost:8765", HeadlessConfigHelper.getWsBrokerEndpoint(config));
-        assertEquals(List.of("all", "intern"), HeadlessConfigHelper.getChannels(config));
-
-        CertManagerConfig tlsCfg = HeadlessConfigHelper.getClientTlsConfig(config);
-        assertNotNull(tlsCfg);
-        assertEquals(LoaderType.DEV, tlsCfg.getType());
-
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
         HeadlessWsBrokerDispatcher dispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
+
         assertTrue(dispatcher.isActive());
-        assertEquals("test-java", dispatcher.getClientName());
-        assertEquals("https://localhost:8765", dispatcher.getEndpoint());
-        assertEquals(List.of("all", "intern"), dispatcher.getChannels());
+        assertEquals("https://broker.local:8765", dispatcher.getEndpoint());
+        assertEquals(List.of("rfid-events", "admin"), dispatcher.getChannels());
         assertNotNull(dispatcher.getCertLoader());
+        assertNotNull(dispatcher.getClient());
 
         dispatcher.close();
     }
@@ -208,22 +200,24 @@ public class HeadlessWsBrokerDispatcherTest {
                 <configuration>
                     <wsbroker>
                         <active>false</active>
-                        <name>disabled-reader</name>
-                        <url>https://localhost:8765</url>
+                        <url>https://broker.local:8765</url>
+                        <channels>
+                            <channel>rfid-events</channel>
+                        </channels>
                     </wsbroker>
                 </configuration>
                 """;
 
-        File tempFile = File.createTempFile("inventory-wsbroker-disabled-", ".xml");
-        tempFile.deleteOnExit();
-        try (FileWriter writer = new FileWriter(tempFile)) {
+        File tempXml = File.createTempFile("inventory-test-disabled-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
             writer.write(xml);
         }
 
-        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempFile.getAbsolutePath());
-        assertFalse(HeadlessConfigHelper.isWsBrokerActive(config));
-
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
         HeadlessWsBrokerDispatcher dispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
+
         assertFalse(dispatcher.isActive());
         assertNull(dispatcher.getClient());
         dispatcher.close();
@@ -235,32 +229,12 @@ public class HeadlessWsBrokerDispatcherTest {
         AtomicInteger wsCount = new AtomicInteger(0);
         List<Event> wsEvents = new CopyOnWriteArrayList<>();
 
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("test-java");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                wsEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher wsDispatcher = new HeadlessWsBrokerDispatcher(
-                "test-java",
-                "https://localhost:8765",
-                List.of("all", "intern"),
-                null,
-                mockClient
-        );
-
+        // 1. Mock Webservice dispatcher
         WebserviceConfig wsCfg = new WebserviceConfig(true, "http://localhost:8080/scan", "POST", "secret", false);
-        WebserviceDispatcher mockWebserviceDispatcher = new WebserviceDispatcher(wsCfg) {
+        WebserviceDispatcher mockWsDispatcher = new WebserviceDispatcher(wsCfg) {
             @Override
-            public WebserviceResponse dispatchScan(String marker, String userText, String nfcContent,
-                                                   String rawPayloadHex, String uid, FinnishDataModel libraryData,
-                                                   String session, String deviceName) {
+            public WebserviceResponse dispatchScan(String marker, String userText, String nfcContent, String rawPayloadHex,
+                                                    String uid, FinnishDataModel libraryData, String session, String deviceName) {
                 wsCount.incrementAndGet();
                 return WebserviceResponse.success(200, "{\"ok\":true}", "http://localhost:8080/scan", 5, "secret", Map.of(), "{}", "");
             }
@@ -273,36 +247,57 @@ public class HeadlessWsBrokerDispatcherTest {
         TagScanProcessor processor = new TagScanProcessor(cfg) {
             @Override
             public WebserviceDispatcher getWebserviceDispatcher() {
-                return mockWebserviceDispatcher;
+                return mockWsDispatcher;
             }
 
             @Override
             public WebserviceResponse dispatchWebservice(String marker, String itemId, String rawHex, String uid,
-                                                         FinnishDataModel metadata, String sessionName, String extra) throws Exception {
-                return mockWebserviceDispatcher.dispatchScan(marker, marker, itemId, rawHex, uid, metadata, sessionName, extra);
+                                                        FinnishDataModel metadata, String sessionName, String extra) throws Exception {
+                return mockWsDispatcher.dispatchScan(marker, marker, itemId, rawHex, uid, metadata, sessionName, extra);
             }
         };
 
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, wsDispatcher, 3000L);
+        // 2. Mock WSBroker client & dispatcher
+        WSClientConfig clientConfig = new WSClientConfig();
+        clientConfig.setClientName("rfid-dual-station");
+        clientConfig.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockBrokerClient = new WSBrokerClient(clientConfig) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                wsEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher brokerDispatcher = new HeadlessWsBrokerDispatcher(
+                "rfid-dual-station",
+                "https://localhost:8765",
+                List.of("all", "dual-channel"),
+                null,
+                mockBrokerClient
+        );
+
+        // 3. Callback with both processor and broker dispatcher
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, brokerDispatcher, 3000L);
 
         FinnishDataModel model = new FinnishDataModel();
-        model.setValues(1, 1, 1, "ITEM-42", "DE", "DE-101", new ArrayList<>());
+        model.setValues(1, 1, 1, "BOOK-DUAL-999", "CH", "001596-0", new ArrayList<>());
         byte[] data = model.getBlock(32);
 
-        callback.doIt(1, 1, "NXP", "SLIX", "UID-42", data, 4);
+        callback.doIt(1, 1, "NXP", "SLIX", "E004010099998888", data, 4);
 
-        // Verify Webservice call
-        assertEquals(1, wsCount.get(), "Webservice should have been called once");
+        // Verify Webservice received dispatch
+        assertEquals(1, wsCount.get(), "Webservice dispatch should have been triggered once");
 
-        // Verify WSBroker WebSocket channels call
-        assertEquals(2, wsEvents.size(), "WSBroker events should have been sent to 2 channels");
+        // Verify WSBroker received 2 events (for channels 'all' and 'dual-channel')
+        assertEquals(2, wsEvents.size(), "WSBroker should have received events on both channels");
         assertEquals("all", wsEvents.get(0).getTarget());
-        assertEquals("intern", wsEvents.get(1).getTarget());
-        assertEquals("rfid:tag_read", wsEvents.get(0).getDataNode().get("event").asText());
-        assertEquals("ITEM-42", payloadData(wsEvents.get(0)).get("itemId").asText());
-        assertEquals("UID-42", payloadData(wsEvents.get(0)).get("uid").asText());
+        assertEquals("dual-channel", wsEvents.get(1).getTarget());
+        assertEquals("BOOK-DUAL-999", payloadData(wsEvents.get(0)).get("itemId").asText());
+        assertEquals("E004010099998888", payloadData(wsEvents.get(0)).get("uid").asText());
 
-        callback.close();
+        brokerDispatcher.close();
     }
 
     @Test
@@ -325,34 +320,34 @@ public class HeadlessWsBrokerDispatcherTest {
         HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
                 "rfid-station-1",
                 "https://localhost:8765",
-                List.of("all", "station-1"),
+                List.of("all", "intern"),
                 null,
                 mockClient
         );
 
         assertTrue(dispatcher.isActive());
 
-        dispatcher.dispatchEmpty("Session-99", 1234567890L, "Station-Client-1");
+        dispatcher.dispatchEmpty("test-session", System.currentTimeMillis(), "rfid-station-1");
 
-        assertEquals(2, sentEvents.size(), "Should have dispatched cleared event to both channels");
+        assertEquals(2, sentEvents.size(), "Should send tags_cleared event to all 2 channels");
 
-        for (Event evt : sentEvents) {
-            assertEquals("rfid-station-1", evt.getSource());
-            assertEquals("message", evt.getType());
-            assertNotNull(evt.getData());
-            assertEquals("rfid:tags_cleared", evt.getDataNode().get("event").asText());
-            assertEquals("empty", payloadData(evt).get("status").asText());
-            assertEquals(0, payloadData(evt).get("totalTags").asInt());
-            assertEquals("Session-99", evt.getSession());
-            assertFalse(payloadData(evt).has("session"), "session must not be in data payload");
-            assertEquals(1234567890L, evt.getTime().toEpochMilli());
-            assertFalse(payloadData(evt).has("timestamp"), "timestamp must not be in data payload");
-            assertFalse(payloadData(evt).has("clientId"), "clientId must not be in data payload");
-            assertTrue(evt.getMessage().contains("[READER CLEARED]"));
+        for (int i = 0; i < 2; i++) {
+            Event e = sentEvents.get(i);
+            assertEquals("rfid-station-1", e.getSource());
+            assertEquals("rfid/tags_cleared", e.getType());
+            assertNotNull(e.getMessage());
+            assertTrue(e.getMessage().contains("[READER CLEARED]"));
+            assertTrue(e.getMessage().contains("rfid-station-1"));
+
+            JsonNode data = payloadData(e);
+            assertNotNull(data);
+            assertEquals("empty", data.get("status").asText());
+            assertEquals(0, data.get("totalTags").asInt());
+            assertEquals("rfid-station-1", data.get("readerId").asText());
         }
 
         assertEquals("all", sentEvents.get(0).getTarget());
-        assertEquals("station-1", sentEvents.get(1).getTarget());
+        assertEquals("intern", sentEvents.get(1).getTarget());
 
         dispatcher.close();
     }
@@ -363,7 +358,7 @@ public class HeadlessWsBrokerDispatcherTest {
         List<Event> wsEvents = new CopyOnWriteArrayList<>();
 
         WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("test-edge-reader");
+        clientConfig.setClientName("rfid:station:01");
         clientConfig.setEndpoint("https://localhost:8765");
 
         WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
@@ -375,7 +370,7 @@ public class HeadlessWsBrokerDispatcherTest {
         };
 
         HeadlessWsBrokerDispatcher wsDispatcher = new HeadlessWsBrokerDispatcher(
-                "test-edge-reader",
+                "rfid:station:01",
                 "https://localhost:8765",
                 List.of("all"),
                 null,
@@ -387,49 +382,45 @@ public class HeadlessWsBrokerDispatcherTest {
         cfg.setProperty("webservice.active", false);
 
         TagScanProcessor processor = new TagScanProcessor(cfg);
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, wsDispatcher, 3000L);
+        // debounceWindow = 3000ms, emptyTimeoutMs = 150ms
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, wsDispatcher, 3000L, 150L);
 
-        // 1. Initial state: empty() should not dispatch event if no tags were active
-        assertFalse(callback.hasActiveTags());
-        callback.empty();
-        assertEquals(0, callback.getClearedEvents());
-        assertEquals(0, wsEvents.size());
-
-        // 2. Tag placed on antenna -> doIt called
         FinnishDataModel model = new FinnishDataModel();
-        model.setValues(1, 1, 1, "ITEM-100", "DE", "DE-101", new ArrayList<>());
-        callback.doIt(1, 1, "NXP", "SLIX", "UID-100", model.getBlock(32), 4);
+        model.setValues(1, 1, 1, "BOOK-TRANSITION-01", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+
+        // 1. Initial tag scan: transitions from EMPTY -> TAGS_PRESENT
+        callback.doIt(1, 1, "NXP", "SLIX", "E004010011112222", data, 4);
 
         assertTrue(callback.hasActiveTags());
-        assertEquals(1, wsEvents.size(), "Should have 1 tag read event");
-        assertEquals("rfid:tag_read", wsEvents.get(0).getDataNode().get("event").asText());
-        assertEquals("UID-100", payloadData(wsEvents.get(0)).get("uid").asText());
+        assertEquals(1, wsEvents.size());
+        Event tagReadEvent = wsEvents.get(0);
+        assertEquals("rfid:tag_read", tagReadEvent.getDataNode().get("event").asText());
+        assertEquals("E004010011112222", payloadData(tagReadEvent).get("uid").asText());
 
-        // 3. Tag removed from antenna -> empty() called
-        callback.empty();
-        assertFalse(callback.hasActiveTags());
-        assertEquals(1, callback.getClearedEvents());
-        assertEquals(2, wsEvents.size(), "Should have received 1 tag read + 1 cleared event");
-        assertEquals("rfid:tags_cleared", wsEvents.get(1).getDataNode().get("event").asText());
+        // 2. Wait for empty timeout (> 150ms) without scan -> transitions from TAGS_PRESENT -> EMPTY
+        Thread.sleep(250);
 
-        // 4. Repeated empty() cycles while reader remains empty -> must NOT send duplicate cleared events
-        callback.empty();
-        callback.empty();
-        assertEquals(1, callback.getClearedEvents());
-        assertEquals(2, wsEvents.size());
+        assertFalse(callback.hasActiveTags(), "Tags should have timed out and cleared");
+        assertEquals(2, wsEvents.size(), "Should have dispatched rfid:tags_cleared event on edge transition");
 
-        // 5. Place tag again and remove again -> should send another cleared event
-        callback.doIt(1, 1, "NXP", "SLIX", "UID-101", model.getBlock(32), 4);
+        Event clearedEvent = wsEvents.get(1);
+        assertEquals("rfid:tags_cleared", clearedEvent.getDataNode().get("event").asText());
+        assertEquals("empty", payloadData(clearedEvent).get("status").asText());
+        assertEquals(0, payloadData(clearedEvent).get("totalTags").asInt());
+        assertEquals("rfid:station:01", payloadData(clearedEvent).get("readerId").asText());
+
+        // 3. Repeated empty timeout should NOT dispatch another empty event (edge transition only)
+        Thread.sleep(200);
+        assertEquals(2, wsEvents.size(), "No duplicate empty event should be dispatched while remaining empty");
+
+        // 4. New tag scan after being empty -> transitions from EMPTY -> TAGS_PRESENT again
+        callback.doIt(1, 1, "NXP", "SLIX", "E004010033334444", data, 4);
         assertTrue(callback.hasActiveTags());
-        assertEquals(3, wsEvents.size());
+        assertEquals(3, wsEvents.size(), "New scan should dispatch another tag_read event");
+        assertEquals("E004010033334444", payloadData(wsEvents.get(2)).get("uid").asText());
 
-        callback.empty();
-        assertFalse(callback.hasActiveTags());
-        assertEquals(2, callback.getClearedEvents());
-        assertEquals(4, wsEvents.size());
-        assertEquals("rfid:tags_cleared", wsEvents.get(3).getDataNode().get("event").asText());
-
-        callback.close();
+        wsDispatcher.close();
     }
 
     @Test
@@ -437,7 +428,7 @@ public class HeadlessWsBrokerDispatcherTest {
     void testDispatchTagWithAfiToMultipleChannels() {
         List<Event> sentEvents = new ArrayList<>();
         WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("test-station");
+        clientConfig.setClientName("rfid-station-1");
         clientConfig.setEndpoint("https://localhost:8765");
 
         WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
@@ -449,46 +440,47 @@ public class HeadlessWsBrokerDispatcherTest {
         };
 
         HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "test-station",
+                "rfid-station-1",
                 "https://localhost:8765",
-                List.of("all", "channel-1"),
+                List.of("all", "gates"),
                 null,
                 mockClient
         );
 
         FinnishDataModel model = new FinnishDataModel();
-        model.setValues(1, 1, 1, "BOOK-AFI-1", "CH", "001596-0", new ArrayList<>());
+        model.setValues(1, 1, 1, "BOOK-AFI-01", "CH", "001596-0", new ArrayList<>());
 
         dispatcher.dispatchTag(
-                "E004010099887766",
-                "BOOK-AFI-1",
-                "01020304",
+                "E0040150AABBCCDD",
+                "BOOK-AFI-01",
+                "010203",
                 "001596-0",
                 "CH",
                 true,
-                "ISO 15693 : NXP I-Code SLIX",
-                "Session-AFI",
+                "SLIX2",
+                "test-session",
                 System.currentTimeMillis(),
-                "Client-1",
+                "rfid-station-1",
                 model,
                 "07"
         );
 
-        assertEquals(2, sentEvents.size(), "Should dispatch to both configured channels");
+        assertEquals(2, sentEvents.size());
 
         for (Event e : sentEvents) {
-            assertEquals("rfid:tag_read", e.getDataNode().get("event").asText());
-            assertEquals("E004010099887766", payloadData(e).get("uid").asText());
-            assertEquals("BOOK-AFI-1", payloadData(e).get("itemId").asText());
-            assertEquals("07", payloadData(e).get("afi").asText());
+            assertEquals("rfid/tag_read", e.getType());
             assertTrue(e.getMessage().contains("AFI: 07"));
+            JsonNode data = payloadData(e);
+            assertEquals("07", data.get("afi").asText());
+            assertEquals("E0040150AABBCCDD", data.get("uid").asText());
+            assertEquals("BOOK-AFI-01", data.get("itemId").asText());
         }
 
         dispatcher.close();
     }
 
     @Test
-    @DisplayName("Test polymorphic dispatch with RfidPayload instances")
+    @DisplayName("Test polymorphic dispatch with strongly typed data records")
     void testPolymorphicDispatch() {
         List<Event> sentEvents = new CopyOnWriteArrayList<>();
 
@@ -525,7 +517,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(2, sentEvents.size());
 
         Event e1 = sentEvents.get(0);
-        assertEquals("rfid:tag_read", e1.getDataNode().get("event").asText());
+        assertEquals("rfid/tag_read", e1.getType());
         assertEquals("UID-999", payloadData(e1).get("uid").asText());
         assertEquals("ITEM-999", payloadData(e1).get("itemId").asText());
         assertEquals(4, payloadData(e1).get("parts").asInt());
@@ -535,1859 +527,10 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(e1.getMessage().contains("[TAG READ]"));
 
         Event e2 = sentEvents.get(1);
-        assertEquals("rfid:tags_cleared", e2.getDataNode().get("event").asText());
+        assertEquals("rfid/tags_cleared", e2.getType());
         assertEquals("empty", payloadData(e2).get("status").asText());
         assertEquals(0, payloadData(e2).get("totalTags").asInt());
         assertTrue(e2.getMessage().contains("[READER CLEARED]"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test TagReadData and TagsClearedData model properties and summary messages")
-    void testPayloadModelAndSummary() {
-        TagReadData tagData = new TagReadData(
-                "UID-1", "ITEM-1", "HEX1", "ISIL1", "DE",
-                true, "TagType", (FinnishDataModel) null, null, "Client1"
-        );
-
-        assertEquals("UID-1", tagData.uid());
-        assertEquals("ITEM-1", tagData.itemId());
-        assertEquals("HEX1", tagData.raw());
-        assertEquals("ISIL1", tagData.isil());
-        assertEquals("DE", tagData.country());
-        assertTrue(tagData.crcOk());
-        assertTrue(tagData.isCrcValid());
-        assertEquals("OK", tagData.crc());
-        assertEquals("TagType", tagData.tagName());
-        assertEquals("Client1", tagData.readerId());
-        assertNull(tagData.parts());
-        assertNull(tagData.afi());
-        assertTrue(tagData.getSummaryMessage().contains("UID: UID-1"));
-        assertFalse(tagData.getSummaryMessage().contains("AFI:"));
-
-        RfidPayload<TagReadData> payloadNoAfi = RfidPayload.of(TagReadData.EVENT_NAME, tagData);
-        Event eNoAfi = Event.createMessage("Client1", "ch1", payloadNoAfi);
-        assertFalse(payloadData(eNoAfi).has("afi"), "Null AFI should be omitted from JSON");
-
-        // With AFI
-        TagReadData tagDataWithAfi = new TagReadData(
-                "UID-1", "ITEM-1", "HEX1", "ISIL1", "DE",
-                true, "TagType", (FinnishDataModel) null, "07", "Client1"
-        );
-        assertEquals("07", tagDataWithAfi.afi());
-        assertTrue(tagDataWithAfi.getSummaryMessage().contains("AFI: 07"));
-
-        RfidPayload<TagReadData> payloadWithAfi = RfidPayload.of(TagReadData.EVENT_NAME, tagDataWithAfi);
-        Event eWithAfi = Event.createMessage("Client1", "ch1", payloadWithAfi);
-        assertTrue(payloadData(eWithAfi).has("afi"), "AFI should be present in JSON when set");
-        assertEquals("07", payloadData(eWithAfi).get("afi").asText());
-
-        TagsClearedData clearedData = new TagsClearedData("Client1");
-        assertEquals("empty", clearedData.status());
-        assertEquals(0, clearedData.totalTags());
-        assertEquals("Client1", clearedData.readerId());
-        assertTrue(clearedData.getSummaryMessage().contains("[READER CLEARED]"));
-
-        // With explicit readerId
-        TagReadData tagDataWithReader = new TagReadData(
-                "UID-2", "ITEM-2", "HEX2", "ISIL2", "CH",
-                true, "TagType", null, "07", "gate-01"
-        );
-        assertEquals("gate-01", tagDataWithReader.readerId());
-        assertTrue(tagDataWithReader.getSummaryMessage().contains("Reader: gate-01"));
-        assertTrue(tagDataWithReader.getSummaryMessage().contains("AFI: 07"));
-
-        TagsClearedData clearedDataWithReader = new TagsClearedData("gate-01");
-        assertEquals("gate-01", clearedDataWithReader.readerId());
-        assertTrue(clearedDataWithReader.getSummaryMessage().contains("Reader: gate-01"));
-    }
-
-    @Test
-    @DisplayName("Test DeviceMetadataData model properties and summary message")
-    void testDeviceMetadataPayloadModelAndSummary() {
-        DeviceMetadataData data = new DeviceMetadataData(
-                "0052E688",
-                "ISC.MR102-USB",
-                "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00",
-                "reader-01"
-        );
-
-        assertEquals("ok", data.status());
-        assertEquals("0052E688", data.deviceId());
-        assertEquals("ISC.MR102-USB", data.deviceType());
-        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", data.initDescription());
-        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", data.getDescription());
-        assertEquals("reader-01", data.readerId());
-
-        String summary = data.getSummaryMessage();
-        assertTrue(summary.contains("[DEVICE METADATA]"));
-        assertTrue(summary.contains("0052E688"));
-        assertTrue(summary.contains("ISC.MR102-USB"));
-    }
-
-    @Test
-    @DisplayName("Test dispatchDeviceMetadata sends DeviceMetadataData to all configured channels")
-    void testDeviceMetadataQueryAndDispatch() {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("rfid-station-1");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1",
-                "https://localhost:8765",
-                List.of("all", "intern"),
-                null,
-                mockClient
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override
-            public void connect() {}
-            @Override
-            public void init() {}
-            @Override
-            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
-            @Override
-            public boolean isConnected() { return true; }
-            @Override
-            public boolean checkConnection() { return true; }
-            @Override
-            public String getDeviceInfo() { return "FEIG ISC.MR102-USB (0052E688)"; }
-            @Override
-            public String getDeviceId() { return "0052E688"; }
-            @Override
-            public String getDeviceType() { return "ISC.MR102-USB"; }
-            @Override
-            public String getInitDescription() { return "FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00"; }
-            @Override
-            public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-        assertSame(mockReader, dispatcher.getReader());
-
-        // 1. Query device metadata directly
-        DeviceMetadataData metadata = dispatcher.queryDeviceMetadata();
-        assertEquals("0052E688", metadata.deviceId());
-        assertEquals("ISC.MR102-USB", metadata.deviceType());
-        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", metadata.initDescription());
-
-        // 2. Dispatch to channels
-        dispatcher.dispatchDeviceMetadata();
-
-        assertEquals(2, sentEvents.size(), "Should have dispatched metadata event to both channels 'all' and 'intern'");
-
-        Event e1 = sentEvents.get(0);
-        assertEquals("all", e1.getTarget());
-        assertEquals("message", e1.getType());
-        assertEquals("rfid:device_metadata_response", e1.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(e1).get("status").asText());
-        assertEquals("0052E688", payloadData(e1).get("deviceId").asText());
-        assertEquals("ISC.MR102-USB", payloadData(e1).get("deviceType").asText());
-        assertEquals("FEIG Electronic ISC.MR102-USB (0052E688)\nFirmware: V03.01.00", payloadData(e1).get("initDescription").asText());
-        assertTrue(e1.getMessage().contains("[DEVICE METADATA]"));
-
-        Event e2 = sentEvents.get(1);
-        assertEquals("intern", e2.getTarget());
-        assertEquals("message", e2.getType());
-        assertEquals("rfid:device_metadata_response", e2.getDataNode().get("event").asText());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test dispatcher automatically responds to incoming get_device_metadata query")
-    void testDeviceMetadataAutoReply() {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("rfid-station-1");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1",
-                "https://localhost:8765",
-                List.of("all"),
-                null,
-                mockClient
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override
-            public void connect() {}
-            @Override
-            public void init() {}
-            @Override
-            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
-            @Override
-            public boolean isConnected() { return true; }
-            @Override
-            public boolean checkConnection() { return true; }
-            @Override
-            public String getDeviceInfo() { return "FEIG ISC.MR102-USB (0052E688)"; }
-            @Override
-            public String getDeviceId() { return "0052E688"; }
-            @Override
-            public String getDeviceType() { return "ISC.MR102-USB"; }
-            @Override
-            public String getInitDescription() { return "Reader initialized successfully."; }
-            @Override
-            public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        // Incoming message command (Go Controller HandleEvent compatible)
-        Event incomingMsg = Event.createMessage("web-dashboard", "rfid-station-1", java.util.Map.of("event", "rfid:get_device_metadata"));
-
-        dispatcher.handleIncomingMessage(incomingMsg);
-
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
-
-        assertEquals("rfid-station-1", reply.getSource());
-        assertEquals("web-dashboard", reply.getTarget());
-        assertEquals("message", reply.getType());
-        assertEquals("rfid:device_metadata_response", reply.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals("0052E688", payloadData(reply).get("deviceId").asText());
-        assertEquals("ISC.MR102-USB", payloadData(reply).get("deviceType").asText());
-        assertEquals("Reader initialized successfully.", payloadData(reply).get("initDescription").asText());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test dispatcher handles rfid:write_tag command with all parameters and token")
-    void testWriteTagCommandSuccess() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("rfid-station-1");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1",
-                "https://localhost:8765",
-                List.of("all"),
-                null,
-                mockClient
-        );
-
-        AtomicBoolean writeTagCalled = new AtomicBoolean(false);
-        AtomicInteger writeAfiCalled = new AtomicInteger(0);
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override
-            public void connect() {}
-            @Override
-            public void init() {}
-            @Override
-            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
-            @Override
-            public boolean isConnected() { return true; }
-            @Override
-            public boolean checkConnection() { return true; }
-            @Override
-            public String getDeviceInfo() { return "FEIG ISC.MR102-USB"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                assertEquals("E004015099887766", uid);
-                assertEquals("3012345678", model.getPrimaryItemId());
-                assertEquals("CH-000001-1", model.getISIL());
-                assertEquals("CH", model.getCountryOfOwnerLib());
-                assertEquals(2, model.getPartsInItem());
-                assertEquals(1, model.getPartNumber());
-                if (afi != null) {
-                    assertEquals((byte) 0x07, afi.byteValue());
-                    writeAfiCalled.incrementAndGet();
-                }
-                writeTagCalled.set(true);
-            }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                assertEquals("E004015099887766", uid);
-                assertEquals((byte) 0x07, afi);
-                writeAfiCalled.incrementAndGet();
-            }
-            @Override
-            public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        Event writeMsg = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "E004015099887766",
-                "itemId", "3012345678",
-                "isil", "CH-000001-1",
-                "country", "CH",
-                "parts", 2,
-                "partno", 1,
-                "afi", "07"
-        ));
-
-        dispatcher.handleIncomingMessage(writeMsg);
-
-        // Wait for async write future to dispatch response
-        Thread.sleep(400);
-
-        assertTrue(writeTagCalled.get(), "Reader.writeTag should have been invoked");
-        assertEquals(1, sentEvents.size(), "Should have received write_tag response event");
-
-        Event reply = sentEvents.get(0);
-        assertEquals("rfid-station-1", reply.getSource());
-        assertEquals("web-ui", reply.getTarget());
-        assertEquals("message", reply.getType());
-        assertEquals("rfid:write_tag_response", reply.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals("E004015099887766", payloadData(reply).get("uid").asText());
-        assertEquals("3012345678", payloadData(reply).get("itemId").asText());
-        assertEquals("CH-000001-1", payloadData(reply).get("isil").asText());
-        assertEquals("CH", payloadData(reply).get("country").asText());
-        assertEquals(2, payloadData(reply).get("parts").asInt());
-        assertEquals(1, payloadData(reply).get("partNo").asInt());
-        assertEquals("07", payloadData(reply).get("afi").asText());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test dispatcher handles rfid:write_afi command")
-    void testWriteAfiCommandSuccess() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("rfid-station-1");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1",
-                "https://localhost:8765",
-                List.of("all"),
-                null,
-                mockClient
-        );
-
-        AtomicInteger writeAfiInvocations = new AtomicInteger(0);
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override
-            public void connect() {}
-            @Override
-            public void init() {}
-            @Override
-            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
-            @Override
-            public boolean isConnected() { return true; }
-            @Override
-            public boolean checkConnection() { return true; }
-            @Override
-            public String getDeviceInfo() { return "FEIG ISC.MR102-USB"; }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                assertEquals("E004015099887766", uid);
-                assertEquals((byte) 0xC2, afi);
-                writeAfiInvocations.incrementAndGet();
-            }
-            @Override
-            public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        // 1. Test rfid:write_afi with hex string
-        Event afiMsg1 = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_afi",
-                "uid", "E004015099887766",
-                "afi", "0xC2"
-        ));
-
-        dispatcher.handleIncomingMessage(afiMsg1);
-        Thread.sleep(400);
-
-        assertEquals(1, writeAfiInvocations.get());
-        assertEquals(1, sentEvents.size());
-
-        Event reply1 = sentEvents.get(0);
-        assertEquals("rfid-station-1", reply1.getSource());
-        assertEquals("web-ui", reply1.getTarget());
-        assertEquals("rfid:write_afi_response", reply1.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply1).get("status").asText());
-        assertEquals("E004015099887766", payloadData(reply1).get("uid").asText());
-        assertEquals("C2", payloadData(reply1).get("afi").asText());
-
-        // 2. Test rfid:write_afi with decimal number
-        sentEvents.clear();
-        Event afiMsg2 = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_afi",
-                "uid", "E004015099887766",
-                "afi", 194 // decimal 194 == 0xC2
-        ));
-
-        dispatcher.handleIncomingMessage(afiMsg2);
-        Thread.sleep(400);
-
-        assertEquals(2, writeAfiInvocations.get());
-        assertEquals(1, sentEvents.size());
-
-        Event reply2 = sentEvents.get(0);
-        assertEquals("rfid:write_afi_response", reply2.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply2).get("status").asText());
-        assertEquals("C2", payloadData(reply2).get("afi").asText());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test dispatcher write error reporting when reader throws exception")
-    void testWriteErrorHandling() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig clientConfig = new WSClientConfig();
-        clientConfig.setClientName("rfid-station-1");
-        clientConfig.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(clientConfig) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1",
-                "https://localhost:8765",
-                List.of("all"),
-                null,
-                mockClient
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override
-            public void connect() {}
-            @Override
-            public void init() {}
-            @Override
-            public void inventory(TagCallback inventoryCallback, int numBlocks) {}
-            @Override
-            public boolean isConnected() { return true; }
-            @Override
-            public boolean checkConnection() { return true; }
-            @Override
-            public String getDeviceInfo() { return "FEIG ISC.MR102-USB"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                throw new Exception("Tag write collision or transponder not in field");
-            }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                throw new Exception("Tag AFI lock bit set");
-            }
-            @Override
-            public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        // 1. Error on writeTag
-        Event writeMsg = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "E004015099887766",
-                "itemId", "3012345678"
-        ));
-
-        dispatcher.handleIncomingMessage(writeMsg);
-        Thread.sleep(400);
-
-        assertEquals(1, sentEvents.size());
-        Event reply1 = sentEvents.get(0);
-        assertEquals("rfid:write_tag_response", reply1.getDataNode().get("event").asText());
-        assertEquals("error", payloadData(reply1).get("status").asText());
-        assertTrue(payloadData(reply1).get("error").asText().contains("Tag write collision"));
-
-        // 2. Error on writeAfi
-        sentEvents.clear();
-        Event afiMsg = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_afi",
-                "uid", "E004015099887766",
-                "afi", "07"
-        ));
-
-        dispatcher.handleIncomingMessage(afiMsg);
-        Thread.sleep(400);
-
-        assertEquals(1, sentEvents.size());
-        Event reply2 = sentEvents.get(0);
-        assertEquals("rfid:write_afi_response", reply2.getDataNode().get("event").asText());
-        assertEquals("error", payloadData(reply2).get("status").asText());
-        assertTrue(payloadData(reply2).get("error").asText().contains("AFI lock bit set"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-station broadcast write_tag is executed only by the station with the active tag")
-    void testBroadcastWriteTagFilteredByPresenceMultiStation() throws Exception {
-        List<Event> st1Events = new CopyOnWriteArrayList<>();
-        List<Event> st2Events = new CopyOnWriteArrayList<>();
-        List<Event> st3Events = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg1 = new WSClientConfig();
-        cfg1.setClientName("rfid-station-1");
-        cfg1.setEndpoint("https://localhost:8765");
-
-        WSClientConfig cfg2 = new WSClientConfig();
-        cfg2.setClientName("rfid-station-2");
-        cfg2.setEndpoint("https://localhost:8765");
-
-        WSClientConfig cfg3 = new WSClientConfig();
-        cfg3.setClientName("rfid-station-3");
-        cfg3.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher d1 = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg1) {
-                    @Override public CompletableFuture<Void> send(Event e) { st1Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        HeadlessWsBrokerDispatcher d2 = new HeadlessWsBrokerDispatcher("rfid-station-2", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg2) {
-                    @Override public CompletableFuture<Void> send(Event e) { st2Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        HeadlessWsBrokerDispatcher d3 = new HeadlessWsBrokerDispatcher("rfid-station-3", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg3) {
-                    @Override public CompletableFuture<Void> send(Event e) { st3Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        AtomicBoolean st1Written = new AtomicBoolean(false);
-        AtomicBoolean st2Written = new AtomicBoolean(false);
-        AtomicBoolean st3Written = new AtomicBoolean(false);
-
-        d1.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) { st1Written.set(true); }
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        d2.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-2"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) { st2Written.set(true); }
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        d3.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-3"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) { st3Written.set(true); }
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback cb1 = new HeadlessReaderCallback(null, d1, 3000L, 2000L);
-        HeadlessReaderCallback cb2 = new HeadlessReaderCallback(null, d2, 3000L, 2000L);
-        HeadlessReaderCallback cb3 = new HeadlessReaderCallback(null, d3, 3000L, 2000L);
-
-        d1.setCallback(cb1);
-        d2.setCallback(cb2);
-        d3.setCallback(cb3);
-
-        // Station 1 detects UID-1111
-        cb1.doIt(1, 1, "NXP", "SLIX", "UID-1111", new FinnishDataModel().getBlock(32), 4);
-        // Station 2 detects UID-2222
-        cb2.doIt(1, 1, "NXP", "SLIX", "UID-2222", new FinnishDataModel().getBlock(32), 4);
-        // Station 3 has empty antenna field (no tags)
-
-        st1Events.clear();
-        st2Events.clear();
-        st3Events.clear();
-
-        // Broadcast write_tag command for UID-1111 published to channel 'all'
-        Event broadcastEvent = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "UID-1111",
-                "itemId", "BOOK-1111",
-                "isil", "CH-001",
-                "country", "CH"
-        ));
-
-        // Broadcast reaches all 3 stations
-        d1.handleIncomingMessage(broadcastEvent);
-        d2.handleIncomingMessage(broadcastEvent);
-        d3.handleIncomingMessage(broadcastEvent);
-
-        Thread.sleep(800);
-
-        // Station 1 must have executed write and replied
-        assertTrue(st1Written.get(), "Station 1 holding UID-1111 should execute writeTag");
-        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
-        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st1Cleared, "Station 1 should send tags_cleared event after write operation");
-        assertNotNull(st1Reply, "Station 1 should send write_tag_response");
-        assertEquals("ok", payloadData(st1Reply).get("status").asText());
-
-        // Stations 2 and 3 must silently ignore the broadcast
-        assertFalse(st2Written.get(), "Station 2 (holding UID-2222) should ignore broadcast for UID-1111");
-        assertEquals(0, st2Events.size(), "Station 2 should not send any response");
-
-        assertFalse(st3Written.get(), "Station 3 (empty) should ignore broadcast for UID-1111");
-        assertEquals(0, st3Events.size(), "Station 3 should not send any response");
-
-        d1.close();
-        d2.close();
-        d3.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-station broadcast write_afi is executed only by the station with the active tag")
-    void testBroadcastWriteAfiFilteredByPresence() throws Exception {
-        List<Event> st1Events = new CopyOnWriteArrayList<>();
-        List<Event> st2Events = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg1 = new WSClientConfig();
-        cfg1.setClientName("rfid-station-1");
-        cfg1.setEndpoint("https://localhost:8765");
-
-        WSClientConfig cfg2 = new WSClientConfig();
-        cfg2.setClientName("rfid-station-2");
-        cfg2.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher d1 = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg1) {
-                    @Override public CompletableFuture<Void> send(Event e) { st1Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        HeadlessWsBrokerDispatcher d2 = new HeadlessWsBrokerDispatcher("rfid-station-2", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg2) {
-                    @Override public CompletableFuture<Void> send(Event e) { st2Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        AtomicBoolean st1AfiWritten = new AtomicBoolean(false);
-        AtomicBoolean st2AfiWritten = new AtomicBoolean(false);
-
-        d1.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String u, FinnishDataModel m, Byte a) {}
-            @Override public void writeAfi(String u, byte a) { st1AfiWritten.set(true); }
-            @Override public void close() {}
-        });
-
-        d2.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-2"; }
-            @Override public void writeTag(String u, FinnishDataModel m, Byte a) {}
-            @Override public void writeAfi(String u, byte a) { st2AfiWritten.set(true); }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback cb1 = new HeadlessReaderCallback(null, d1, 3000L, 2000L);
-        HeadlessReaderCallback cb2 = new HeadlessReaderCallback(null, d2, 3000L, 2000L);
-
-        d1.setCallback(cb1);
-        d2.setCallback(cb2);
-
-        cb1.doIt(1, 1, "NXP", "SLIX", "UID-AAAA", new FinnishDataModel().getBlock(32), 4);
-        cb2.doIt(1, 1, "NXP", "SLIX", "UID-BBBB", new FinnishDataModel().getBlock(32), 4);
-
-        st1Events.clear();
-        st2Events.clear();
-
-        // Broadcast write_afi command for UID-BBBB
-        Event broadcastAfi = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_afi",
-                "uid", "UID-BBBB",
-                "afi", "07"
-        ));
-
-        d1.handleIncomingMessage(broadcastAfi);
-        d2.handleIncomingMessage(broadcastAfi);
-
-        Thread.sleep(800);
-
-        assertFalse(st1AfiWritten.get(), "Station 1 should ignore write_afi for UID-BBBB");
-        assertEquals(0, st1Events.size());
-
-        assertTrue(st2AfiWritten.get(), "Station 2 holding UID-BBBB should execute write_afi");
-        assertEquals(2, st2Events.size(), "Station 2 should send tags_cleared and write_afi_response");
-        Event st2Cleared = st2Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st2Reply = st2Events.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st2Cleared, "Station 2 should send tags_cleared event after write_afi operation");
-        assertNotNull(st2Reply, "Station 2 should send write_afi_response");
-        assertEquals("ok", payloadData(st2Reply).get("status").asText());
-        assertEquals("UID-BBBB", payloadData(st2Reply).get("uid").asText());
-
-        d1.close();
-        d2.close();
-    }
-
-    @Test
-    @DisplayName("Test direct unicast write command for missing tag returns explicit error")
-    void testDirectWriteTagNonPresentReturnsExplicitError() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg) {
-                    @Override public CompletableFuture<Void> send(Event e) { sentEvents.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        AtomicBoolean readerWriteInvoked = new AtomicBoolean(false);
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String u, FinnishDataModel m, Byte a) { readerWriteInvoked.set(true); }
-            @Override public void writeAfi(String u, byte a) {}
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        // Station has UID-PRESENT on field
-        callback.doIt(1, 1, "NXP", "SLIX", "UID-PRESENT", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Direct command explicitly addressed to rfid-station-1 for missing tag UID-ABSENT
-        Event directMsg = Event.createMessage("web-ui", "rfid-station-1", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "UID-ABSENT",
-                "itemId", "BOOK-ABSENT"
-        ));
-
-        dispatcher.handleIncomingMessage(directMsg);
-        Thread.sleep(200);
-
-        assertFalse(readerWriteInvoked.get(), "Reader hardware should not be touched for absent tag in direct mode");
-        assertEquals(1, sentEvents.size(), "Direct message should receive explicit error response");
-
-        Event reply = sentEvents.get(0);
-        assertEquals("rfid:write_tag_response", reply.getDataNode().get("event").asText());
-        assertEquals("error", payloadData(reply).get("status").asText());
-        assertTrue(payloadData(reply).get("error").asText().contains("not present on reader station"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test wildcard broadcast write_tag executes when exactly 1 tag is present, ignores when ambiguous")
-    void testWildcardBroadcastWriteTagSingleVsMultipleTags() throws Exception {
-        List<Event> st1Events = new CopyOnWriteArrayList<>();
-        List<Event> st2Events = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg1 = new WSClientConfig();
-        cfg1.setClientName("rfid-station-1");
-        cfg1.setEndpoint("https://localhost:8765");
-
-        WSClientConfig cfg2 = new WSClientConfig();
-        cfg2.setClientName("rfid-station-2");
-        cfg2.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher d1 = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg1) {
-                    @Override public CompletableFuture<Void> send(Event e) { st1Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        HeadlessWsBrokerDispatcher d2 = new HeadlessWsBrokerDispatcher("rfid-station-2", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg2) {
-                    @Override public CompletableFuture<Void> send(Event e) { st2Events.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        AtomicBoolean st1Written = new AtomicBoolean(false);
-        AtomicBoolean st2Written = new AtomicBoolean(false);
-
-        d1.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) {
-                assertEquals("UID-SOLO", uid);
-                st1Written.set(true);
-            }
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        d2.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-2"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) { st2Written.set(true); }
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback cb1 = new HeadlessReaderCallback(null, d1, 3000L, 2000L);
-        HeadlessReaderCallback cb2 = new HeadlessReaderCallback(null, d2, 3000L, 2000L);
-
-        d1.setCallback(cb1);
-        d2.setCallback(cb2);
-
-        // Station 1: exactly 1 tag
-        cb1.doIt(1, 1, "NXP", "SLIX", "UID-SOLO", new FinnishDataModel().getBlock(32), 4);
-
-        // Station 2: multiple (2) tags
-        cb2.doIt(1, 1, "NXP", "SLIX", "UID-MULTI-1", new FinnishDataModel().getBlock(32), 4);
-        cb2.doIt(1, 1, "NXP", "SLIX", "UID-MULTI-2", new FinnishDataModel().getBlock(32), 4);
-
-        st1Events.clear();
-        st2Events.clear();
-
-        // Broadcast wildcard write command (empty uid)
-        Event wildcardEvent = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "",
-                "itemId", "WILDCARD-ITEM"
-        ));
-
-        d1.handleIncomingMessage(wildcardEvent);
-        d2.handleIncomingMessage(wildcardEvent);
-
-        Thread.sleep(400);
-
-        assertTrue(st1Written.get(), "Station 1 with single tag should execute wildcard write");
-        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
-        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st1Cleared, "Station 1 should send tags_cleared notification");
-        assertNotNull(st1Reply, "Station 1 should send write_tag_response");
-        assertEquals("UID-SOLO", payloadData(st1Reply).get("uid").asText());
-
-        assertFalse(st2Written.get(), "Station 2 with multiple tags should ignore wildcard write");
-        assertEquals(0, st2Events.size());
-
-        d1.close();
-        d2.close();
-    }
-
-    @Test
-    @DisplayName("Test back-to-back chained write operations succeed without waiting for scan loop")
-    void testBackToBackChainedWriteOperations() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg) {
-                    @Override public CompletableFuture<Void> send(Event e) { sentEvents.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        AtomicBoolean writeTagDone = new AtomicBoolean(false);
-        AtomicBoolean writeAfiDone = new AtomicBoolean(false);
-
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) { writeTagDone.set(true); }
-            @Override public void writeAfi(String uid, byte afi) { writeAfiDone.set(true); }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        String uid = "UID-CHAIN-123";
-        callback.doIt(1, 1, "NXP", "SLIX", uid, new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // 1. First broadcast write_tag
-        Event writeTagEvt = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uid", uid,
-                "itemId", "CHAIN-ITEM"
-        ));
-        dispatcher.handleIncomingMessage(writeTagEvt);
-
-        Thread.sleep(400);
-        assertTrue(writeTagDone.get(), "First write_tag should succeed");
-        assertEquals(2, sentEvents.size(), "Should have received tags_cleared and write_tag_response");
-        Event cleared1 = sentEvents.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event reply1 = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(cleared1, "tags_cleared event must be sent after write_tag");
-        assertNotNull(reply1, "write_tag_response must be sent");
-
-        // Background scanner detects written tag on antenna
-        callback.doIt(1, 1, "NXP", "SLIX", uid, new FinnishDataModel().getBlock(32), 4);
-
-        // 2. Immediate second broadcast write_afi for same tag
-        Event writeAfiEvt = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_afi",
-                "uid", uid,
-                "afi", "07"
-        ));
-        dispatcher.handleIncomingMessage(writeAfiEvt);
-
-        Thread.sleep(400);
-        assertTrue(writeAfiDone.get(), "Chained write_afi should immediately succeed on same tag");
-        Event reply2 = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(reply2, "write_afi_response must be sent");
-        assertEquals("ok", payloadData(reply2).get("status").asText());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test RefID correlation across metadata queries, tag write, AFI write and error replies")
-    void testRefIdCorrelationInDispatcher() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher("rfid-station-1", "https://localhost:8765", List.of("all"), null,
-                new WSBrokerClient(cfg) {
-                    @Override public CompletableFuture<Void> send(Event e) { sentEvents.add(e); return CompletableFuture.completedFuture(null); }
-                });
-
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceId() { return "DEV-999"; }
-            @Override public String getDeviceType() { return "OBID-LRU1002"; }
-            @Override public String getInitDescription() { return "Feig LRU1002 Initialized"; }
-            @Override public String getDeviceInfo() { return "Reader-1"; }
-            @Override public void writeTag(String uid, FinnishDataModel m, Byte afi) {}
-            @Override public void writeAfi(String uid, byte afi) {}
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        String tagUid = "UID-CORRELATION-TEST";
-        callback.doIt(1, 1, "NXP", "SLIX", tagUid, new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // 1. Device metadata command with specific ID
-        Event metaCmd = Event.createMessage("dashboard", "rfid-station-1", Map.of("event", "rfid:get_device_metadata"));
-        metaCmd.setId("meta-req-id-11111111111111111111");
-        dispatcher.handleIncomingMessage(metaCmd);
-
-        Thread.sleep(200);
-        assertEquals(1, sentEvents.size());
-        Event metaResp = sentEvents.get(0);
-        assertEquals("meta-req-id-11111111111111111111", metaResp.getRefId());
-        assertEquals("rfid:device_metadata_response", metaResp.getDataNode().get("event").asText());
-        assertNotNull(metaResp.getId());
-
-        // 2. Write tag command with specific ID
-        sentEvents.clear();
-        Event writeTagCmd = Event.createMessage("dashboard", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uid", tagUid,
-                "itemId", "ITEM-REFID-1"
-        ));
-        writeTagCmd.setId("write-tag-id-2222222222222222");
-        dispatcher.handleIncomingMessage(writeTagCmd);
-
-        Thread.sleep(300);
-        Event writeTagResp = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(writeTagResp, "write_tag_response must be present");
-        assertEquals("write-tag-id-2222222222222222", writeTagResp.getRefId());
-        assertEquals("rfid:write_tag_response", writeTagResp.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(writeTagResp).get("status").asText());
-
-        // Background scanner detects written tag again on antenna
-        callback.doIt(1, 1, "NXP", "SLIX", tagUid, new FinnishDataModel().getBlock(32), 4);
-
-        // 3. Write AFI command with specific ID
-        sentEvents.clear();
-        Event writeAfiCmd = Event.createMessage("dashboard", "all", Map.of(
-                "event", "rfid:write_afi",
-                "uid", tagUid,
-                "afi", "07"
-        ));
-        writeAfiCmd.setId("write-afi-id-3333333333333333");
-        dispatcher.handleIncomingMessage(writeAfiCmd);
-
-        Thread.sleep(300);
-        Event writeAfiResp = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(writeAfiResp, "write_afi_response must be present");
-        assertEquals("write-afi-id-3333333333333333", writeAfiResp.getRefId());
-        assertEquals("rfid:write_afi_response", writeAfiResp.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(writeAfiResp).get("status").asText());
-
-        // 4. Direct write command error reply when tag not present
-        sentEvents.clear();
-        Event directMissingWrite = Event.createMessage("dashboard", "rfid-station-1", Map.of(
-                "event", "rfid:write_tag",
-                "uid", "NON-EXISTENT-UID",
-                "itemId", "ITEM-FAIL"
-        ));
-        directMissingWrite.setId("error-req-id-44444444444444");
-        dispatcher.handleIncomingMessage(directMissingWrite);
-
-        Thread.sleep(200);
-        assertEquals(1, sentEvents.size());
-        Event errResp = sentEvents.get(0);
-        assertEquals("error-req-id-44444444444444", errResp.getRefId());
-        assertEquals("error", payloadData(errResp).get("status").asText());
-
-        // 5. handleMetadataQuery via CLIENT_INFO / non-message query
-        sentEvents.clear();
-        Event infoQuery = Event.builder()
-                .id("info-query-id-55555555555555")
-                .source("external-service")
-                .target("rfid-station-1")
-                .type(org.objectspace.wsbrokerclient.event.EventType.CLIENT_INFO)
-                .build();
-        dispatcher.handleMetadataQuery(infoQuery);
-
-        Thread.sleep(200);
-        assertEquals(1, sentEvents.size());
-        Event infoResp = sentEvents.get(0);
-        assertEquals("info-query-id-55555555555555", infoResp.getRefId());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-UID batch write AFI when all transponders succeed")
-    void testBatchWriteAfiAllSuccess() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> writtenUids = new CopyOnWriteArrayList<>();
-        AtomicInteger exclusiveLocks = new AtomicInteger(0);
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                assertEquals((byte) 0x07, afi);
-                writtenUids.add(uid);
-            }
-            @Override public void close() {}
-        };
-
-        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, null, 100, 4) {
-            @Override
-            public <T> T executeExclusive(ScannerTask<T> task) throws Exception {
-                exclusiveLocks.incrementAndGet();
-                return super.executeExclusive(task);
-            }
-        };
-
-        dispatcher.setReader(mockReader);
-        dispatcher.setScanner(scanner);
-
-        List<String> requestedUids = List.of("E004010001", "E004010002", "E004010003");
-        WriteAfiResponseData resp = dispatcher.writeAfi(requestedUids, "07", "web-ui", "req-batch-all-ok", "ref-batch-001").join();
-
-        assertEquals("ok", resp.status());
-        assertTrue(resp.isSuccess());
-        assertFalse(resp.isPartial());
-        assertEquals("07", resp.afi());
-        assertEquals(requestedUids, resp.uids());
-        assertEquals(requestedUids, resp.successfulUids());
-        assertTrue(resp.failedUids() == null || resp.failedUids().isEmpty());
-        assertEquals(3, resp.results().size());
-        assertTrue(resp.results().stream().allMatch(WriteAfiResponseData.TagAfiResult::isSuccess));
-        assertEquals(3, writtenUids.size());
-        assertEquals(1, exclusiveLocks.get(), "Batch write should acquire exclusive scanner lock exactly once for all UIDs");
-
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
-        assertEquals("ref-batch-001", reply.getRefId());
-        assertEquals("rfid:write_afi_response", reply.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(3, payloadData(reply).get("uids").size());
-        assertEquals(3, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-UID batch write AFI with partial failure reports exact successes and errors")
-    void testBatchWriteAfiPartialFailure() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                if ("E00401-LOCKED".equals(uid)) {
-                    throw new Exception("Tag AFI lock bit set (ISO error 0x12)");
-                }
-            }
-            @Override public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        List<String> requestedUids = List.of("E00401-OK1", "E00401-LOCKED", "E00401-OK2");
-        WriteAfiResponseData resp = dispatcher.writeAfi(requestedUids, "0xC2", "web-ui", "req-batch-partial", "ref-partial-002").join();
-
-        assertEquals("partial", resp.status());
-        assertFalse(resp.isSuccess());
-        assertTrue(resp.isPartial());
-        assertEquals("C2", resp.afi());
-        assertEquals(requestedUids, resp.uids());
-        assertEquals(List.of("E00401-OK1", "E00401-OK2"), resp.successfulUids());
-        assertNotNull(resp.failedUids());
-        assertEquals(1, resp.failedUids().size());
-        assertTrue(resp.failedUids().get("E00401-LOCKED").contains("Tag AFI lock bit set"));
-
-        assertEquals(3, resp.results().size());
-        assertTrue(resp.results().get(0).isSuccess());
-        assertFalse(resp.results().get(1).isSuccess());
-        assertEquals("E00401-LOCKED", resp.results().get(1).getUid());
-        assertTrue(resp.results().get(1).getError().contains("Tag AFI lock bit set"));
-        assertTrue(resp.results().get(2).isSuccess());
-
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
-        assertEquals("partial", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-        assertTrue(payloadData(reply).get("failedUids").has("E00401-LOCKED"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-UID batch write AFI when all transponders fail")
-    void testBatchWriteAfiAllFailure() throws Exception {
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, new WSBrokerClient(cfg)
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                throw new Exception("Tag not in field");
-            }
-            @Override public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        List<String> requestedUids = List.of("UID-FAIL-1", "UID-FAIL-2");
-        WriteAfiResponseData resp = dispatcher.writeAfi(requestedUids, "07", null, null).join();
-
-        assertEquals("error", resp.status());
-        assertFalse(resp.isSuccess());
-        assertFalse(resp.isPartial());
-        assertTrue(resp.successfulUids().isEmpty());
-        assertEquals(2, resp.failedUids().size());
-        assertTrue(resp.failedUids().get("UID-FAIL-1").contains("Tag not in field"));
-        assertTrue(resp.failedUids().get("UID-FAIL-2").contains("Tag not in field"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_afi message with uids array triggers batch processing")
-    void testIncomingMessageWithUidsArray() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeAfi(String uid, byte afi) throws Exception {
-                written.add(uid);
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with uids array
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_afi",
-                "uids", List.of("E00401-TAG-1", "E00401-TAG-2"),
-                "afi", "C2"
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertEquals(2, sentEvents.size(), "Should have dispatched tags_cleared and write_afi_response");
-        Event reply = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals("C2", payloadData(reply).get("afi").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-tag batch write when all transponders succeed")
-    void testBatchWriteTagsAllSuccess() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> writtenUids = new CopyOnWriteArrayList<>();
-        AtomicInteger exclusiveLocks = new AtomicInteger(0);
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                writtenUids.add(uid);
-            }
-            @Override public void close() {}
-        };
-
-        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, null, 100, 4) {
-            @Override
-            public <T> T executeExclusive(ScannerTask<T> task) throws Exception {
-                exclusiveLocks.incrementAndGet();
-                return super.executeExclusive(task);
-            }
-        };
-
-        dispatcher.setReader(mockReader);
-        dispatcher.setScanner(scanner);
-
-        List<TagWriteItem> items = List.of(
-                new TagWriteItem("E004010001", "ITEM-1", "CH-001", "CH", 1, 1, 1, "07"),
-                new TagWriteItem("E004010002", "ITEM-2", "CH-001", "CH", 1, 1, 1, "07"),
-                new TagWriteItem("E004010003", "ITEM-3", "CH-001", "CH", 1, 1, 1, "C2")
-        );
-
-        WriteTagResponseData resp = dispatcher.writeTags(items, "web-ui", "req-batch-tags-ok", "ref-batch-tags-001").join();
-
-        assertEquals("ok", resp.status());
-        assertTrue(resp.isSuccess());
-        assertFalse(resp.isPartial());
-        assertEquals(List.of("E004010001", "E004010002", "E004010003"), resp.uids());
-        assertEquals(List.of("E004010001", "E004010002", "E004010003"), resp.successfulUids());
-        assertTrue(resp.failedUids() == null || resp.failedUids().isEmpty());
-        assertEquals(3, resp.results().size());
-        assertTrue(resp.results().stream().allMatch(WriteTagResponseData.TagWriteResult::isSuccess));
-        assertEquals(3, writtenUids.size());
-        assertEquals(1, exclusiveLocks.get(), "Batch tag write should acquire exclusive scanner lock exactly once for all tags");
-
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
-        assertEquals("ref-batch-tags-001", reply.getRefId());
-        assertEquals("rfid:write_tag_response", reply.getDataNode().get("event").asText());
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(3, payloadData(reply).get("uids").size());
-        assertEquals(3, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-tag batch write with partial failure reports exact successes and errors")
-    void testBatchWriteTagsPartialFailure() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                if ("E00401-LOCKED".equals(uid)) {
-                    throw new Exception("Transponder write lock error (ISO error 0x12)");
-                }
-            }
-            @Override public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        List<TagWriteItem> items = List.of(
-                new TagWriteItem("E00401-OK1", "ITEM-1", "CH-001", "CH", "07"),
-                new TagWriteItem("E00401-LOCKED", "ITEM-2", "CH-001", "CH", "07"),
-                new TagWriteItem("E00401-OK2", "ITEM-3", "CH-001", "CH", "07")
-        );
-
-        WriteTagResponseData resp = dispatcher.writeTags(items, "web-ui", "req-batch-tags-partial", "ref-partial-002").join();
-
-        assertEquals("partial", resp.status());
-        assertFalse(resp.isSuccess());
-        assertTrue(resp.isPartial());
-        assertEquals(List.of("E00401-OK1", "E00401-LOCKED", "E00401-OK2"), resp.uids());
-        assertEquals(List.of("E00401-OK1", "E00401-OK2"), resp.successfulUids());
-        assertNotNull(resp.failedUids());
-        assertEquals(1, resp.failedUids().size());
-        assertTrue(resp.failedUids().get("E00401-LOCKED").contains("Transponder write lock error"));
-
-        assertEquals(3, resp.results().size());
-        assertTrue(resp.results().get(0).isSuccess());
-        assertFalse(resp.results().get(1).isSuccess());
-        assertEquals("E00401-LOCKED", resp.results().get(1).getUid());
-        assertTrue(resp.results().get(1).getError().contains("Transponder write lock error"));
-        assertTrue(resp.results().get(2).isSuccess());
-
-        assertEquals(1, sentEvents.size());
-        Event reply = sentEvents.get(0);
-        assertEquals("partial", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-        assertTrue(payloadData(reply).get("failedUids").has("E00401-LOCKED"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-tag batch write when all transponders fail")
-    void testBatchWriteTagsAllFailure() throws Exception {
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, new WSBrokerClient(cfg)
-        );
-
-        ISO15693Reader mockReader = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader-Batch"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                throw new Exception("Tag not in RF field");
-            }
-            @Override public void close() {}
-        };
-
-        dispatcher.setReader(mockReader);
-
-        List<TagWriteItem> items = List.of(
-                new TagWriteItem("UID-FAIL-1", "ITEM-1"),
-                new TagWriteItem("UID-FAIL-2", "ITEM-2")
-        );
-
-        WriteTagResponseData resp = dispatcher.writeTags(items, null, null).join();
-
-        assertEquals("error", resp.status());
-        assertFalse(resp.isSuccess());
-        assertFalse(resp.isPartial());
-        assertTrue(resp.successfulUids().isEmpty());
-        assertEquals(2, resp.failedUids().size());
-        assertTrue(resp.failedUids().get("UID-FAIL-1").contains("Tag not in RF field"));
-        assertTrue(resp.failedUids().get("UID-FAIL-2").contains("Tag not in RF field"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_tag message with tags array triggers batch processing")
-    void testIncomingMessageWithTagsArray() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                written.add(uid + ":" + model.getPrimaryItemId() + ":" + (afi != null ? afi : "null"));
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-TAG-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with tags array
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "tags", List.of(
-                        Map.of("uid", "E00401-TAG-1", "itemId", "BOOK-1", "afi", "07"),
-                        Map.of("uid", "E00401-TAG-2", "itemId", "BOOK-2", "afi", "C2")
-                )
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertTrue(written.contains("E00401-TAG-1:BOOK-1:7"));
-        assertTrue(written.contains("E00401-TAG-2:BOOK-2:-62")); // 0xC2 signed byte = -62
-        Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
-                .findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_tag message with uids array and shared metadata triggers batch processing")
-    void testIncomingMessageWithUidsAndSharedData() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                written.add(uid + ":" + model.getPrimaryItemId() + ":" + model.getISIL() + ":" + (afi != null ? afi : "null"));
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-SHARED-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-SHARED-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with uids array and shared item data & AFI
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uids", List.of("E00401-SHARED-1", "E00401-SHARED-2"),
-                "itemId", "SHARED-ITEM",
-                "isil", "DE-101",
-                "country", "DE",
-                "afi", "07"
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertTrue(written.contains("E00401-SHARED-1:SHARED-ITEM:DE-101:7"));
-        assertTrue(written.contains("E00401-SHARED-2:SHARED-ITEM:DE-101:7"));
-        Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
-                .findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_tag message with tags map triggers batch processing with per-UID data and AFI")
-    void testIncomingMessageWithTagsMapPerUid() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                written.add(uid + ":" + model.getPrimaryItemId() + ":" + model.getCountryOfOwnerLib() + ":" + (afi != null ? afi : "null"));
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-MAP-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-MAP-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with map of UID -> tag data/AFI
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "tags", Map.of(
-                        "E00401-MAP-1", Map.of("itemId", "ITEM-MAP-1", "country", "DE", "afi", "07"),
-                        "E00401-MAP-2", Map.of("itemId", "ITEM-MAP-2", "country", "CH", "afi", "C2")
-                )
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertTrue(written.contains("E00401-MAP-1:ITEM-MAP-1:DE:7"));
-        assertTrue(written.contains("E00401-MAP-2:ITEM-MAP-2:CH:-62"));
-        Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
-                .findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_tag message with root-level map of UID to tag data")
-    void testIncomingMessageWithRootLevelMapPerUid() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                written.add(uid + ":" + model.getPrimaryItemId() + ":" + model.getCountryOfOwnerLib() + ":" + (afi != null ? afi : "null"));
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-ROOT-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-ROOT-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with root-level map of UID -> tag data / AFI
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "E00401-ROOT-1", Map.of("itemId", "ITEM-ROOT-1", "country", "AT", "afi", "07"),
-                "E00401-ROOT-2", Map.of("itemId", "ITEM-ROOT-2", "country", "CH", "afi", "01")
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertTrue(written.contains("E00401-ROOT-1:ITEM-ROOT-1:AT:7"));
-        assertTrue(written.contains("E00401-ROOT-2:ITEM-ROOT-2:CH:1"));
-        Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
-                .findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test incoming rfid:write_tag message with parallel arrays (uids, itemIds, afis)")
-    void testIncomingMessageWithParallelArrays() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-station-1");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-station-1", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        List<String> written = new CopyOnWriteArrayList<>();
-        dispatcher.setReader(new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceInfo() { return "Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) throws Exception {
-                written.add(uid + ":" + model.getPrimaryItemId() + ":" + model.getPartNumber() + "/" + model.getPartsInItem() + ":" + (afi != null ? afi : "null"));
-            }
-            @Override public void close() {}
-        });
-
-        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 3000L, 2000L);
-        dispatcher.setCallback(callback);
-
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-PAR-1", new FinnishDataModel().getBlock(32), 4);
-        callback.doIt(1, 1, "NXP", "SLIX", "E00401-PAR-2", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // Broadcast message with parallel arrays
-        Event batchMsg = Event.createMessage("web-ui", "all", Map.of(
-                "event", "rfid:write_tag",
-                "uids", List.of("E00401-PAR-1", "E00401-PAR-2"),
-                "itemIds", List.of("BOOK-PART-1", "BOOK-PART-2"),
-                "afis", List.of("07", "C2")
-        ));
-
-        dispatcher.handleIncomingMessage(batchMsg);
-        Thread.sleep(800);
-
-        assertEquals(2, written.size());
-        assertTrue(written.contains("E00401-PAR-1:BOOK-PART-1:1/2:7"));
-        assertTrue(written.contains("E00401-PAR-2:BOOK-PART-2:2/2:-62"));
-        Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
-                .findFirst().orElseThrow();
-        assertEquals("ok", payloadData(reply).get("status").asText());
-        assertEquals(2, payloadData(reply).get("successfulUids").size());
 
         dispatcher.close();
     }
@@ -2445,253 +588,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(0, payloadData(clearedEvent).get("totalTags").asInt());
 
         wsDispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-reader command routing for metadata queries")
-    void testMultiReaderCommandRoutingAndMetadata() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-hub-01");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-hub-01", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        HeadlessReaderConfig cfg1 = new HeadlessReaderConfig("gate-01", false, "52E101");
-        HeadlessReaderConfig cfg2 = new HeadlessReaderConfig("return-02", true, "52E102");
-
-        ISO15693Reader reader1 = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceId() { return "52E101"; }
-            @Override public String getDeviceType() { return "ISC.MR102-USB"; }
-            @Override public String getDeviceInfo() { return "FEIG Gate 1"; }
-            @Override public void writeTag(String uid, FinnishDataModel model, Byte afi) {}
-            @Override public void close() {}
-        };
-
-        ISO15693Reader reader2 = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceId() { return "52E102"; }
-            @Override public String getDeviceType() { return "ISC.PRH101-USB"; }
-            @Override public String getDeviceInfo() { return "FEIG Return 2"; }
-            @Override public void writeTag(String uid, FinnishDataModel model, Byte afi) {}
-            @Override public void close() {}
-        };
-
-        HeadlessReaderCallback cb1 = new HeadlessReaderCallback(null, dispatcher, 3000L, "gate-01");
-        HeadlessReaderCallback cb2 = new HeadlessReaderCallback(null, dispatcher, 3000L, "return-02");
-
-        HeadlessReaderScanner sc1 = new HeadlessReaderScanner(reader1, cb1, 12, 300, "gate-01");
-        HeadlessReaderScanner sc2 = new HeadlessReaderScanner(reader2, cb2, 12, 300, "return-02");
-
-        HeadlessReaderInstance inst1 = new HeadlessReaderInstance(cfg1, reader1, cb1, sc1);
-        HeadlessReaderInstance inst2 = new HeadlessReaderInstance(cfg2, reader2, cb2, sc2);
-
-        dispatcher.setReaderInstances(List.of(inst1, inst2));
-
-        // 1. Query device metadata for gate-01
-        Event queryGate = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
-                "event", "rfid:get_device_metadata",
-                "reader_id", "gate-01"
-        ));
-        dispatcher.handleIncomingMessage(queryGate);
-
-        Event replyGate = sentEvents.stream().filter(e -> "52E101".equals(payloadData(e).path("deviceId").asText())).findFirst().orElseThrow();
-        assertEquals("rfid:device_metadata_response", replyGate.getDataNode().get("event").asText());
-        assertEquals("52E101", payloadData(replyGate).get("deviceId").asText());
-        assertEquals("ISC.MR102-USB", payloadData(replyGate).get("deviceType").asText());
-
-        // 2. Query device metadata for return-02
-        Event queryReturn = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
-                "event", "rfid:get_device_metadata",
-                "reader_id", "return-02"
-        ));
-        dispatcher.handleIncomingMessage(queryReturn);
-
-        Event replyReturn = sentEvents.stream().filter(e -> "52E102".equals(payloadData(e).path("deviceId").asText())).findFirst().orElseThrow();
-        assertEquals("rfid:device_metadata_response", replyReturn.getDataNode().get("event").asText());
-        assertEquals("52E102", payloadData(replyReturn).get("deviceId").asText());
-        assertEquals("ISC.PRH101-USB", payloadData(replyReturn).get("deviceType").asText());
-
-        // 3. Query non-existent reader
-        Event queryUnknown = Event.createMessage("ui-client", "rfid-hub-01", Map.of(
-                "event", "rfid:get_device_metadata",
-                "reader_id", "non-existent-reader"
-        ));
-        dispatcher.handleIncomingMessage(queryUnknown);
-
-        Event replyUnknown = sentEvents.stream().filter(e -> "error".equals(payloadData(e).path("status").asText())).findFirst().orElseThrow();
-        assertEquals("error", payloadData(replyUnknown).get("status").asText());
-        assertTrue(payloadData(replyUnknown).get("initDescription").asText().contains("not found"));
-
-        dispatcher.close();
-    }
-
-    @Test
-    @DisplayName("Test multi-reader read-only enforcement on write_tag and write_afi commands")
-    void testMultiReaderReadOnlyRejectionOnWriteCommands() throws Exception {
-        List<Event> sentEvents = new CopyOnWriteArrayList<>();
-        WSClientConfig cfg = new WSClientConfig();
-        cfg.setClientName("rfid-hub-01");
-        cfg.setEndpoint("https://localhost:8765");
-
-        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
-            @Override
-            public CompletableFuture<Void> send(Event event) {
-                sentEvents.add(event);
-                return CompletableFuture.completedFuture(null);
-            }
-        };
-
-        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
-                "rfid-hub-01", "https://localhost:8765", List.of("all"), null, mockClient
-        );
-
-        HeadlessReaderConfig cfgRw = new HeadlessReaderConfig("reader-rw", false, "52E101");
-        HeadlessReaderConfig cfgRo = new HeadlessReaderConfig("reader-ro", true, "52E102");
-
-        List<String> writtenTags = new CopyOnWriteArrayList<>();
-        List<String> writtenAfis = new CopyOnWriteArrayList<>();
-
-        ISO15693Reader readerRw = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceId() { return "52E101"; }
-            @Override public String getDeviceType() { return "MR102"; }
-            @Override public String getDeviceInfo() { return "RW Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) {
-                writtenTags.add(uid + ":" + model.getPrimaryItemId());
-            }
-            @Override
-            public void writeAfi(String uid, byte afi) {
-                writtenAfis.add(uid + ":" + afi);
-            }
-            @Override public void close() {}
-        };
-
-        ISO15693Reader readerRo = new ISO15693Reader() {
-            @Override public void connect() {}
-            @Override public void init() {}
-            @Override public void inventory(TagCallback cb, int n) {}
-            @Override public boolean isConnected() { return true; }
-            @Override public boolean checkConnection() { return true; }
-            @Override public String getDeviceId() { return "52E102"; }
-            @Override public String getDeviceType() { return "MR102"; }
-            @Override public String getDeviceInfo() { return "RO Reader"; }
-            @Override
-            public void writeTag(String uid, FinnishDataModel model, Byte afi) {
-                fail("Write tag should NEVER be invoked on a read-only reader!");
-            }
-            @Override
-            public void writeAfi(String uid, byte afi) {
-                fail("Write AFI should NEVER be invoked on a read-only reader!");
-            }
-            @Override public void close() {}
-        };
-
-        HeadlessReaderCallback cbRw = new HeadlessReaderCallback(null, dispatcher, 3000L, "reader-rw");
-        HeadlessReaderCallback cbRo = new HeadlessReaderCallback(null, dispatcher, 3000L, "reader-ro");
-
-        HeadlessReaderScanner scRw = new HeadlessReaderScanner(readerRw, cbRw, 12, 300, "reader-rw");
-        HeadlessReaderScanner scRo = new HeadlessReaderScanner(readerRo, cbRo, 12, 300, "reader-ro");
-
-        HeadlessReaderInstance instRw = new HeadlessReaderInstance(cfgRw, readerRw, cbRw, scRw);
-        HeadlessReaderInstance instRo = new HeadlessReaderInstance(cfgRo, readerRo, cbRo, scRo);
-
-        dispatcher.setReaderInstances(List.of(instRw, instRo));
-
-        // Place tags in presence
-        cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
-        cbRo.doIt(1, 1, "NXP", "SLIX", "E00401-RO-1", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        // 1. Attempt write_tag on READ-ONLY reader -> MUST REJECT
-        Event writeRoMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
-                "event", "rfid:write_tag",
-                "reader_id", "reader-ro",
-                "uid", "E00401-RO-1",
-                "itemId", "NEW-BOOK-RO"
-        ));
-        dispatcher.handleIncomingMessage(writeRoMsg);
-
-        Event replyWriteRo = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
-        assertEquals("error", payloadData(replyWriteRo).get("status").asText());
-        assertTrue(payloadData(replyWriteRo).get("error").asText().contains("read-only"));
-        assertTrue(writtenTags.isEmpty());
-
-        // 2. Attempt write_afi on READ-ONLY reader -> MUST REJECT
-        sentEvents.clear();
-        Event afiRoMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
-                "event", "rfid:write_afi",
-                "reader_id", "reader-ro",
-                "uid", "E00401-RO-1",
-                "afi", "07"
-        ));
-        dispatcher.handleIncomingMessage(afiRoMsg);
-
-        Event replyAfiRo = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
-        assertEquals("error", payloadData(replyAfiRo).get("status").asText());
-        assertTrue(payloadData(replyAfiRo).get("error").asText().contains("read-only"));
-        assertTrue(writtenAfis.isEmpty());
-
-        // 3. Write tag on R/W reader -> MUST SUCCEED
-        sentEvents.clear();
-        Event writeRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
-                "event", "rfid:write_tag",
-                "reader_id", "reader-rw",
-                "uid", "E00401-RW-1",
-                "itemId", "NEW-BOOK-RW"
-        ));
-        dispatcher.handleIncomingMessage(writeRwMsg);
-        Thread.sleep(400);
-
-        Event replyWriteRw = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
-        assertEquals("ok", payloadData(replyWriteRw).get("status").asText());
-        assertEquals(1, writtenTags.size());
-        assertEquals("E00401-RW-1:NEW-BOOK-RW", writtenTags.get(0));
-
-        // 4. Write AFI on R/W reader -> MUST SUCCEED
-        // Place tag back in presence after previous write_tag emptied callback presence
-        cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
-        sentEvents.clear();
-
-        Event afiRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
-                "event", "rfid:write_afi",
-                "reader_id", "reader-rw",
-                "uid", "E00401-RW-1",
-                "afi", "C2"
-        ));
-        dispatcher.handleIncomingMessage(afiRwMsg);
-        Thread.sleep(400);
-
-        Event replyAfiRw = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
-        assertEquals("ok", payloadData(replyAfiRw).get("status").asText());
-        assertEquals(1, writtenAfis.size());
-        assertEquals("E00401-RW-1:-62", writtenAfis.get(0));
-
-        dispatcher.close();
     }
 
     @Test

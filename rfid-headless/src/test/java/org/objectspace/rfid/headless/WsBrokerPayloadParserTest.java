@@ -125,4 +125,14 @@ public class WsBrokerPayloadParserTest {
         assertFalse(WsBrokerPayloadParser.isAddressedToUs(evt, "hub", List.of("ch1"), Map.of("reader-02", new HeadlessReaderInstance(new HeadlessReaderConfig("reader-02"), null, null, null))));
         assertEquals("reader-01", WsBrokerPayloadParser.extractRequestedReaderId(null, evt, "hub", List.of("ch1")));
     }
+
+    @Test
+    @DisplayName("Test extractEventName with direct custom event types on event envelope")
+    void testExtractEventNameDirectType() {
+        Event<?> evt = Event.of("rfid/write_tag", "client-1", "reader-1", null);
+        assertEquals("rfid/write_tag", WsBrokerPayloadParser.extractEventName(evt, null));
+
+        Event<?> metaEvt = Event.of("rfid/get_device_metadata", "client-1", "reader-1", null);
+        assertEquals("rfid/get_device_metadata", WsBrokerPayloadParser.extractEventName(metaEvt, null));
+    }
 }
