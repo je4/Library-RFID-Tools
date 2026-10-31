@@ -22,6 +22,15 @@ public class RawEvent extends Event<JsonNode> {
     }
 
     /**
+     * Dynamically deserializes the JSON data payload according to the type registered in PayloadRegistry.
+     *
+     * @return deserialized object, or raw JsonNode / String if unregistered
+     */
+    public Object getDynamicData() {
+        return PayloadRegistry.unmarshalDynamic(this);
+    }
+
+    /**
      * Deserializes a RawEvent from JSON string.
      */
     public static RawEvent fromJson(String json) {

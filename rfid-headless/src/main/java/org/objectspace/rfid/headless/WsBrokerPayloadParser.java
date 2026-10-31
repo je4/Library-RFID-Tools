@@ -60,22 +60,16 @@ public final class WsBrokerPayloadParser {
 	}
 
 	/**
-	 * Extracts command / event name from payload data or event message.
+	 * Extracts command / event name from event type or message header.
 	 */
 	public static String extractEventName(Event<?> evt, JsonNode dataNode) {
-		String eventName = null;
-		if (dataNode != null && dataNode.isObject()) {
-			if (dataNode.hasNonNull("event")) {
-				eventName = dataNode.get("event").asText();
-			}
-		} else if (dataNode != null && dataNode.isTextual()) {
-			eventName = dataNode.asText();
+		if (evt != null && evt.getType() != null && !evt.getType().isBlank()) {
+			return evt.getType().trim();
 		}
-
-		if ((eventName == null || eventName.isBlank()) && evt != null && evt.getMessage() != null) {
-			eventName = evt.getMessage();
+		if (evt != null && evt.getMessage() != null && !evt.getMessage().isBlank()) {
+			return evt.getMessage().trim();
 		}
-		return eventName;
+		return null;
 	}
 
 	/**

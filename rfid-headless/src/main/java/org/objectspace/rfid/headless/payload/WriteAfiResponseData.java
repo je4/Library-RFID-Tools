@@ -39,7 +39,8 @@ public record WriteAfiResponseData(
 		@JsonProperty("error") String error,
 		@JsonProperty("readerId") @JsonAlias({"reader_id", "readerID"}) String readerId
 ) {
-	public static final String EVENT_RESPONSE = "rfid:write_afi_response";
+	public static final String EVENT_REQUEST = "rfid/write_afi";
+	public static final String EVENT_RESPONSE = "rfid/write_afi_response";
 
 	public static WriteAfiResponseData success(String uid, String afi, String readerId) {
 		return new WriteAfiResponseData(

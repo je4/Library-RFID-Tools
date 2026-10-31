@@ -2,7 +2,6 @@ package org.objectspace.rfid.headless;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.objectspace.rfid.headless.payload.DeviceMetadataData;
-import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
 import org.objectspace.rfid.headless.payload.WriteTagResponseData;
@@ -54,30 +53,20 @@ public class WsBrokerCommandRouter {
 		if (client == null) {
 			return;
 		}
-		client.onType(EventType.CLIENT_MESSAGE, this::handleIncomingMessage);
+		client.onType(DeviceMetadataData.EVENT_NAME, this::handleMetadataQuery);
+		client.onType("rfid/device_metadata", this::handleMetadataQuery);
+		client.onType(WriteTagResponseData.EVENT_REQUEST, evt -> {
+			String target = resolveReplyTarget(evt);
+			handleWriteTagCommand(evt, target);
+		});
+		client.onType(WriteAfiResponseData.EVENT_REQUEST, evt -> {
+			String target = resolveReplyTarget(evt);
+			handleWriteAfiCommand(evt, target);
+		});
 		client.onEvent(this::handleGeneralEvent);
 	}
 
-	public void handleIncomingMessage(Event<?> evt) {
-		if (evt == null) {
-			return;
-		}
-
-		if (clientName != null && clientName.equalsIgnoreCase(evt.getSource())) {
-			return;
-		}
-
-		JsonNode dataNode = evt.getDataAs(JsonNode.class);
-		String eventName = WsBrokerPayloadParser.extractEventName(evt, dataNode);
-
-		if (eventName == null || eventName.isBlank() || eventName.toLowerCase().endsWith("_response")) {
-			return;
-		}
-
-		if (!WsBrokerPayloadParser.isAddressedToUs(evt, clientName, channels, registry.getReaderInstances())) {
-			return;
-		}
-
+	private String resolveReplyTarget(Event<?> evt) {
 		String target = evt.getSource();
 		if (target == null || target.isBlank()) {
 			target = evt.getTarget();
@@ -85,46 +74,11 @@ public class WsBrokerCommandRouter {
 		if (target == null || target.isBlank()) {
 			target = channels.isEmpty() ? null : channels.get(0);
 		}
+		return target;
+	}
 
-		String normalized = eventName.trim().toLowerCase();
-		switch (normalized) {
-			case "rfid:get_device_metadata":
-			case "get_device_metadata":
-			case "rfid:get_device_info":
-			case "get_device_info":
-			case "rfid:device_metadata":
-			case "device_metadata":
-			case "rfid:get_status":
-			case "get_status":
-			case "rfid:get_metadata":
-			case "get_metadata":
-			case "query_device":
-			case "device_info":
-			case "info":
-				logger.info("[WSBroker] Received device metadata command '{}' from '{}'", eventName, evt.getSource());
-				handleMetadataQuery(evt);
-				break;
-
-			case "rfid:write_tag":
-			case "write_tag":
-			case "rfid:writetag":
-			case "writetag":
-			case "rfid:write":
-			case "write":
-				logger.info("[WSBroker] Received write_tag command '{}' from '{}'", eventName, evt.getSource());
-				handleWriteTagCommand(evt, target);
-				break;
-
-			case "rfid:write_afi":
-			case "write_afi":
-				logger.info("[WSBroker] Received write_afi command '{}' from '{}'", eventName, evt.getSource());
-				handleWriteAfiCommand(evt, target);
-				break;
-
-			default:
-				logger.debug("[WSBroker] Ignored unrecognized command '{}' from '{}'", eventName, evt.getSource());
-				break;
-		}
+	public void handleIncomingMessage(Event<?> evt) {
+		handleGeneralEvent(evt);
 	}
 
 	public void handleGeneralEvent(Event<?> evt) {
@@ -134,20 +88,28 @@ public class WsBrokerCommandRouter {
 		if (clientName != null && clientName.equalsIgnoreCase(evt.getSource())) {
 			return;
 		}
-		if (evt.isType(EventType.CLIENT_MESSAGE)) {
+		String eventName = WsBrokerPayloadParser.extractEventName(evt, evt.getDataNode());
+		if (eventName == null || eventName.isBlank() || eventName.toLowerCase().endsWith("_response")) {
 			return;
 		}
-		boolean isTargeted = evt.getTarget() != null && (evt.getTarget().equalsIgnoreCase(clientName)
-				|| registry.getReaderInstances().containsKey(evt.getTarget().toLowerCase()));
-		if (isTargeted) {
-			if (evt.isType(EventType.CLIENT_INFO)) {
+		if (!WsBrokerPayloadParser.isAddressedToUs(evt, clientName, channels, registry.getReaderInstances())) {
+			return;
+		}
+		String target = resolveReplyTarget(evt);
+		String normalized = eventName.trim().toLowerCase();
+		switch (normalized) {
+			case "rfid/get_device_metadata":
+			case "rfid/device_metadata":
 				handleMetadataQuery(evt);
-			} else if (evt.getMessage() != null && (evt.getMessage().equalsIgnoreCase("get_device_metadata")
-					|| evt.getMessage().equalsIgnoreCase("get_device_info")
-					|| evt.getMessage().equalsIgnoreCase("device_metadata")
-					|| evt.getMessage().equalsIgnoreCase("device_info"))) {
-				handleMetadataQuery(evt);
-			}
+				break;
+			case "rfid/write_tag":
+				handleWriteTagCommand(evt, target);
+				break;
+			case "rfid/write_afi":
+				handleWriteAfiCommand(evt, target);
+				break;
+			default:
+				break;
 		}
 	}
 
@@ -171,7 +133,7 @@ public class WsBrokerCommandRouter {
 		if (reqReaderId != null && targetReader == null && !registry.getReaderInstances().isEmpty()) {
 			logger.warn("[WSBroker] Device metadata query failed - Reader '{}' not found", reqReaderId);
 			DeviceMetadataData errData = new DeviceMetadataData("error", "", "", "Reader '" + reqReaderId + "' not found", reqReaderId);
-			sendReply(target, incomingEvent.getId(), RfidPayload.of(DeviceMetadataData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, incomingEvent.getId(), DeviceMetadataData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -197,7 +159,7 @@ public class WsBrokerCommandRouter {
 			logger.warn("[WSBroker] write_tag failed - Reader '{}' not found", reqReaderId);
 			WriteTagResponseData errData = WriteTagResponseData.error(
 					"", "", "Reader '" + reqReaderId + "' not found", reqReaderId);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -212,7 +174,7 @@ public class WsBrokerCommandRouter {
 			logger.warn("[WSBroker] write_tag failed - No active reader configured");
 			WriteTagResponseData errData = WriteTagResponseData.error(
 					"", "", "No active RFID reader available", clientName);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -226,7 +188,7 @@ public class WsBrokerCommandRouter {
 			WriteTagResponseData errData = WriteTagResponseData.error(
 					primaryUid, primaryItemId, "Reader '" + effectiveReaderId + "' is configured as read-only",
 					effectiveReaderId);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -234,7 +196,7 @@ public class WsBrokerCommandRouter {
 			logger.warn("[WSBroker] Received write_tag command with no valid tag data from '{}'", evt.getSource());
 			WriteTagResponseData errData = WriteTagResponseData.error(
 					"", "", "No tag data provided in write_tag command", effectiveReaderId);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -277,7 +239,7 @@ public class WsBrokerCommandRouter {
 							logger.warn("[WSBroker] Direct write_tag command for UID '{}' failed - tag not present on reader '{}'", single.getUid(), effectiveReaderId);
 							WriteTagResponseData errData = WriteTagResponseData.error(
 									single.getUid(), single.getItemId(), "Tag '" + single.getUid() + "' not present on reader station", effectiveReaderId);
-							sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+							sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 							return;
 						}
 					} else {
@@ -286,13 +248,13 @@ public class WsBrokerCommandRouter {
 							logger.warn("[WSBroker] Direct wildcard write_tag command failed - no tags present on reader '{}'", effectiveReaderId);
 							WriteTagResponseData errData = WriteTagResponseData.error(
 									"", single.getItemId(), "No RFID tag present on reader station", effectiveReaderId);
-							sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+							sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 							return;
 						} else if (presentCount > 1) {
 							logger.warn("[WSBroker] Direct wildcard write_tag command failed - {} tags present on reader '{}'", presentCount, effectiveReaderId);
 							WriteTagResponseData errData = WriteTagResponseData.error(
 									"", single.getItemId(), "Multiple RFID tags present on reader station (" + presentCount + " tags)", effectiveReaderId);
-							sendReply(target, evt.getId(), RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+							sendReply(target, evt.getId(), WriteTagResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 							return;
 						} else {
 							String singleUid = effectiveCallback.getPresentUids().iterator().next();
@@ -321,7 +283,7 @@ public class WsBrokerCommandRouter {
 			logger.warn("[WSBroker] write_afi failed - Reader '{}' not found", reqReaderId);
 			WriteAfiResponseData errData = WriteAfiResponseData.error(
 					"", "", "Reader '" + reqReaderId + "' not found", reqReaderId);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -336,7 +298,7 @@ public class WsBrokerCommandRouter {
 			logger.warn("[WSBroker] write_afi failed - No active reader configured");
 			WriteAfiResponseData errData = WriteAfiResponseData.error(
 					"", "", "No active RFID reader available", clientName);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -352,7 +314,7 @@ public class WsBrokerCommandRouter {
 			WriteAfiResponseData errData = WriteAfiResponseData.error(
 					primaryUid, (afiHex != null ? afiHex : ""), "Reader '" + effectiveReaderId + "' is configured as read-only",
 					effectiveReaderId);
-			sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+			sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 			return;
 		}
 
@@ -391,7 +353,7 @@ public class WsBrokerCommandRouter {
 							logger.warn("[WSBroker] Direct write_afi command for UID '{}' failed - tag not present on reader '{}'", reqUid, effectiveReaderId);
 							WriteAfiResponseData errData = WriteAfiResponseData.error(
 									reqUid, (afiHex != null ? afiHex : ""), "Tag '" + reqUid + "' not present on reader station", effectiveReaderId);
-							sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+							sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 							return;
 						}
 					}
@@ -401,13 +363,13 @@ public class WsBrokerCommandRouter {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - no tags present on reader '{}'", effectiveReaderId);
 						WriteAfiResponseData errData = WriteAfiResponseData.error(
 								"", (afiHex != null ? afiHex : ""), "No RFID tag present on reader station", effectiveReaderId);
-						sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+						sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 						return;
 					} else if (presentCount > 1) {
 						logger.warn("[WSBroker] Direct wildcard write_afi command failed - {} tags present on reader '{}'", presentCount, effectiveReaderId);
 						WriteAfiResponseData errData = WriteAfiResponseData.error(
 								"", (afiHex != null ? afiHex : ""), "Multiple RFID tags present on reader station (" + presentCount + " tags)", effectiveReaderId);
-						sendReply(target, evt.getId(), RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, errData), errData.getSummaryMessage());
+						sendReply(target, evt.getId(), WriteAfiResponseData.EVENT_RESPONSE, errData, errData.getSummaryMessage());
 						return;
 					} else {
 						targetUids = List.of(effectiveCallback.getPresentUids().iterator().next());
@@ -421,15 +383,15 @@ public class WsBrokerCommandRouter {
 		writeService.writeAfiOnReader(readerInstance, targetUids, afi, target, null, evt.getId(), client, active);
 	}
 
-	public <T> CompletableFuture<Void> sendReply(String target, RfidPayload<T> payload) {
-		return sendReply(target, null, payload, null);
+	public <T> CompletableFuture<Void> sendReply(String target, String type, T payload) {
+		return sendReply(target, null, type, payload, null);
 	}
 
-	public <T> CompletableFuture<Void> sendReply(String target, String refId, RfidPayload<T> payload, String summaryMessage) {
+	public <T> CompletableFuture<Void> sendReply(String target, String refId, String type, T payload, String summaryMessage) {
 		WSBrokerClient client = clientSupplier.get();
 		boolean active = activeSupplier.getAsBoolean();
 		if (active && client != null && target != null && !target.isBlank()) {
-			Event<RfidPayload<T>> reply = Event.createMessage(clientName, target, payload);
+			Event<T> reply = Event.of(type, clientName, target, payload);
 			if (refId != null && !refId.isBlank()) {
 				reply.setRefId(refId);
 			}

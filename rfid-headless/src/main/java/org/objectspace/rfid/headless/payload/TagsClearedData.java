@@ -15,7 +15,7 @@ public record TagsClearedData(
 		@JsonProperty("totalTags") int totalTags,
 		@JsonProperty("readerId") String readerId
 ) {
-	public static final String EVENT_NAME = "rfid:tags_cleared";
+	public static final String EVENT_NAME = "rfid/tags_cleared";
 	public static final String STATUS_EMPTY = "empty";
 
 	public TagsClearedData {

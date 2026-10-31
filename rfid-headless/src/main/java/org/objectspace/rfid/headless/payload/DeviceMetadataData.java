@@ -23,8 +23,8 @@ public record DeviceMetadataData(
 		@JsonProperty("initDescription") @JsonAlias({"description", "completeDescription", "Komplettbeschreibung aus dem init", "init_description"}) String initDescription,
 		@JsonProperty("readerId") String readerId
 ) {
-	public static final String EVENT_NAME = "rfid:device_metadata";
-	public static final String EVENT_RESPONSE = "rfid:device_metadata_response";
+	public static final String EVENT_NAME = "rfid/get_device_metadata";
+	public static final String EVENT_RESPONSE = "rfid/device_metadata_response";
 
 	public DeviceMetadataData {
 		status = (status != null && !status.isBlank()) ? status : "ok";

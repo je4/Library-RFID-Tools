@@ -14,7 +14,6 @@ import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.loader.CertLoader;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.headless.payload.DeviceMetadataData;
-import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.headless.payload.TagReadData;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.TagsClearedData;
@@ -25,6 +24,7 @@ import org.objectspace.wsbrokerclient.WSBroker;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.config.WSClientConfig;
 import org.objectspace.wsbrokerclient.event.Event;
+import org.objectspace.wsbrokerclient.event.PayloadRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +33,21 @@ import org.slf4j.LoggerFactory;
  * RFID tag events, metadata queries, and tag write commands to specialized services.
  */
 public class HeadlessWsBrokerDispatcher implements AutoCloseable {
+
+	static {
+		registerPayloads();
+	}
+
+	public static void registerPayloads() {
+		PayloadRegistry.register(TagReadData.EVENT_NAME, TagReadData.class);
+		PayloadRegistry.register(TagsClearedData.EVENT_NAME, TagsClearedData.class);
+		PayloadRegistry.register(DeviceMetadataData.EVENT_NAME, DeviceMetadataData.class);
+		PayloadRegistry.register(DeviceMetadataData.EVENT_RESPONSE, DeviceMetadataData.class);
+		PayloadRegistry.register(WriteTagResponseData.EVENT_REQUEST, TagWriteItem.class);
+		PayloadRegistry.register(WriteTagResponseData.EVENT_RESPONSE, WriteTagResponseData.class);
+		PayloadRegistry.register(WriteAfiResponseData.EVENT_REQUEST, TagWriteItem.class);
+		PayloadRegistry.register(WriteAfiResponseData.EVENT_RESPONSE, WriteAfiResponseData.class);
+	}
 
 	private static final Logger logger = LoggerFactory.getLogger(HeadlessWsBrokerDispatcher.class);
 
@@ -219,11 +234,9 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			return;
 		}
 
-		RfidPayload<T> payload = RfidPayload.of(eventName, data);
-
 		for (String channel : targetChannels) {
 			try {
-				Event<RfidPayload<T>> event = Event.createMessage(clientName, channel, payload);
+				Event<T> event = Event.of(eventName, clientName, channel, data);
 				if (session != null && !session.isBlank()) {
 					event.setSession(session);
 				}
@@ -244,10 +257,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		}
 	}
 
-	public <T> void dispatch(RfidPayload<T> payload, String summaryMsg, String session, long timestamp, String readerId) {
-		if (payload != null) {
-			dispatch(payload.event(), payload.data(), summaryMsg, session, timestamp, readerId);
-		}
+	public <T> void dispatch(String eventName, T data) {
+		dispatch(eventName, data, null, null, System.currentTimeMillis(), null);
 	}
 
 	/**
@@ -503,12 +514,12 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		router.handleWriteAfiCommand(evt, target);
 	}
 
-	public <T> CompletableFuture<Void> sendReply(String target, RfidPayload<T> payload) {
-		return router.sendReply(target, payload);
+	public <T> CompletableFuture<Void> sendReply(String target, String type, T payload) {
+		return router.sendReply(target, type, payload);
 	}
 
-	public <T> CompletableFuture<Void> sendReply(String target, String refId, RfidPayload<T> payload, String summaryMessage) {
-		return router.sendReply(target, refId, payload, summaryMessage);
+	public <T> CompletableFuture<Void> sendReply(String target, String refId, String type, T payload, String summaryMessage) {
+		return router.sendReply(target, refId, type, payload, summaryMessage);
 	}
 
 	public DeviceMetadataData queryDeviceMetadata() {

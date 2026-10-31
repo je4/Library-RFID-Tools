@@ -28,7 +28,7 @@ public record TagReadData(
 		@JsonProperty("afi") String afi,
 		@JsonProperty("readerId") String readerId
 ) {
-	public static final String EVENT_NAME = "rfid:tag_read";
+	public static final String EVENT_NAME = "rfid/tag_read";
 
 	public TagReadData(String uid, String itemId, String rawHex, String isil, String country,
 					   boolean crcOk, String tagName, FinnishDataModel metadata, String afi, String readerId) {

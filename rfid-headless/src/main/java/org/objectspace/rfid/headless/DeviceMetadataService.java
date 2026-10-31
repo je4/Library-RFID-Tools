@@ -1,7 +1,6 @@
 package org.objectspace.rfid.headless;
 
 import org.objectspace.rfid.headless.payload.DeviceMetadataData;
-import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.event.Event;
@@ -50,8 +49,7 @@ public class DeviceMetadataService {
 			return CompletableFuture.completedFuture(null);
 		}
 		DeviceMetadataData data = queryDeviceMetadata(inst, fallbackReader);
-		RfidPayload<DeviceMetadataData> payload = RfidPayload.of(DeviceMetadataData.EVENT_RESPONSE, data);
-		Event<RfidPayload<DeviceMetadataData>> event = Event.createMessage(clientName, target, payload);
+		Event<DeviceMetadataData> event = Event.of(DeviceMetadataData.EVENT_RESPONSE, clientName, target, data);
 		if (refId != null && !refId.isBlank()) {
 			event.setRefId(refId);
 		}

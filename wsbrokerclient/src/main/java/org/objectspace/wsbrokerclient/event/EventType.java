@@ -107,6 +107,16 @@ public enum EventType {
     }
 
     /**
+     * Resolves an EventType from its string value (convenience alias for fromString).
+     *
+     * @param value the string representation
+     * @return matching EventType, or null if unknown
+     */
+    public static EventType of(String value) {
+        return fromString(value);
+    }
+
+    /**
      * Resolves an EventType from its string value.
      *
      * @param value the string representation

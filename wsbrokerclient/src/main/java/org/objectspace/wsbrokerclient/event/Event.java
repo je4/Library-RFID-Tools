@@ -71,6 +71,59 @@ public class Event<T> extends BaseEvent {
     }
 
     /**
+     * Convenience factory for creating a typed Event instance with standard EventType.
+     *
+     * @param type   standard event type
+     * @param source source identifier
+     * @param target target identifier or channel
+     * @param data   typed payload
+     * @param <T>    payload type
+     * @return typed Event instance
+     */
+    public static <T> Event<T> of(EventType type, String source, String target, T data) {
+        return of(type != null ? type.getValue() : null, source, target, data);
+    }
+
+    /**
+     * Dynamically unmarshals a RawEvent according to registered payload types.
+     *
+     * @param rawEvent raw event envelope
+     * @return decoded payload object, or JsonNode/String if unregistered
+     */
+    public static Object unmarshalDynamic(RawEvent rawEvent) {
+        return PayloadRegistry.unmarshalDynamic(rawEvent);
+    }
+
+    /**
+     * Returns the payload data unmarshaled as the registered type for this event's type, or the raw data if unregistered.
+     *
+     * @return deserialized payload object or raw data
+     */
+    @JsonIgnore
+    public Object getRegisteredData() {
+        if (data == null) {
+            return null;
+        }
+        if (getType() != null && PayloadRegistry.isRegistered(getType())) {
+            Class<?> targetClass = PayloadRegistry.getPayloadClass(getType());
+            if (targetClass != null) {
+                return getDataAs(targetClass);
+            }
+            JsonNode node = getDataNode();
+            return PayloadRegistry.unmarshal(getType(), node, OBJECT_MAPPER);
+        }
+        return data;
+    }
+
+    /**
+     * Alias for {@link #getRegisteredData()}.
+     */
+    @JsonIgnore
+    public Object getDataAsRegisteredType() {
+        return getRegisteredData();
+    }
+
+    /**
      * Deserializes the event's data payload into the specified target class.
      *
      * @param targetClass target class type

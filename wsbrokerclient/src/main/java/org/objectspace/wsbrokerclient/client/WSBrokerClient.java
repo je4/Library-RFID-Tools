@@ -635,11 +635,34 @@ public class WSBrokerClient implements AutoCloseable {
      */
     public <T> void onType(EventType type, Class<T> clazz, TypedEventHandler<T> handler) {
         if (type != null && handler != null && clazz != null) {
+            onType(type.getValue(), clazz, handler);
+        }
+    }
+
+    /**
+     * Registers a typed handler for a custom event type string with automatic JSON payload deserialization.
+     */
+    public <T> void onType(String type, Class<T> clazz, TypedEventHandler<T> handler) {
+        if (type != null && handler != null && clazz != null) {
             onType(type, evt -> {
                 T payload = evt.getDataAs(clazz);
                 handler.onEvent(evt, payload);
             });
         }
+    }
+
+    /**
+     * Registers a typed handler for a custom event type string (alias for onType).
+     */
+    public <T> void onTyped(String type, Class<T> clazz, TypedEventHandler<T> handler) {
+        onType(type, clazz, handler);
+    }
+
+    /**
+     * Registers a typed handler for a standard EventType enum (alias for onType).
+     */
+    public <T> void onTyped(EventType type, Class<T> clazz, TypedEventHandler<T> handler) {
+        onType(type, clazz, handler);
     }
 
     /**

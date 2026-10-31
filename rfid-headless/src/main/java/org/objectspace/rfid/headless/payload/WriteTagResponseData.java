@@ -51,7 +51,8 @@ public record WriteTagResponseData(
 		@JsonProperty("error") String error,
 		@JsonProperty("readerId") @JsonAlias({"reader_id", "readerID"}) String readerId
 ) {
-	public static final String EVENT_RESPONSE = "rfid:write_tag_response";
+	public static final String EVENT_REQUEST = "rfid/write_tag";
+	public static final String EVENT_RESPONSE = "rfid/write_tag_response";
 
 	public static WriteTagResponseData success(String uid, String itemId, String isil, String country,
 											   int parts, int partNo, int usageType, String afi, String readerId) {

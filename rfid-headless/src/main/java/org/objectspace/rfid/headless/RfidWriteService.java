@@ -1,7 +1,6 @@
 package org.objectspace.rfid.headless;
 
 import org.objectspace.rfid.FinnishDataModel;
-import org.objectspace.rfid.headless.payload.RfidPayload;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
 import org.objectspace.rfid.headless.payload.WriteAfiResponseData.TagAfiResult;
@@ -179,8 +178,7 @@ public class RfidWriteService {
 
 		return future.thenCompose(data -> {
 			if (active && client != null && target != null && !target.isBlank()) {
-				RfidPayload<WriteTagResponseData> payload = RfidPayload.of(WriteTagResponseData.EVENT_RESPONSE, data);
-				Event<RfidPayload<WriteTagResponseData>> reply = Event.createMessage(clientName, target, payload);
+				Event<WriteTagResponseData> reply = Event.of(WriteTagResponseData.EVENT_RESPONSE, clientName, target, data);
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
 				}
@@ -290,8 +288,7 @@ public class RfidWriteService {
 
 		return future.thenCompose(data -> {
 			if (active && client != null && target != null && !target.isBlank()) {
-				RfidPayload<WriteAfiResponseData> payload = RfidPayload.of(WriteAfiResponseData.EVENT_RESPONSE, data);
-				Event<RfidPayload<WriteAfiResponseData>> reply = Event.createMessage(clientName, target, payload);
+				Event<WriteAfiResponseData> reply = Event.of(WriteAfiResponseData.EVENT_RESPONSE, clientName, target, data);
 				if (refId != null && !refId.isBlank()) {
 					reply.setRefId(refId);
 				}
