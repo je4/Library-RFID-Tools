@@ -395,7 +395,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertTrue(callback.hasActiveTags());
         assertEquals(1, wsEvents.size());
         Event tagReadEvent = wsEvents.get(0);
-        assertEquals("rfid:tag_read", tagReadEvent.getDataNode().get("event").asText());
+        assertEquals("rfid/tag_read", tagReadEvent.getType());
         assertEquals("E004010011112222", payloadData(tagReadEvent).get("uid").asText());
 
         // 2. Wait for empty timeout (> 150ms) without scan -> transitions from TAGS_PRESENT -> EMPTY
@@ -405,7 +405,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals(2, wsEvents.size(), "Should have dispatched rfid:tags_cleared event on edge transition");
 
         Event clearedEvent = wsEvents.get(1);
-        assertEquals("rfid:tags_cleared", clearedEvent.getDataNode().get("event").asText());
+        assertEquals("rfid/tags_cleared", clearedEvent.getType());
         assertEquals("empty", payloadData(clearedEvent).get("status").asText());
         assertEquals(0, payloadData(clearedEvent).get("totalTags").asInt());
         assertEquals("rfid:station:01", payloadData(clearedEvent).get("readerId").asText());
@@ -574,7 +574,7 @@ public class HeadlessWsBrokerDispatcherTest {
 
         assertTrue(callback.hasActiveTags());
         assertEquals(1, wsEvents.size());
-        assertEquals("rfid:tag_read", wsEvents.get(0).getDataNode().get("event").asText());
+        assertEquals("rfid/tag_read", wsEvents.get(0).getType());
         assertEquals("E004019988776655", payloadData(wsEvents.get(0)).get("uid").asText());
 
         // 2. Reader disconnect occurs
@@ -583,7 +583,7 @@ public class HeadlessWsBrokerDispatcherTest {
         assertFalse(callback.hasActiveTags());
         assertEquals(2, wsEvents.size());
         Event clearedEvent = wsEvents.get(1);
-        assertEquals("rfid:tags_cleared", clearedEvent.getDataNode().get("event").asText());
+        assertEquals("rfid/tags_cleared", clearedEvent.getType());
         assertEquals("empty", payloadData(clearedEvent).get("status").asText());
         assertEquals(0, payloadData(clearedEvent).get("totalTags").asInt());
 

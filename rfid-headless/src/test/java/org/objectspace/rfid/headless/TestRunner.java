@@ -17,7 +17,11 @@ public class TestRunner {
             WsBrokerPayloadParserTest.class,
             HeadlessReaderRegistryTest.class,
             RfidWriteServiceTest.class,
-            HeadlessWsBrokerDispatcherTest.class
+            HeadlessWsBrokerDispatcherTest.class,
+            WsBrokerCommandRouterTest.class,
+            WsBrokerBatchWriteTest.class,
+            WsBrokerDeviceMetadataTest.class,
+            WsBrokerPayloadModelTest.class
         };
 
         System.out.println("=== Starting RFID-Headless Test Runner ===");

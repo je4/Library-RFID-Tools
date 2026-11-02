@@ -241,9 +241,10 @@ public class HeadlessReaderScannerTest {
 
         assertEquals("SUCCESS", result);
         assertFalse(scanner.isPaused(), "Scanner must resume after executeExclusive");
-        assertFalse(callback.hasActiveTags(), "Active tags flag must be reset after executeExclusive");
-        assertEquals(1, callback.getClearedEvents(), "Cleared event count must increment after executeExclusive");
+        assertTrue(callback.hasActiveTags(), "Active tags flag must remain active after executeExclusive");
+        assertEquals(0, callback.getClearedEvents(), "Cleared event count must NOT increment after executeExclusive");
         assertFalse(callback.getLastSeenMap().containsKey("E004010011223344"), "Debounce cache must be cleared after executeExclusive");
+        assertTrue(callback.isTagPresent("E004010011223344"), "Tag presence must be preserved after executeExclusive");
 
         scanner.stop();
     }

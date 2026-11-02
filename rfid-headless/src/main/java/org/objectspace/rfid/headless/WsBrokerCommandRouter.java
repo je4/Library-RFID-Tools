@@ -53,16 +53,6 @@ public class WsBrokerCommandRouter {
 		if (client == null) {
 			return;
 		}
-		client.onType(DeviceMetadataData.EVENT_NAME, this::handleMetadataQuery);
-		client.onType("rfid/device_metadata", this::handleMetadataQuery);
-		client.onType(WriteTagResponseData.EVENT_REQUEST, evt -> {
-			String target = resolveReplyTarget(evt);
-			handleWriteTagCommand(evt, target);
-		});
-		client.onType(WriteAfiResponseData.EVENT_REQUEST, evt -> {
-			String target = resolveReplyTarget(evt);
-			handleWriteAfiCommand(evt, target);
-		});
 		client.onEvent(this::handleGeneralEvent);
 	}
 

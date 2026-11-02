@@ -343,6 +343,41 @@ public class HeadlessReaderCallback implements TagCallback {
 		logger.debug("Cleared scan debounce cache (active tag presence intact)");
 	}
 
+	/**
+	 * Refreshes the active presence timestamps for all currently active tags.
+	 * Invoked after exclusive operations (e.g. tag writes) to ensure presence does not
+	 * expire due to scanner pause time.
+	 */
+	public void refreshPresence() {
+		long now = System.currentTimeMillis();
+		for (String uid : activePresenceMap.keySet()) {
+			activePresenceMap.put(uid, now);
+		}
+	}
+
+	/**
+	 * Refreshes the active presence timestamp for a specific transponder UID.
+	 *
+	 * @param uid transponder UID
+	 */
+	public void refreshPresence(String uid) {
+		if (uid != null && !uid.isBlank()) {
+			activePresenceMap.put(uid.trim(), System.currentTimeMillis());
+		}
+	}
+
+	/**
+	 * Clears the debounce cooldown entry for a specific transponder UID,
+	 * allowing it to be scanned and dispatched immediately on the next inventory cycle.
+	 *
+	 * @param uid transponder UID
+	 */
+	public void clearDebounceForUid(String uid) {
+		if (uid != null && !uid.isBlank()) {
+			lastSeenMap.remove(uid.trim());
+		}
+	}
+
 	public HeadlessWsBrokerDispatcher getWsBrokerDispatcher() {
 		return wsBrokerDispatcher;
 	}

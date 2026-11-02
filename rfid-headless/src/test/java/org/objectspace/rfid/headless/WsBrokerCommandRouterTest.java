@@ -1095,9 +1095,7 @@ public class WsBrokerCommandRouterTest {
         assertEquals(1, writtenTags.size());
         assertEquals("E00401-RW-1:NEW-BOOK-RW", writtenTags.get(0));
 
-        // 4. Write AFI on R/W reader -> MUST SUCCEED
-        // Place tag back in presence after previous write_tag emptied callback presence
-        cbRw.doIt(1, 1, "NXP", "SLIX", "E00401-RW-1", new FinnishDataModel().getBlock(32), 4);
+        // 4. Write AFI on R/W reader -> MUST SUCCEED (presence is retained automatically without needing manual re-scan)
         sentEvents.clear();
 
         Event afiRwMsg = Event.createMessage("ui", "rfid-hub-01", Map.of(
@@ -1113,6 +1111,106 @@ public class WsBrokerCommandRouterTest {
         assertEquals("ok", payloadData(replyAfiRw).get("status").asText());
         assertEquals(1, writtenAfis.size());
         assertEquals("E00401-RW-1:-62", writtenAfis.get(0));
+
+        dispatcher.close();
+    }
+
+    @Test
+    @DisplayName("Test sequential writes to multiple tags on same reader station retain presence and all succeed")
+    void testSequentialMultiTagWritesOnSameReader() throws Exception {
+        List<Event> sentEvents = new CopyOnWriteArrayList<>();
+        WSClientConfig cfg = new WSClientConfig();
+        cfg.setClientName("mediathek:nfcreader:01");
+        cfg.setEndpoint("https://localhost:8765");
+
+        WSBrokerClient mockClient = new WSBrokerClient(cfg) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                sentEvents.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "mediathek:nfcreader:01", "https://localhost:8765", List.of("mediathek01"), null, mockClient
+        );
+
+        List<String> writtenUids = new CopyOnWriteArrayList<>();
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback cb, int n) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceId() { return "feig-01"; }
+            @Override public String getDeviceType() { return "MR102"; }
+            @Override public String getDeviceInfo() { return "FEIG Desk"; }
+            @Override
+            public void writeTag(String uid, FinnishDataModel model, Byte afi) {
+                writtenUids.add(uid);
+            }
+            @Override
+            public void writeAfi(String uid, byte afi) {}
+            @Override public void close() {}
+        };
+
+        HeadlessReaderConfig readerCfg = new HeadlessReaderConfig("feig-01", false, "feig-01");
+        readerCfg.setChannels(List.of("mediathek01"));
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 20000L, 2000L, "feig-01");
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 300, "feig-01");
+        HeadlessReaderInstance instance = new HeadlessReaderInstance(readerCfg, mockReader, callback, scanner);
+
+        dispatcher.setReaderInstances(List.of(instance));
+
+        // Place 2 tags on the reader field
+        callback.doIt(1, 2, "NXP", "SLIX", "E004010843BC4D8B", new FinnishDataModel().getBlock(32), 4);
+        callback.doIt(2, 2, "NXP", "SLIX", "E004010843BC4D8C", new FinnishDataModel().getBlock(32), 4);
+
+        assertTrue(callback.isTagPresent("E004010843BC4D8B"));
+        assertTrue(callback.isTagPresent("E004010843BC4D8C"));
+
+        sentEvents.clear();
+
+        // 1. Write Tag 1 (E004010843BC4D8B)
+        Event writeTag1 = Event.createMessage("mediathek:desk:01", "mediathek:nfcreader:01", Map.of(
+                "event", "rfid:write_tag",
+                "reader_id", "feig-01",
+                "uid", "E004010843BC4D8B",
+                "itemId", "ITEM-001"
+        ));
+        dispatcher.handleIncomingMessage(writeTag1);
+        Thread.sleep(300);
+
+        assertEquals(1, writtenUids.size());
+        assertEquals("E004010843BC4D8B", writtenUids.get(0));
+
+        // Verify Tag 2 is STILL present on the reader callback!
+        assertTrue(callback.isTagPresent("E004010843BC4D8C"), "Tag 2 must remain present after Tag 1 write");
+        assertTrue(callback.isTagPresent("E004010843BC4D8B"), "Tag 1 must remain present after Tag 1 write");
+
+        // 2. Immediately write Tag 2 (E004010843BC4D8C) without waiting for background inventory scan
+        Event writeTag2 = Event.createMessage("mediathek:desk:01", "mediathek:nfcreader:01", Map.of(
+                "event", "rfid:write_tag",
+                "reader_id", "feig-01",
+                "uid", "E004010843BC4D8C",
+                "itemId", "ITEM-002"
+        ));
+        dispatcher.handleIncomingMessage(writeTag2);
+        Thread.sleep(300);
+
+        assertEquals(2, writtenUids.size());
+        assertEquals("E004010843BC4D8C", writtenUids.get(1));
+
+        // Check responses
+        List<Event> responses = sentEvents.stream()
+                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .toList();
+        assertEquals(2, responses.size(), "Should have received exactly 2 write_tag_response events (one for each tag)");
+
+        for (Event resp : responses) {
+            assertEquals("ok", payloadData(resp).get("status").asText(), "Both writes must succeed with status 'ok'");
+        }
 
         dispatcher.close();
     }
