@@ -136,6 +136,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 
 			this.client = WSBroker.createClient(clientConfig);
 			this.client.addConnectionListener((oldState, newState) -> {
+
 				logger.info("WSBroker connection state: {} -> {}", oldState, newState);
 			});
 			this.router = new WsBrokerCommandRouter(
