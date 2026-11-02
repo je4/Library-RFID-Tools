@@ -94,7 +94,7 @@ public class WsBrokerBatchWriteTest {
         assertEquals(1, sentEvents.size());
         Event reply = sentEvents.get(0);
         assertEquals("ref-batch-001", reply.getRefId());
-        assertEquals("rfid:write_afi_response", reply.getDataNode().get("event").asText());
+        assertEquals("rfid/write_afi_response", reply.getType());
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(3, payloadData(reply).get("uids").size());
         assertEquals(3, payloadData(reply).get("successfulUids").size());
@@ -263,8 +263,9 @@ public class WsBrokerBatchWriteTest {
         Thread.sleep(800);
 
         assertEquals(2, written.size());
-        assertEquals(2, sentEvents.size(), "Should have dispatched tags_cleared and write_afi_response");
-        Event reply = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
+        assertEquals(1, sentEvents.size());
+        Event reply = sentEvents.get(0);
+        assertEquals("rfid/write_afi_response", reply.getType());
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals("C2", payloadData(reply).get("afi").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());
@@ -342,7 +343,7 @@ public class WsBrokerBatchWriteTest {
         assertEquals(1, sentEvents.size());
         Event reply = sentEvents.get(0);
         assertEquals("ref-batch-tags-001", reply.getRefId());
-        assertEquals("rfid:write_tag_response", reply.getDataNode().get("event").asText());
+        assertEquals("rfid/write_tag_response", reply.getType());
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(3, payloadData(reply).get("uids").size());
         assertEquals(3, payloadData(reply).get("successfulUids").size());
@@ -524,7 +525,7 @@ public class WsBrokerBatchWriteTest {
         assertTrue(written.contains("E00401-TAG-1:BOOK-1:7"));
         assertTrue(written.contains("E00401-TAG-2:BOOK-2:-62")); // 0xC2 signed byte = -62
         Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .findFirst().orElseThrow();
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());
@@ -591,7 +592,7 @@ public class WsBrokerBatchWriteTest {
         assertTrue(written.contains("E00401-SHARED-1:SHARED-ITEM:DE-101:7"));
         assertTrue(written.contains("E00401-SHARED-2:SHARED-ITEM:DE-101:7"));
         Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .findFirst().orElseThrow();
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());
@@ -657,7 +658,7 @@ public class WsBrokerBatchWriteTest {
         assertTrue(written.contains("E00401-MAP-1:ITEM-MAP-1:DE:7"));
         assertTrue(written.contains("E00401-MAP-2:ITEM-MAP-2:CH:-62"));
         Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .findFirst().orElseThrow();
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());
@@ -721,7 +722,7 @@ public class WsBrokerBatchWriteTest {
         assertTrue(written.contains("E00401-ROOT-1:ITEM-ROOT-1:AT:7"));
         assertTrue(written.contains("E00401-ROOT-2:ITEM-ROOT-2:CH:1"));
         Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .findFirst().orElseThrow();
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());
@@ -786,7 +787,7 @@ public class WsBrokerBatchWriteTest {
         assertTrue(written.contains("E00401-PAR-1:BOOK-PART-1:1/2:7"));
         assertTrue(written.contains("E00401-PAR-2:BOOK-PART-2:2/2:-62"));
         Event reply = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .findFirst().orElseThrow();
         assertEquals("ok", payloadData(reply).get("status").asText());
         assertEquals(2, payloadData(reply).get("successfulUids").size());

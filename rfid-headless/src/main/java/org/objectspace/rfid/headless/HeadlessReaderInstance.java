@@ -119,7 +119,8 @@ public class HeadlessReaderInstance implements AutoCloseable {
 				Thread.sleep(150);
 				if (callback != null) {
 					try {
-						callback.empty();
+						callback.clearDebounceCache();
+						callback.refreshPresence();
 					} catch (Exception ignored) {
 					}
 				}

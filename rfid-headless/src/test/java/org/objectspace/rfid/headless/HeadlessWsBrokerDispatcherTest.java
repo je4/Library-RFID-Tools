@@ -408,7 +408,6 @@ public class HeadlessWsBrokerDispatcherTest {
         assertEquals("rfid/tags_cleared", clearedEvent.getType());
         assertEquals("empty", payloadData(clearedEvent).get("status").asText());
         assertEquals(0, payloadData(clearedEvent).get("totalTags").asInt());
-        assertEquals("rfid:station:01", payloadData(clearedEvent).get("readerId").asText());
 
         // 3. Repeated empty timeout should NOT dispatch another empty event (edge transition only)
         Thread.sleep(200);

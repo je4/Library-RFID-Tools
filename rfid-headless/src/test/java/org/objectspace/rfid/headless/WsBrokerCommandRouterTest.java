@@ -283,7 +283,7 @@ public class WsBrokerCommandRouterTest {
 
         assertEquals(1, sentEvents.size());
         Event reply1 = sentEvents.get(0);
-        assertEquals("rfid:write_tag_response", reply1.getDataNode().get("event").asText());
+        assertEquals("rfid/write_tag_response", reply1.getType());
         assertEquals("error", payloadData(reply1).get("status").asText());
         assertTrue(payloadData(reply1).get("error").asText().contains("Tag write collision"));
 
@@ -300,7 +300,7 @@ public class WsBrokerCommandRouterTest {
 
         assertEquals(1, sentEvents.size());
         Event reply2 = sentEvents.get(0);
-        assertEquals("rfid:write_afi_response", reply2.getDataNode().get("event").asText());
+        assertEquals("rfid/write_afi_response", reply2.getType());
         assertEquals("error", payloadData(reply2).get("status").asText());
         assertTrue(payloadData(reply2).get("error").asText().contains("AFI lock bit set"));
 
@@ -417,10 +417,8 @@ public class WsBrokerCommandRouterTest {
 
         // Station 1 must have executed write and replied
         assertTrue(st1Written.get(), "Station 1 holding UID-1111 should execute writeTag");
-        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
-        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st1Cleared, "Station 1 should send tags_cleared event after write operation");
+        assertEquals(1, st1Events.size(), "Station 1 should send write_tag_response");
+        Event st1Reply = st1Events.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(st1Reply, "Station 1 should send write_tag_response");
         assertEquals("ok", payloadData(st1Reply).get("status").asText());
 
@@ -515,10 +513,8 @@ public class WsBrokerCommandRouterTest {
         assertEquals(0, st1Events.size());
 
         assertTrue(st2AfiWritten.get(), "Station 2 holding UID-BBBB should execute write_afi");
-        assertEquals(2, st2Events.size(), "Station 2 should send tags_cleared and write_afi_response");
-        Event st2Cleared = st2Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st2Reply = st2Events.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st2Cleared, "Station 2 should send tags_cleared event after write_afi operation");
+        assertEquals(1, st2Events.size(), "Station 2 should send write_afi_response");
+        Event st2Reply = st2Events.stream().filter(e -> "rfid/write_afi_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(st2Reply, "Station 2 should send write_afi_response");
         assertEquals("ok", payloadData(st2Reply).get("status").asText());
         assertEquals("UID-BBBB", payloadData(st2Reply).get("uid").asText());
@@ -575,7 +571,7 @@ public class WsBrokerCommandRouterTest {
         assertEquals(1, sentEvents.size(), "Direct message should receive explicit error response");
 
         Event reply = sentEvents.get(0);
-        assertEquals("rfid:write_tag_response", reply.getDataNode().get("event").asText());
+        assertEquals("rfid/write_tag_response", reply.getType());
         assertEquals("error", payloadData(reply).get("status").asText());
         assertTrue(payloadData(reply).get("error").asText().contains("not present on reader station"));
 
@@ -665,10 +661,8 @@ public class WsBrokerCommandRouterTest {
         Thread.sleep(400);
 
         assertTrue(st1Written.get(), "Station 1 with single tag should execute wildcard write");
-        assertEquals(2, st1Events.size(), "Station 1 should send tags_cleared and write_tag_response");
-        Event st1Cleared = st1Events.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event st1Reply = st1Events.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(st1Cleared, "Station 1 should send tags_cleared notification");
+        assertEquals(1, st1Events.size(), "Station 1 should send write_tag_response");
+        Event st1Reply = st1Events.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(st1Reply, "Station 1 should send write_tag_response");
         assertEquals("UID-SOLO", payloadData(st1Reply).get("uid").asText());
 
@@ -725,14 +719,11 @@ public class WsBrokerCommandRouterTest {
 
         Thread.sleep(400);
         assertTrue(writeTagDone.get(), "First write_tag should succeed");
-        assertEquals(2, sentEvents.size(), "Should have received tags_cleared and write_tag_response");
-        Event cleared1 = sentEvents.stream().filter(e -> "rfid:tags_cleared".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        Event reply1 = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
-        assertNotNull(cleared1, "tags_cleared event must be sent after write_tag");
+        assertEquals(1, sentEvents.size(), "Should have received write_tag_response");
+        Event reply1 = sentEvents.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(reply1, "write_tag_response must be sent");
 
-        // Background scanner detects written tag on antenna
-        callback.doIt(1, 1, "NXP", "SLIX", uid, new FinnishDataModel().getBlock(32), 4);
+        sentEvents.clear();
 
         // 2. Immediate second broadcast write_afi for same tag
         Event writeAfiEvt = Event.createMessage("web-ui", "all", Map.of(
@@ -744,7 +735,7 @@ public class WsBrokerCommandRouterTest {
 
         Thread.sleep(400);
         assertTrue(writeAfiDone.get(), "Chained write_afi should immediately succeed on same tag");
-        Event reply2 = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
+        Event reply2 = sentEvents.stream().filter(e -> "rfid/write_afi_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(reply2, "write_afi_response must be sent");
         assertEquals("ok", payloadData(reply2).get("status").asText());
 
@@ -796,7 +787,7 @@ public class WsBrokerCommandRouterTest {
         assertEquals(1, sentEvents.size());
         Event metaResp = sentEvents.get(0);
         assertEquals("meta-query-id-111111111111111", metaResp.getRefId(), "Response event must correlate with request ID via refId");
-        assertEquals("rfid:device_metadata_response", metaResp.getDataNode().get("event").asText());
+        assertEquals("rfid/device_metadata_response", metaResp.getType());
         assertEquals("DEV-999", payloadData(metaResp).get("deviceId").asText());
 
         // 2. Write Tag command with specific ID
@@ -810,10 +801,10 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(writeTagCmd);
 
         Thread.sleep(300);
-        Event writeTagResp = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
+        Event writeTagResp = sentEvents.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(writeTagResp, "write_tag_response must be present");
         assertEquals("write-tag-id-2222222222222222", writeTagResp.getRefId());
-        assertEquals("rfid:write_tag_response", writeTagResp.getDataNode().get("event").asText());
+        assertEquals("rfid/write_tag_response", writeTagResp.getType());
         assertEquals("ok", payloadData(writeTagResp).get("status").asText());
 
         // Background scanner detects written tag again on antenna
@@ -830,10 +821,10 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(writeAfiCmd);
 
         Thread.sleep(300);
-        Event writeAfiResp = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElse(null);
+        Event writeAfiResp = sentEvents.stream().filter(e -> "rfid/write_afi_response".equals(e.getType())).findFirst().orElse(null);
         assertNotNull(writeAfiResp, "write_afi_response must be present");
         assertEquals("write-afi-id-3333333333333333", writeAfiResp.getRefId());
-        assertEquals("rfid:write_afi_response", writeAfiResp.getDataNode().get("event").asText());
+        assertEquals("rfid/write_afi_response", writeAfiResp.getType());
         assertEquals("ok", payloadData(writeAfiResp).get("status").asText());
 
         // 4. Direct write command error reply when tag not present
@@ -938,7 +929,7 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(queryGate);
 
         Event replyGate = sentEvents.stream().filter(e -> "52E101".equals(payloadData(e).path("deviceId").asText())).findFirst().orElseThrow();
-        assertEquals("rfid:device_metadata_response", replyGate.getDataNode().get("event").asText());
+        assertEquals("rfid/device_metadata_response", replyGate.getType());
         assertEquals("52E101", payloadData(replyGate).get("deviceId").asText());
         assertEquals("ISC.MR102-USB", payloadData(replyGate).get("deviceType").asText());
 
@@ -950,7 +941,7 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(queryReturn);
 
         Event replyReturn = sentEvents.stream().filter(e -> "52E102".equals(payloadData(e).path("deviceId").asText())).findFirst().orElseThrow();
-        assertEquals("rfid:device_metadata_response", replyReturn.getDataNode().get("event").asText());
+        assertEquals("rfid/device_metadata_response", replyReturn.getType());
         assertEquals("52E102", payloadData(replyReturn).get("deviceId").asText());
         assertEquals("ISC.PRH101-USB", payloadData(replyReturn).get("deviceType").asText());
 
@@ -1059,7 +1050,7 @@ public class WsBrokerCommandRouterTest {
         ));
         dispatcher.handleIncomingMessage(writeRoMsg);
 
-        Event replyWriteRo = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
+        Event replyWriteRo = sentEvents.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElseThrow();
         assertEquals("error", payloadData(replyWriteRo).get("status").asText());
         assertTrue(payloadData(replyWriteRo).get("error").asText().contains("read-only"));
         assertTrue(writtenTags.isEmpty());
@@ -1074,7 +1065,7 @@ public class WsBrokerCommandRouterTest {
         ));
         dispatcher.handleIncomingMessage(afiRoMsg);
 
-        Event replyAfiRo = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
+        Event replyAfiRo = sentEvents.stream().filter(e -> "rfid/write_afi_response".equals(e.getType())).findFirst().orElseThrow();
         assertEquals("error", payloadData(replyAfiRo).get("status").asText());
         assertTrue(payloadData(replyAfiRo).get("error").asText().contains("read-only"));
         assertTrue(writtenAfis.isEmpty());
@@ -1090,7 +1081,7 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(writeRwMsg);
         Thread.sleep(400);
 
-        Event replyWriteRw = sentEvents.stream().filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
+        Event replyWriteRw = sentEvents.stream().filter(e -> "rfid/write_tag_response".equals(e.getType())).findFirst().orElseThrow();
         assertEquals("ok", payloadData(replyWriteRw).get("status").asText());
         assertEquals(1, writtenTags.size());
         assertEquals("E00401-RW-1:NEW-BOOK-RW", writtenTags.get(0));
@@ -1107,7 +1098,7 @@ public class WsBrokerCommandRouterTest {
         dispatcher.handleIncomingMessage(afiRwMsg);
         Thread.sleep(400);
 
-        Event replyAfiRw = sentEvents.stream().filter(e -> "rfid:write_afi_response".equals(e.getDataNode().path("event").asText())).findFirst().orElseThrow();
+        Event replyAfiRw = sentEvents.stream().filter(e -> "rfid/write_afi_response".equals(e.getType())).findFirst().orElseThrow();
         assertEquals("ok", payloadData(replyAfiRw).get("status").asText());
         assertEquals(1, writtenAfis.size());
         assertEquals("E00401-RW-1:-62", writtenAfis.get(0));
@@ -1204,7 +1195,7 @@ public class WsBrokerCommandRouterTest {
 
         // Check responses
         List<Event> responses = sentEvents.stream()
-                .filter(e -> "rfid:write_tag_response".equals(e.getDataNode().path("event").asText()))
+                .filter(e -> "rfid/write_tag_response".equals(e.getType()))
                 .toList();
         assertEquals(2, responses.size(), "Should have received exactly 2 write_tag_response events (one for each tag)");
 

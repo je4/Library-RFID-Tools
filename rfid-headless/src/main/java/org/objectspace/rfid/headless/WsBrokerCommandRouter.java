@@ -86,7 +86,7 @@ public class WsBrokerCommandRouter {
 			return;
 		}
 		String target = resolveReplyTarget(evt);
-		String normalized = eventName.trim().toLowerCase();
+		String normalized = eventName.trim().toLowerCase().replace(':', '/');
 		switch (normalized) {
 			case "rfid/get_device_metadata":
 			case "rfid/device_metadata":

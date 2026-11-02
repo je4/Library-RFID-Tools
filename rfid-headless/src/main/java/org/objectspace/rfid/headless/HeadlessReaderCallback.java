@@ -401,7 +401,15 @@ public class HeadlessReaderCallback implements TagCallback {
 	}
 
 	public boolean hasActiveTags() {
-		return hasActiveTags.get();
+		if (hasActiveTags.get()) {
+			boolean stillActive = !getPresentUids().isEmpty();
+			if (!stillActive) {
+				empty();
+				return false;
+			}
+			return true;
+		}
+		return false;
 	}
 
 	public long getClearedEvents() {

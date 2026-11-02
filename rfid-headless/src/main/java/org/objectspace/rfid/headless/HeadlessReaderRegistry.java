@@ -154,9 +154,10 @@ public class HeadlessReaderRegistry {
 				Thread.sleep(150);
 				if (callback != null) {
 					try {
-						callback.empty();
+						callback.clearDebounceCache();
+						callback.refreshPresence();
 					} catch (Exception e) {
-						logger.warn("Error invoking callback.empty() after write operation: {}", e.getMessage());
+						logger.warn("Error refreshing callback cache after write operation: {}", e.getMessage());
 					}
 				}
 				return res;

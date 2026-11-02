@@ -63,7 +63,15 @@ public final class WsBrokerPayloadParser {
 	 * Extracts command / event name from event type or message header.
 	 */
 	public static String extractEventName(Event<?> evt, JsonNode dataNode) {
-		if (evt != null && evt.getType() != null && !evt.getType().isBlank()) {
+		if (dataNode != null && dataNode.isObject()) {
+			if (dataNode.hasNonNull("event") && !dataNode.get("event").asText().isBlank()) {
+				return dataNode.get("event").asText().trim();
+			}
+			if (dataNode.hasNonNull("type") && !dataNode.get("type").asText().isBlank()) {
+				return dataNode.get("type").asText().trim();
+			}
+		}
+		if (evt != null && evt.getType() != null && !evt.getType().isBlank() && !evt.getType().equalsIgnoreCase("message")) {
 			return evt.getType().trim();
 		}
 		if (evt != null && evt.getMessage() != null && !evt.getMessage().isBlank()) {
