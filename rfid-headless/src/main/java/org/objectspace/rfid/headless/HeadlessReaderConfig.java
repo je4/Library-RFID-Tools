@@ -22,6 +22,8 @@ public class HeadlessReaderConfig {
 	private boolean readOnly;
 	private String deviceId;
 	private String type = "usb";
+	private String host;
+	private String port;
 	private String readerType = "feig";
 	private int sleepInterval = HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS;
 	private int numBlocks = HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
@@ -76,6 +78,22 @@ public class HeadlessReaderConfig {
 
 	public void setType(String type) {
 		this.type = type;
+	}
+
+	public String getHost() {
+		return host;
+	}
+
+	public void setHost(String host) {
+		this.host = host;
+	}
+
+	public String getPort() {
+		return port;
+	}
+
+	public void setPort(String port) {
+		this.port = port;
 	}
 
 	public String getReaderType() {
@@ -196,6 +214,12 @@ public class HeadlessReaderConfig {
 		if (type != null && !type.isBlank()) {
 			target.setProperty("device.feig.type", type.trim());
 		}
+		if (host != null && !host.isBlank()) {
+			target.setProperty("device.feig.host", host.trim());
+		}
+		if (port != null) {
+			target.setProperty("device.feig.port", port);
+		}
 		if (configFile != null && !configFile.isBlank()) {
 			target.setProperty("device.feig.configfile", configFile.trim());
 		}
@@ -229,12 +253,14 @@ public class HeadlessReaderConfig {
 				Objects.equals(readerId, that.readerId) &&
 				Objects.equals(deviceId, that.deviceId) &&
 				Objects.equals(type, that.type) &&
+				Objects.equals(host, that.host) &&
+				Objects.equals(port, that.port) &&
 				Objects.equals(channels, that.channels);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(readerId, readOnly, deviceId, type, sleepInterval, numBlocks, debounceMillis, channels);
+		return Objects.hash(readerId, readOnly, deviceId, type, host, port, sleepInterval, numBlocks, debounceMillis, channels);
 	}
 
 	@Override
@@ -244,6 +270,8 @@ public class HeadlessReaderConfig {
 				", readOnly=" + readOnly +
 				", deviceId='" + deviceId + '\'' +
 				", type='" + type + '\'' +
+				", host='" + host + '\'' +
+				", port=" + port +
 				", sleepInterval=" + sleepInterval +
 				", numBlocks=" + numBlocks +
 				", debounceMillis=" + debounceMillis +

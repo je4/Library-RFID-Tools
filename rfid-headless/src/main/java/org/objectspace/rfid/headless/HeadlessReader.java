@@ -49,6 +49,8 @@ public class HeadlessReader {
 					tagScanProcessor, wsBrokerDispatcher, rCfg.getDebounceMillis(), rCfg.getReaderId());
 			HeadlessReaderScanner scanner = new HeadlessReaderScanner(
 					reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(), rCfg.getReaderId());
+			String connectionType = rCfg.getType();
+			scanner.setConfigureHostMode(!"ethernet".equalsIgnoreCase(connectionType) && !"tcp".equalsIgnoreCase(connectionType));
 
 			HeadlessReaderInstance instance = new HeadlessReaderInstance(rCfg, reader, callback, scanner);
 			this.readerInstances.add(instance);

@@ -13,6 +13,56 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessConfigHelperTest {
 
     @Test
+    public void testEthernetConfigurationPaths() throws Exception {
+        XMLConfiguration xml = new XMLConfiguration();
+        new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
+                <configuration><device><feig><host>global</host><port>1000</port></feig></device>
+                <readers>
+                  <reader><reader_id>one</reader_id><feig><host>first</host><port>2000</port></feig></reader>
+                  <reader><reader_id>two</reader_id><device><feig><host>second</host><port>3000</port></feig></device></reader>
+                  <reader><reader_id>three</reader_id></reader>
+                </readers></configuration>
+                """));
+        var readers = HeadlessConfigHelper.getReaderConfigs(xml);
+        assertEquals(3, readers.size());
+        assertEquals("first", readers.get(0).toConfiguration().getString("device.feig.host"));
+        assertEquals(2000, readers.get(0).toConfiguration().getInt("device.feig.port"));
+        assertEquals("second", readers.get(1).toConfiguration().getString("device.feig.host"));
+        assertEquals(3000, readers.get(1).toConfiguration().getInt("device.feig.port"));
+        assertEquals("global", readers.get(2).toConfiguration().getString("device.feig.host"));
+        assertEquals(1000, readers.get(2).toConfiguration().getInt("device.feig.port"));
+
+        BaseConfiguration flat = new BaseConfiguration();
+        flat.setProperty("device.feig.host", "global");
+        flat.setProperty("device.feig.port", 1000);
+        flat.setProperty("readers.reader(0).reader_id", "one");
+        flat.setProperty("readers.reader(0).feig.host", "first");
+        flat.setProperty("readers.reader(0).feig.port", 2000);
+        flat.setProperty("readers.reader(1).reader_id", "two");
+        flat.setProperty("readers.reader(1).device.feig.host", "second");
+        flat.setProperty("readers.reader(1).device.feig.port", 3000);
+        var flatReaders = HeadlessConfigHelper.getReaderConfigs(flat);
+        assertEquals("first", flatReaders.get(0).toConfiguration().getString("device.feig.host"));
+        assertEquals(2000, flatReaders.get(0).toConfiguration().getInt("device.feig.port"));
+        assertEquals("second", flatReaders.get(1).toConfiguration().getString("device.feig.host"));
+        assertEquals(3000, flatReaders.get(1).toConfiguration().getInt("device.feig.port"));
+
+        BaseConfiguration single = new BaseConfiguration();
+        single.setProperty("readers.reader.reader_id", "single");
+        single.setProperty("readers.reader.feig.host", "single-host");
+        assertEquals("single-host", HeadlessConfigHelper.getReaderConfigs(single).get(0).toConfiguration().getString("device.feig.host"));
+        assertFalse(HeadlessConfigHelper.getReaderConfigs(single).get(0).toConfiguration().containsKey("device.feig.port"));
+
+        BaseConfiguration legacy = new BaseConfiguration();
+        legacy.setProperty("device.feig.host", "legacy");
+        legacy.setProperty("device.feig.port", 4000);
+        var effective = HeadlessConfigHelper.getReaderConfigs(legacy).get(0).toConfiguration();
+        assertEquals("legacy", effective.getString("device.feig.host"));
+        assertEquals(4000, effective.getInt("device.feig.port"));
+        assertFalse(HeadlessConfigHelper.getReaderConfigs(null).get(0).toConfiguration().containsKey("device.feig.port"));
+    }
+
+    @Test
     @DisplayName("Test default configuration values when configuration is empty or null")
     public void testDefaultConfigValues() {
         assertEquals(HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS, HeadlessConfigHelper.getSleepInterval(null));

@@ -61,7 +61,7 @@ import de.feig.fedm.taghandler.ThBase;
 
 /**
  * Class representing a FEIG reader using FEIG SDK Gen3 (FEDM Java API).
- * Actually supported: FEIG USB readers (such as ISC.MR102-USB).
+ * Supports FEIG USB and TCP/IP readers.
  * 
  * @author Juergen Enge
  *
@@ -70,6 +70,7 @@ public class FeigRFID {
 
 	private final List<String> startupLogs = new java.util.concurrent.CopyOnWriteArrayList<>();
 	private volatile boolean isMR102 = false;
+	private volatile boolean networkConnection = false;
 	private volatile boolean hasCommunicationError = false;
 	private volatile String lastErrorMessage = null;
 
@@ -145,61 +146,90 @@ public class FeigRFID {
 	 * Connects to the FEIG RFID reader.
 	 * Reads optional configuration values:
 	 * - device.feig.id (to bind to a specific hardware device ID in hex)
-	 * - device.feig.type (must be "usb")
+	 * - device.feig.type (usb, ethernet or tcp)
+	 * - device.feig.host and device.feig.port for Ethernet connections
 	 * 
 	 * @throws Exception if connection fails
 	 */
 	public void connect() throws Exception {
 		connected = false;
-		reader = new ReaderModule(RequestMode.UniDirectional);
+		currentDeviceID = 0;
+		isMR102 = false;
 		String configDeviceID = null;
-		String configDeviceType = null;
+		String configDeviceType = "usb";
 		if (config != null) {
 			configDeviceID = config.getString("device.feig.id");
 			String devType = config.getString("device.feig.type");
-			configDeviceType = (devType != null) ? devType.toLowerCase() : null;
+			configDeviceType = (devType != null && !devType.isBlank()) ? devType.trim().toLowerCase(java.util.Locale.ROOT) : "usb";
 		}
-		if (configDeviceType != null && !configDeviceType.equals("usb")) {
+		networkConnection = configDeviceType.equals("ethernet") || configDeviceType.equals("tcp");
+		if (!networkConnection && !configDeviceType.equals("usb")) {
 			String err = "Device Type " + configDeviceType + " not supported.";
 			setError(err);
 			throw new Exception(err);
 		}
-
-		int scanRes = UsbManager.startDiscover();
-		if (scanRes < 0) {
-			String err = "usb scan failed: " + ErrorCode.toString(scanRes);
-			setError(err);
-			throw new Exception(err);
-		}
-
-		long foundDeviceID = 0;
-		UsbScanInfo scanInfo;
-		while ((scanInfo = UsbManager.popDiscover()) != null && scanInfo.isValid()) {
-			String devIdHex = scanInfo.deviceIdToHexString();
-			long devId = scanInfo.deviceId();
-			long readerType = scanInfo.readerType();
-			String rTypeStr = scanInfo.readerTypeToString();
-			log("Device found: " + devIdHex + (rTypeStr != null ? " (" + rTypeStr + ")" : ""));
-			if (readerType == ReaderType.MR102 || (rTypeStr != null && rTypeStr.toUpperCase().contains("MR102"))) {
-				isMR102 = true;
+		String host = null;
+		int port = 0;
+		if (networkConnection) {
+			host = config.getString("device.feig.host", "").trim();
+			if (host.isEmpty()) {
+				String err = "device.feig.host is required for Ethernet";
+				setError(err);
+				throw new Exception(err);
 			}
-			if (configDeviceID == null || configDeviceID.equalsIgnoreCase(devIdHex)) {
-				foundDeviceID = devId;
+			try {
+				port = Integer.parseInt(config.getString("device.feig.port", "").trim());
+			} catch (NumberFormatException e) {
+				port = 0;
+			}
+			if (port < 1 || port > 65535) {
+				String err = "device.feig.port must be between 1 and 65535";
+				setError(err);
+				throw new Exception(err);
 			}
 		}
-		UsbManager.stopDiscover();
+		reader = new ReaderModule(RequestMode.UniDirectional);
+		Connector connector;
+		String connectionDescription;
+		if (networkConnection) {
+			connectionDescription = host + ":" + port;
+			connector = Connector.createTcpConnector(host, port);
+		} else {
+			int scanRes = UsbManager.startDiscover();
+			if (scanRes < 0) {
+				String err = "usb scan failed: " + ErrorCode.toString(scanRes);
+				setError(err);
+				throw new Exception(err);
+			}
 
-		if (foundDeviceID == 0) {
-			String err = "no device found";
-			setError(err);
-			throw new Exception(err);
+			long foundDeviceID = 0;
+			UsbScanInfo scanInfo;
+			while ((scanInfo = UsbManager.popDiscover()) != null && scanInfo.isValid()) {
+				String devIdHex = scanInfo.deviceIdToHexString();
+				long devId = scanInfo.deviceId();
+				long readerType = scanInfo.readerType();
+				String rTypeStr = scanInfo.readerTypeToString();
+				log("Device found: " + devIdHex + (rTypeStr != null ? " (" + rTypeStr + ")" : ""));
+				if (readerType == ReaderType.MR102 || (rTypeStr != null && rTypeStr.toUpperCase().contains("MR102"))) {
+					isMR102 = true;
+				}
+				if (configDeviceID == null || configDeviceID.equalsIgnoreCase(devIdHex)) {
+					foundDeviceID = devId;
+				}
+			}
+			UsbManager.stopDiscover();
+
+			if (foundDeviceID == 0) {
+				String err = "no device found";
+				setError(err);
+				throw new Exception(err);
+			}
+
+			currentDeviceID = foundDeviceID;
+			connectionDescription = String.format("%08X", currentDeviceID);
+			connector = Connector.createUsbConnector(currentDeviceID);
 		}
-
-		currentDeviceID = foundDeviceID;
-		String hexId = String.format("%08X", currentDeviceID);
-		log("Connecting to: " + hexId);
-
-		Connector connector = Connector.createUsbConnector(currentDeviceID);
+		log("Connecting to: " + connectionDescription);
 		int connRes = reader.connect(connector);
 		if (connRes != ErrorCode.Ok) {
 			String err = "connect failed: " + ErrorCode.toString(connRes);
@@ -217,7 +247,7 @@ public class FeigRFID {
 				isMR102 = true;
 			}
 		}
-		deviceInfo = "FEIG " + (info != null && info.readerTypeToString() != null ? info.readerTypeToString() : "ISC.MR102-USB") + " (" + hexId + ")";
+		deviceInfo = "FEIG " + (info != null && info.readerTypeToString() != null ? info.readerTypeToString() : "reader") + " (" + connectionDescription + ")";
 		connected = true;
 		clearError();
 	}
@@ -231,7 +261,7 @@ public class FeigRFID {
 	}
 
 	/**
-	 * Verifies if the reader is still reachable via USB.
+	 * Verifies whether the reader is still connected.
 	 * If not reachable or unplugged, sets connection state to false and disconnects cleanly.
 	 * @return true if connected and reachable
 	 */
@@ -240,6 +270,14 @@ public class FeigRFID {
 			return false;
 		}
 		try {
+			if (networkConnection) {
+				if (!reader.isConnected()) {
+					setError("RFID-Leser Verbindung unterbrochen");
+					disconnectInternal();
+					return false;
+				}
+				return true;
+			}
 			int scanRes = UsbManager.startDiscover();
 			if (scanRes < 0) {
 				setError("Reader connection lost (USB scan error: " + ErrorCode.toString(scanRes) + ")");
@@ -354,7 +392,7 @@ public class FeigRFID {
 	 */
 	public void init() throws Exception {
 		try {
-			if (config != null) {
+			if (config != null && !isNetworkConfigured()) {
 				String storeConfigFile = config.getString("device.feig.storeconfigfile", null);
 				if (storeConfigFile != null) {
 					if (Files.isRegularFile(Paths.get(storeConfigFile))) {
@@ -384,7 +422,7 @@ public class FeigRFID {
 	 * @throws Exception if restore fails
 	 */
 	public void close() throws Exception {
-		if (config != null) {
+		if (config != null && !isNetworkConfigured()) {
 			String restoreconfig = config.getString("device.feig.restoreconfig", null);
 			if (restoreconfig != null) {
 				if (!Files.isRegularFile(Paths.get(restoreconfig))) {
@@ -402,6 +440,11 @@ public class FeigRFID {
 			}
 		}
 		connected = false;
+	}
+
+	private boolean isNetworkConfigured() {
+		String type = config != null ? config.getString("device.feig.type", "usb").trim() : "usb";
+		return "ethernet".equalsIgnoreCase(type) || "tcp".equalsIgnoreCase(type);
 	}
 
 	/**

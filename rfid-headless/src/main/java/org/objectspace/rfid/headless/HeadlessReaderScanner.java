@@ -28,6 +28,7 @@ public class HeadlessReaderScanner implements Runnable {
 
 	private volatile boolean running = false;
 	private Thread workerThread;
+	private boolean configureHostMode = true;
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
 		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null);
@@ -53,6 +54,10 @@ public class HeadlessReaderScanner implements Runnable {
 		workerThread.start();
 		logger.info("HeadlessReaderScanner started [thread: {}] (interval: {} ms, blocks: {})",
 				threadName, sleepInterval, numBlocks);
+	}
+
+	public void setConfigureHostMode(boolean configureHostMode) {
+		this.configureHostMode = configureHostMode;
 	}
 
 	public synchronized void stop() {
@@ -243,7 +248,7 @@ public class HeadlessReaderScanner implements Runnable {
 	 * without creating a backup, ensuring proper timing for EEPROM writes and system reset.
 	 */
 	public void ensureHostMode() {
-		if (reader == null || !reader.isConnected()) {
+		if (!configureHostMode || reader == null || !reader.isConnected()) {
 			return;
 		}
 		try {

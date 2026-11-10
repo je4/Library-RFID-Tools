@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.apache.commons.configuration2.AbstractConfiguration;
+import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.configuration2.HierarchicalConfiguration;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
@@ -310,6 +311,7 @@ public class HeadlessConfigHelper {
 						config.getString(prefix + "device.feig.type",
 						config.getString(prefix + "type", "usb")));
 				rCfg.setType(type != null && !type.isBlank() ? type.trim() : "usb");
+				setFeigNetworkConfig(rCfg, config, prefix, config);
 
 				String readerType = config.getString(prefix + "device.select",
 						config.getString(prefix + "select",
@@ -363,6 +365,8 @@ public class HeadlessConfigHelper {
 		fallback.setReadOnly(config.getBoolean("device.readonly", config.getBoolean("readonly", false)));
 		fallback.setDeviceId(config.getString("device.feig.id", null));
 		fallback.setType(config.getString("device.feig.type", "usb"));
+		fallback.setHost(config.getString("device.feig.host", null));
+		fallback.setPort(config.getString("device.feig.port", null));
 		fallback.setReaderType(config.getString("device.select", "feig"));
 		fallback.setSleepInterval(getSleepInterval(config));
 		fallback.setNumBlocks(getNumBlocks(config));
@@ -404,6 +408,7 @@ public class HeadlessConfigHelper {
 				node.getString("device.feig.type",
 				node.getString("type", "usb")));
 		rCfg.setType(type != null && !type.isBlank() ? type.trim() : "usb");
+		setFeigNetworkConfig(rCfg, node, "", rootConfig);
 
 		String readerType = node.getString("device.select",
 				node.getString("select",
@@ -447,6 +452,14 @@ public class HeadlessConfigHelper {
 
 		rCfg.setRootConfiguration(rootConfig);
 		return rCfg;
+	}
+
+	private static void setFeigNetworkConfig(HeadlessReaderConfig reader, Configuration config,
+			String prefix, AbstractConfiguration rootConfig) {
+		reader.setHost(config.getString(prefix + "feig.host",
+				config.getString(prefix + "device.feig.host", rootConfig.getString("device.feig.host", null))));
+		reader.setPort(config.getString(prefix + "feig.port",
+				config.getString(prefix + "device.feig.port", rootConfig.getString("device.feig.port", null))));
 	}
 
 	private static long parseDebounceFromNode(HierarchicalConfiguration<?> node, long defaultVal) {

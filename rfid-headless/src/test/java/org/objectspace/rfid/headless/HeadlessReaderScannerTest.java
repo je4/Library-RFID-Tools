@@ -15,6 +15,26 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessReaderScannerTest {
 
     @Test
+    public void testDisabledHostModeSkipsCheckAndUpload() {
+        AtomicInteger checks = new AtomicInteger();
+        ISO15693Reader reader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback callback, int blocks) {}
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Mock FEIG Reader"; }
+            @Override public boolean isHostMode() { checks.incrementAndGet(); return false; }
+            @Override public void restoreHostModeConfig(java.io.File file) { fail("Must not upload configuration"); }
+            @Override public void close() {}
+        };
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(reader, null, 12, 50);
+        scanner.setConfigureHostMode(false);
+        scanner.ensureHostMode();
+        assertEquals(0, checks.get());
+    }
+
+    @Test
     @DisplayName("Test HeadlessReaderScanner start, scan loop invocation, and graceful stop")
     public void testScannerLifecycleAndExecution() throws Exception {
         AtomicBoolean connected = new AtomicBoolean(false);

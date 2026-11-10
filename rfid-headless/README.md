@@ -161,6 +161,23 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 </configuration>
 ```
 
+Configure a network reader with type `ethernet` or `tcp`:
+
+```xml
+<reader>
+    <reader_id>network-reader</reader_id>
+    <feig>
+        <type>ethernet</type>
+        <host>192.0.2.10</host>
+        <port>1234</port>
+    </feig>
+</reader>
+```
+
+Host and port are required for a network connection; the port must be explicitly configured and has no assumed default. Use the actual reader port instead of the example value. In single-reader configuration, put these settings under `device.feig`; per-reader `feig.host` and `feig.port` override the corresponding global values. The core validates the host and port (1–65535).
+
+Network readers must already be in Host Mode. Unlike USB readers, their operating mode is not checked and configuration files are not automatically loaded, saved, or restored because doing so could overwrite gate settings.
+
 ---
 
 ## 4. WebSocket & WSBroker Integration
