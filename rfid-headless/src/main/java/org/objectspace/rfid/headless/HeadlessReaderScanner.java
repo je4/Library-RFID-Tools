@@ -29,6 +29,10 @@ public class HeadlessReaderScanner implements Runnable {
 	private volatile boolean running = false;
 	private Thread workerThread;
 	private boolean configureHostMode = true;
+	private Runnable gatePoller;
+	private long nextGatePollNanos;
+	private boolean gatePolled;
+	private static final long GATE_POLL_INTERVAL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
 		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null);
@@ -58,6 +62,23 @@ public class HeadlessReaderScanner implements Runnable {
 
 	public void setConfigureHostMode(boolean configureHostMode) {
 		this.configureHostMode = configureHostMode;
+	}
+
+	public void setGatePoller(Runnable gatePoller) {
+		this.gatePoller = gatePoller;
+	}
+
+	void pollGateIfDue() {
+		if (gatePoller == null || (gatePolled && System.nanoTime() - nextGatePollNanos < 0)) {
+			return;
+		}
+		gatePolled = true;
+		nextGatePollNanos = System.nanoTime() + GATE_POLL_INTERVAL_NANOS;
+		try {
+			gatePoller.run();
+		} catch (Exception | LinkageError e) {
+			logger.warn("Gate polling failed for reader {}: {}", readerId, e.getMessage());
+		}
 	}
 
 	public synchronized void stop() {
@@ -144,6 +165,9 @@ public class HeadlessReaderScanner implements Runnable {
 									callback.empty();
 								}
 							}
+						}
+						if (reader.isConnected()) {
+							pollGateIfDue();
 						}
 					}
 				} finally {

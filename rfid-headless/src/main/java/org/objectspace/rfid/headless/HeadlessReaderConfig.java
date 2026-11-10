@@ -24,6 +24,7 @@ public class HeadlessReaderConfig {
 	private String type = "usb";
 	private String host;
 	private String port;
+	private boolean gateEnabled;
 	private String readerType = "feig";
 	private int sleepInterval = HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS;
 	private int numBlocks = HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
@@ -94,6 +95,14 @@ public class HeadlessReaderConfig {
 
 	public void setPort(String port) {
 		this.port = port;
+	}
+
+	public boolean isGateEnabled() {
+		return gateEnabled;
+	}
+
+	public void setGateEnabled(boolean gateEnabled) {
+		this.gateEnabled = gateEnabled;
 	}
 
 	public String getReaderType() {
@@ -220,6 +229,7 @@ public class HeadlessReaderConfig {
 		if (port != null) {
 			target.setProperty("device.feig.port", port);
 		}
+		target.setProperty("device.feig.gate.enabled", gateEnabled);
 		if (configFile != null && !configFile.isBlank()) {
 			target.setProperty("device.feig.configfile", configFile.trim());
 		}
@@ -247,6 +257,7 @@ public class HeadlessReaderConfig {
 		if (o == null || getClass() != o.getClass()) return false;
 		HeadlessReaderConfig that = (HeadlessReaderConfig) o;
 		return readOnly == that.readOnly &&
+				gateEnabled == that.gateEnabled &&
 				sleepInterval == that.sleepInterval &&
 				numBlocks == that.numBlocks &&
 				debounceMillis == that.debounceMillis &&
@@ -260,7 +271,7 @@ public class HeadlessReaderConfig {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(readerId, readOnly, deviceId, type, host, port, sleepInterval, numBlocks, debounceMillis, channels);
+		return Objects.hash(readerId, readOnly, deviceId, type, host, port, gateEnabled, sleepInterval, numBlocks, debounceMillis, channels);
 	}
 
 	@Override
@@ -272,6 +283,7 @@ public class HeadlessReaderConfig {
 				", type='" + type + '\'' +
 				", host='" + host + '\'' +
 				", port=" + port +
+				", gateEnabled=" + gateEnabled +
 				", sleepInterval=" + sleepInterval +
 				", numBlocks=" + numBlocks +
 				", debounceMillis=" + debounceMillis +

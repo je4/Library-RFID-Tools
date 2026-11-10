@@ -57,6 +57,13 @@ import de.feig.fedm.RequestMode;
 import de.feig.fedm.TagItem;
 import de.feig.fedm.UsbManager;
 import de.feig.fedm.UsbScanInfo;
+import de.feig.fedm.functionunit.ExtensionModule;
+import de.feig.fedm.functionunit.Pdevice;
+import de.feig.fedm.functionunit.PdeviceAddress;
+import de.feig.fedm.functionunit.PdeviceElement;
+import de.feig.fedm.functionunit.PdeviceHfPcDiag;
+import de.feig.fedm.functionunit.PdeviceHfPeopleCounter;
+import de.feig.fedm.functionunit.PdevicePeopleCounterValues;
 import de.feig.fedm.taghandler.ThBase;
 
 /**
@@ -152,6 +159,12 @@ public class FeigRFID {
 	 * @throws Exception if connection fails
 	 */
 	public void connect() throws Exception {
+		synchronized (readerLock) {
+		connectLocked();
+		}
+	}
+
+	private void connectLocked() throws Exception {
 		connected = false;
 		currentDeviceID = 0;
 		isMR102 = false;
@@ -372,6 +385,7 @@ public class FeigRFID {
 	 * Internal safe disconnect without throwing exceptions.
 	 */
 	public synchronized void disconnectInternal() {
+		synchronized (readerLock) {
 		connected = false;
 		if (reader != null) {
 			try {
@@ -379,6 +393,7 @@ public class FeigRFID {
 			} catch (Throwable t) {
 				// Ignore
 			}
+		}
 		}
 	}
 
@@ -422,6 +437,7 @@ public class FeigRFID {
 	 * @throws Exception if restore fails
 	 */
 	public void close() throws Exception {
+		synchronized (readerLock) {
 		if (config != null && !isNetworkConfigured()) {
 			String restoreconfig = config.getString("device.feig.restoreconfig", null);
 			if (restoreconfig != null) {
@@ -440,11 +456,75 @@ public class FeigRFID {
 			}
 		}
 		connected = false;
+		}
 	}
 
 	private boolean isNetworkConfigured() {
 		String type = config != null ? config.getString("device.feig.type", "usb").trim() : "usb";
 		return "ethernet".equalsIgnoreCase(type) || "tcp".equalsIgnoreCase(type);
+	}
+
+	/** Address of a peripheral device on the reader's serial bus. */
+	public record GateAddress(int portType, int busAddress) {}
+
+	/** Raw SDK counter channels; their direction depends on device configuration. */
+	public record GateCounter(GateAddress address, long detector1Counter1, long detector1Counter2,
+			long detector2Counter1, long detector2Counter2) {}
+
+	/** Raw diagnostic flags as reported by the SDK. */
+	public record GateDiagnostic(GateAddress address, int internalError, int rfDetect) {}
+
+	public List<GateCounter> readGateCounters() throws Exception {
+		return readGateDevices(false);
+	}
+
+	public List<GateDiagnostic> readGateDiagnostics() throws Exception {
+		return readGateDevices(true);
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> List<T> readGateDevices(boolean diagnostics) throws Exception {
+		synchronized (readerLock) {
+			if (config == null || !"true".equalsIgnoreCase(config.getString("device.feig.gate.enabled", "").trim())) {
+				throw new IllegalStateException("Gate API requires device.feig.gate.enabled=true");
+			}
+			if (!isNetworkConfigured()) {
+				throw new IllegalStateException("Gate API requires an Ethernet or TCP connection");
+			}
+			if (!networkConnection || !isConnected()) {
+				throw new IllegalStateException("Gate API requires a connected network reader");
+			}
+			List<T> result = new ArrayList<>();
+			try (ExtensionModule extension = new ExtensionModule(reader)) {
+				Pdevice devices = extension.pdevice();
+				checkGateStatus("discover devices", devices.createAllDevices(), extension);
+				for (PdeviceElement device = devices.firstDevice(); device != null; device = devices.nextDevice()) {
+					if (!(device instanceof PdeviceHfPeopleCounter counter)) continue;
+					PdeviceAddress address = counter.address();
+					if (address == null || !address.isValid()) throw new Exception("Invalid gate device address");
+					GateAddress gateAddress = new GateAddress(address.portType(), address.busAddress());
+					if (diagnostics) {
+						PdeviceHfPcDiag value = new PdeviceHfPcDiag();
+						checkGateStatus("read diagnostic for " + gateAddress, counter.readDiagnostic(value), extension);
+						if (!value.isValid()) throw new Exception("Invalid gate diagnostic for " + gateAddress);
+						result.add((T) new GateDiagnostic(gateAddress, value.intError(), value.rfDetect()));
+					} else {
+						PdevicePeopleCounterValues value = new PdevicePeopleCounterValues();
+						checkGateStatus("read counters for " + gateAddress, counter.getCounterValues(value), extension);
+						if (!value.isValid()) throw new Exception("Invalid gate counter values for " + gateAddress);
+						result.add((T) new GateCounter(gateAddress, value.detector1Counter1(), value.detector1Counter2(),
+								value.detector2Counter1(), value.detector2Counter2()));
+					}
+				}
+			}
+			return List.copyOf(result);
+		}
+	}
+
+	private static void checkGateStatus(String operation, int status, ExtensionModule extension) throws Exception {
+		if (status != ErrorCode.Ok) {
+			throw new Exception("Gate " + operation + " failed: " + status + " (" + extension.lastErrorStatusText() + ")");
+		}
 	}
 
 	/**

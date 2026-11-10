@@ -133,6 +133,40 @@ classDiagram
 
 ## Usage Examples
 
+### FEIG gate people counters and diagnostics
+
+The opt-in API is available on `ISO15693Feig` and `FeigRFID`. Configure
+`device.feig.type=ethernet` (or `tcp`), `device.feig.host`, `device.feig.port`,
+and explicitly `device.feig.gate.enabled=true`, then connect the reader:
+
+```java
+ISO15693Feig reader = new ISO15693Feig(config);
+reader.connect();
+try {
+    for (FeigRFID.GateCounter counter : reader.readGateCounters()) {
+        System.out.println(counter.address() + " " + counter.detector1Counter1());
+    }
+    for (FeigRFID.GateDiagnostic diagnostic : reader.readGateDiagnostics()) {
+        System.out.println(diagnostic.address() + " " + diagnostic.internalError());
+    }
+} finally {
+    reader.close();
+}
+```
+
+Import `org.objectspace.rfid.feig.ISO15693Feig` and `FeigRFID`. Each call
+discovers peripheral devices and reads only HF people counters. An empty list
+means none were discovered; SDK errors and invalid responses throw exceptions,
+and disabled, non-network or disconnected readers are rejected. Results contain
+the SDK port type and bus address, four raw detector counter channels, or raw
+internal-error and RF-detection diagnostic values. Channel direction and flag
+interpretation depend on the device configuration and firmware; the API does not
+infer entry/exit or health. Calls do not write configuration, reset counters, or
+clear buffers. They require compatible configured FEIG gate hardware and the
+native Funit SDK libraries; hardware support and behavior must be verified on the
+target installation. The existing lock serializes these operations with reader
+operations using that lock, not tag-handler operations performed outside it.
+
 ### 1. Decoding ISO 28560-2 Tag Data
 
 ```java

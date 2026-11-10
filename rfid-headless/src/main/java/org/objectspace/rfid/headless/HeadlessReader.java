@@ -6,6 +6,7 @@ import java.util.List;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.objectspace.rfid.ISO15693ReaderFactory;
 import org.objectspace.rfid.core.TagScanProcessor;
+import org.objectspace.rfid.feig.ISO15693Feig;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +52,19 @@ public class HeadlessReader {
 					reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(), rCfg.getReaderId());
 			String connectionType = rCfg.getType();
 			scanner.setConfigureHostMode(!"ethernet".equalsIgnoreCase(connectionType) && !"tcp".equalsIgnoreCase(connectionType));
+			if (rCfg.isGateEnabled() && ("ethernet".equalsIgnoreCase(connectionType) || "tcp".equalsIgnoreCase(connectionType))
+					&& reader instanceof ISO15693Feig gateReader) {
+				scanner.setGatePoller(() -> {
+					try {
+						var counters = gateReader.readGateCounters();
+						var diagnostics = gateReader.readGateDiagnostics();
+						var data = java.util.Map.of("readerId", rCfg.getReaderId(), "counters", counters, "diagnostics", diagnostics);
+						wsBrokerDispatcher.dispatch("rfid.gate.status", data, null, null, System.currentTimeMillis(), rCfg.getReaderId());
+					} catch (Exception e) {
+						throw new IllegalStateException("Gate status read failed", e);
+					}
+				});
+			}
 
 			HeadlessReaderInstance instance = new HeadlessReaderInstance(rCfg, reader, callback, scanner);
 			this.readerInstances.add(instance);

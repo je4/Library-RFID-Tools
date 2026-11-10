@@ -499,6 +499,14 @@ public class ISO15693Feig implements ISO15693Reader {
 		return feig;
 	}
 
+	public List<FeigRFID.GateCounter> readGateCounters() throws Exception {
+		return feig.readGateCounters();
+	}
+
+	public List<FeigRFID.GateDiagnostic> readGateDiagnostics() throws Exception {
+		return feig.readGateDiagnostics();
+	}
+
 	private FeigRFID feig;
 	private AbstractConfiguration config;
 	protected HashMap<String, Integer> maxBlocksMap;

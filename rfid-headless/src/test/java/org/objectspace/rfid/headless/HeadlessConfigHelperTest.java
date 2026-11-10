@@ -13,6 +13,28 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessConfigHelperTest {
 
     @Test
+    public void gateOptInIsIsolatedPerReader() throws Exception {
+        XMLConfiguration xml = new XMLConfiguration();
+        new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
+                <configuration><device><feig><gate><enabled>true</enabled></gate></feig></device><readers>
+                <reader><reader_id>gate</reader_id><feig><type>ethernet</type><gate><enabled>true</enabled></gate></feig></reader>
+                <reader><reader_id>usb</reader_id><feig><type>usb</type></feig></reader>
+                </readers></configuration>
+                """));
+        var readers = HeadlessConfigHelper.getReaderConfigs(xml);
+        assertTrue(readers.get(0).toConfiguration().getBoolean("device.feig.gate.enabled"));
+        assertFalse(readers.get(1).toConfiguration().getBoolean("device.feig.gate.enabled"));
+
+        BaseConfiguration flat = new BaseConfiguration();
+        flat.setProperty("readers.reader(0).reader_id", "gate");
+        flat.setProperty("readers.reader(0).feig.gate.enabled", true);
+        assertTrue(HeadlessConfigHelper.getReaderConfigs(flat).get(0).isGateEnabled());
+        BaseConfiguration legacy = new BaseConfiguration();
+        legacy.setProperty("device.feig.gate.enabled", true);
+        assertTrue(HeadlessConfigHelper.getReaderConfigs(legacy).get(0).isGateEnabled());
+    }
+
+    @Test
     public void testEthernetConfigurationPaths() throws Exception {
         XMLConfiguration xml = new XMLConfiguration();
         new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""

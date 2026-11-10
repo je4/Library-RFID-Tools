@@ -15,6 +15,17 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessReaderScannerTest {
 
     @Test
+    public void gatePollingIsOptionalRateLimitedAndFailureIsolated() {
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(null, null, 12, 50);
+        scanner.pollGateIfDue();
+        AtomicInteger polls = new AtomicInteger();
+        scanner.setGatePoller(() -> { polls.incrementAndGet(); throw new UnsatisfiedLinkError("missing native library"); });
+        assertDoesNotThrow(scanner::pollGateIfDue);
+        assertDoesNotThrow(scanner::pollGateIfDue);
+        assertEquals(1, polls.get());
+    }
+
+    @Test
     public void testDisabledHostModeSkipsCheckAndUpload() {
         AtomicInteger checks = new AtomicInteger();
         ISO15693Reader reader = new ISO15693Reader() {

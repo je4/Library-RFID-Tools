@@ -367,6 +367,7 @@ public class HeadlessConfigHelper {
 		fallback.setType(config.getString("device.feig.type", "usb"));
 		fallback.setHost(config.getString("device.feig.host", null));
 		fallback.setPort(config.getString("device.feig.port", null));
+		fallback.setGateEnabled(config.getBoolean("device.feig.gate.enabled", false));
 		fallback.setReaderType(config.getString("device.select", "feig"));
 		fallback.setSleepInterval(getSleepInterval(config));
 		fallback.setNumBlocks(getNumBlocks(config));
@@ -460,6 +461,8 @@ public class HeadlessConfigHelper {
 				config.getString(prefix + "device.feig.host", rootConfig.getString("device.feig.host", null))));
 		reader.setPort(config.getString(prefix + "feig.port",
 				config.getString(prefix + "device.feig.port", rootConfig.getString("device.feig.port", null))));
+		reader.setGateEnabled(config.getBoolean(prefix + "feig.gate.enabled",
+				config.getBoolean(prefix + "device.feig.gate.enabled", false)));
 	}
 
 	private static long parseDebounceFromNode(HierarchicalConfiguration<?> node, long defaultVal) {

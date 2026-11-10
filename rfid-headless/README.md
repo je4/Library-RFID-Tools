@@ -178,6 +178,50 @@ Host and port are required for a network connection; the port must be explicitly
 
 Network readers must already be in Host Mode. Unlike USB readers, their operating mode is not checked and configuration files are not automatically loaded, saved, or restored because doing so could overwrite gate settings.
 
+### Optional FEIG gate monitoring
+
+Gate monitoring is **disabled by default** and must be enabled separately on the
+network reader. It is never activated on USB readers, even if the option is set.
+For example (replace the address and port with the actual reader settings):
+
+```xml
+<reader>
+  <reader_id>library-gate</reader_id>
+  <feig>
+    <type>ethernet</type>
+    <host>192.0.2.10</host>
+    <port>10005</port>
+    <gate><enabled>true</enabled></gate>
+  </feig>
+  <channels><channel>library-gate</channel></channels>
+</reader>
+```
+
+For legacy single-reader configuration use `device.feig.gate.enabled`. In a
+multi-reader configuration the option is per reader, not inherited from the
+global device section. The gate must already be correctly configured and
+connected, including its people-counter peripherals. FEIG's Funit native
+libraries must be available alongside the Gen3 SDK libraries. No gate settings,
+counters or event buffers are modified by monitoring.
+
+While connected, the scanner polls at most once per 30 seconds, serialized with
+inventory and write operations for that reader. If WSBroker is enabled, it sends
+`rfid.gate.status` to that reader's configured channels (or the global channels).
+The data contains `readerId`, `counters` and `diagnostics` arrays. Each counter
+contains its `address` (`portType`, `busAddress`) and the raw
+`detector1Counter1`, `detector1Counter2`, `detector2Counter1` and
+`detector2Counter2` values. Diagnostics contain the address and raw
+`internalError` and `rfDetect` flags. An empty array means no matching device
+was discovered, not necessarily that the gate is healthy. Interpret directions,
+counter resets and diagnostic bits using the installed gate's configuration and
+FEIG documentation; no daily totals are calculated or persisted.
+
+Polling failures are logged and retried at the next interval; messages are not
+buffered for later delivery. These snapshots are **not theft-alarm events**:
+asynchronous EAS alarms and reader-initiated events require additional device
+and connection configuration and are not implemented. Test on the actual gate
+before relying on monitoring; the gate's own alarm must remain independent.
+
 ---
 
 ## 4. WebSocket & WSBroker Integration
