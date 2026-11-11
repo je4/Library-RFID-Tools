@@ -272,9 +272,7 @@ foreach ($currentTarget in $targetsToBuild) {
         }
 
         # Stage Windows scripts
-        if (Test-Path (Join-Path $moduleRoot "run-rfid-headless.ps1")) {
-            Copy-Item (Join-Path $moduleRoot "run-rfid-headless.ps1") (Join-Path $stagingDir "run-rfid-headless.ps1") -Force
-        }
+        Copy-Item (Join-Path $moduleRoot "src\assembly\scripts\run-rfid-headless.ps1") (Join-Path $stagingDir "run-rfid-headless.ps1") -Force
     } elseif ($currentTarget -eq "linux") {
         $stagingNativeLinux = Join-Path $stagingDir "lib\native\linux-x64"
         $stagingNativeX64 = Join-Path $stagingDir "lib\native\x64"
@@ -296,9 +294,7 @@ foreach ($currentTarget in $targetsToBuild) {
         }
 
         # Stage Linux scripts & service
-        if (Test-Path (Join-Path $moduleRoot "run-rfid-headless.sh")) {
-            Copy-Item (Join-Path $moduleRoot "run-rfid-headless.sh") (Join-Path $stagingDir "run-rfid-headless.sh") -Force
-        }
+        Copy-Item (Join-Path $moduleRoot "src\assembly\scripts\run-rfid-headless.sh") (Join-Path $stagingDir "run-rfid-headless.sh") -Force
         if (Test-Path (Join-Path $moduleRoot "rfid-headless.service")) {
             Copy-Item (Join-Path $moduleRoot "rfid-headless.service") (Join-Path $stagingDir "rfid-headless.service") -Force
         }
@@ -331,9 +327,7 @@ foreach ($currentTarget in $targetsToBuild) {
         }
 
         # Stage Raspi scripts & service
-        if (Test-Path (Join-Path $moduleRoot "run-rfid-headless.sh")) {
-            Copy-Item (Join-Path $moduleRoot "run-rfid-headless.sh") (Join-Path $stagingDir "run-rfid-headless.sh") -Force
-        }
+        Copy-Item (Join-Path $moduleRoot "src\assembly\scripts\run-rfid-headless.sh") (Join-Path $stagingDir "run-rfid-headless.sh") -Force
         if (Test-Path (Join-Path $moduleRoot "rfid-headless.service")) {
             Copy-Item (Join-Path $moduleRoot "rfid-headless.service") (Join-Path $stagingDir "rfid-headless.service") -Force
         }

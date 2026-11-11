@@ -12,7 +12,7 @@
     <fileSets>
         <!-- Executable run script -->
         <fileSet>
-            <directory>${project.basedir}</directory>
+            <directory>${project.basedir}/src/assembly/scripts</directory>
             <outputDirectory>.</outputDirectory>
             <includes>
                 <include>run-rfid-headless.sh</include>
