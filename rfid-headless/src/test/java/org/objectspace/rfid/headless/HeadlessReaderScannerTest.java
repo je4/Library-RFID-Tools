@@ -26,7 +26,7 @@ public class HeadlessReaderScannerTest {
     }
 
     @Test
-    public void testDisabledHostModeSkipsCheckAndUpload() {
+    public void testHostModeCheckDoesNotUploadWhenAlreadyConfigured() {
         AtomicInteger checks = new AtomicInteger();
         ISO15693Reader reader = new ISO15693Reader() {
             @Override public void connect() {}
@@ -35,14 +35,13 @@ public class HeadlessReaderScannerTest {
             @Override public boolean isConnected() { return true; }
             @Override public boolean checkConnection() { return true; }
             @Override public String getDeviceInfo() { return "Mock FEIG Reader"; }
-            @Override public boolean isHostMode() { checks.incrementAndGet(); return false; }
+            @Override public boolean isHostMode() { checks.incrementAndGet(); return true; }
             @Override public void restoreHostModeConfig(java.io.File file) { fail("Must not upload configuration"); }
             @Override public void close() {}
         };
         HeadlessReaderScanner scanner = new HeadlessReaderScanner(reader, null, 12, 50);
-        scanner.setConfigureHostMode(false);
         scanner.ensureHostMode();
-        assertEquals(0, checks.get());
+        assertEquals(1, checks.get());
     }
 
     @Test
