@@ -308,7 +308,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public void dispatchTag(TagReadData data, String sessionName, long timestamp) {
 		if (data != null) {
 			long correctedTimestamp = timestamp > 0 ? java.time.Instant.ofEpochMilli(timestamp).plus(brokerTimeOffset).toEpochMilli() : timestamp;
-			dispatch(TagReadData.EVENT_NAME, data, data.getSummaryMessage(), sessionName, correctedTimestamp, data.readerId());
+			TagReadData timedData = data.withTime(correctedTimestamp > 0 ? java.time.Instant.ofEpochMilli(correctedTimestamp).toString() : null);
+			dispatch(TagReadData.EVENT_NAME, timedData, timedData.getSummaryMessage(), sessionName, correctedTimestamp, timedData.readerId());
 		}
 	}
 

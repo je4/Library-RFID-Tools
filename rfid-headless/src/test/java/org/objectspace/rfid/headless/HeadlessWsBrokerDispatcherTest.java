@@ -65,11 +65,14 @@ public class HeadlessWsBrokerDispatcherTest {
         dispatcher.dispatchTag("uid", "item", "raw", "isil", "CH", true, "tag", null,
                 local.toEpochMilli(), "reader", null);
         assertEquals(local, events.get(0).getTime());
+        assertEquals(local.toString(), payloadData(events.get(0)).path("time").asText());
         response.complete(new NTPResponse(packet, local));
         dispatcher.dispatchTag("uid", "item", "raw", "isil", "CH", true, "tag", null,
                 local.toEpochMilli(), "reader", null);
         assertEquals(local.plusSeconds(5), events.get(2).getTime());
         assertEquals(events.get(2).getTime(), events.get(3).getTime());
+        assertEquals(local.plusSeconds(5).toString(), payloadData(events.get(2)).path("time").asText());
+        assertEquals(payloadData(events.get(2)).path("time"), payloadData(events.get(3)).path("time"));
         dispatcher.close();
     }
 

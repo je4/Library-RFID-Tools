@@ -235,7 +235,7 @@ All communication via WSBroker conforms to the standard JSON event envelope (`Ev
 
 When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headless` sends a `rfid:tag_read` event with a `TagReadData` payload to all configured channels.
 
-The envelope's `time` is the scan time in UTC, corrected using the WSBroker NTP offset. The offset is queried asynchronously on connection and reconnection. Until a valid response is available, local system time is used; if a later query fails, the last valid offset is retained.
+The envelope's `time` and `TagReadData.time` contain the scan time in UTC, corrected using the WSBroker NTP offset. The offset is queried asynchronously on connection and reconnection. Until a valid response is available, local system time is used; if a later query fails, the last valid offset is retained.
 
 #### Tag Read JSON Example:
 ```json
@@ -248,6 +248,7 @@ The envelope's `time` is the scan time in UTC, corrected using the WSBroker NTP 
   "data": {
     "event": "rfid:tag_read",
     "data": {
+      "time": "2026-10-23T12:00:01.123Z",
       "uid": "E004010000001234",
       "itemId": "3012345678",
       "rawHex": "0102030405060708090A0B0C...",
@@ -274,6 +275,7 @@ The envelope's `time` is the scan time in UTC, corrected using the WSBroker NTP 
 #### `TagReadData` Payload Fields:
 | Field | Type | Aliases | Description |
 | :--- | :--- | :--- | :--- |
+| `time` | string | | Scan time in UTC (ISO-8601), corrected by the WSBroker NTP offset. |
 | `uid` | string | `uid` | Tag Unique Identifier (UID / Serial Hex, e.g. `E004010000001234`). |
 | `itemId` | string | `item_id`, `itemID` | Decoded primary item identifier / barcode from the ISO 28560-2 data model. |
 | `rawHex` | string | `raw`, `raw_hex`, `raw_data` | Raw hex dump of the decoded memory blocks. |

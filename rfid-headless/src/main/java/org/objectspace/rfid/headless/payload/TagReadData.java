@@ -26,9 +26,22 @@ public record TagReadData(
 		@JsonProperty("usageType") Integer usageType,
 		@JsonProperty("version") Integer version,
 		@JsonProperty("afi") String afi,
-		@JsonProperty("readerId") String readerId
+		@JsonProperty("readerId") String readerId,
+		@JsonProperty("time") String time
 ) {
 	public static final String EVENT_NAME = "rfid/tag_read";
+
+	public TagReadData(String uid, String itemId, String isil, String country, boolean crcOk,
+					   boolean isCrcValid, String crc, String tagName, String raw, Integer parts,
+					   Integer partNo, Integer usageType, Integer version, String afi, String readerId) {
+		this(uid, itemId, isil, country, crcOk, isCrcValid, crc, tagName, raw, parts, partNo,
+				usageType, version, afi, readerId, null);
+	}
+
+	public TagReadData withTime(String time) {
+		return new TagReadData(uid, itemId, isil, country, crcOk, isCrcValid, crc, tagName, raw,
+				parts, partNo, usageType, version, afi, readerId, time);
+	}
 
 	public TagReadData(String uid, String itemId, String rawHex, String isil, String country,
 					   boolean crcOk, String tagName, FinnishDataModel metadata, String afi, String readerId) {
