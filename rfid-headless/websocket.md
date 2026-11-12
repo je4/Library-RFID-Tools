@@ -235,6 +235,8 @@ All communication via WSBroker conforms to the standard JSON event envelope (`Ev
 
 When an RFID tag (ISO 15693 / ISO 28560-2) is detected and decoded, `rfid-headless` sends a `rfid:tag_read` event with a `TagReadData` payload to all configured channels.
 
+The envelope's `time` is the scan time in UTC, corrected using the WSBroker NTP offset. The offset is queried asynchronously on connection and reconnection. Until a valid response is available, local system time is used; if a later query fails, the last valid offset is retained.
+
 #### Tag Read JSON Example:
 ```json
 {

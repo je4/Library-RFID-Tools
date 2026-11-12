@@ -15,11 +15,17 @@ import org.objectspace.rfid.webservice.WebserviceConfig;
 import org.objectspace.rfid.webservice.WebserviceDispatcher;
 import org.objectspace.rfid.webservice.WebserviceResponse;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
+import org.objectspace.wsbrokerclient.client.ConnectionListener;
+import org.objectspace.wsbrokerclient.client.ConnectionState;
 import org.objectspace.wsbrokerclient.config.WSClientConfig;
 import org.objectspace.wsbrokerclient.event.Event;
+import org.objectspace.wsbrokerclient.ntp.NTPPacket;
+import org.objectspace.wsbrokerclient.ntp.NTPResponse;
 
 import java.io.File;
 import java.io.FileWriter;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +36,42 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class HeadlessWsBrokerDispatcherTest {
+
+    @Test
+    void tagTimeUsesBrokerOffsetAndFallsBackToLocalTime() {
+        List<Event> events = new ArrayList<>();
+        Instant local = Instant.parse("2026-01-01T12:00:00Z");
+        NTPPacket packet = new NTPPacket().setStratum(1)
+                .setOriginateTimestamp(local).setReceiveTimestamp(local.plusSeconds(5))
+                .setTransmitTimestamp(local.plusSeconds(5));
+        CompletableFuture<NTPResponse> response = new CompletableFuture<>();
+        ConnectionListener[] listener = new ConnectionListener[1];
+        WSClientConfig config = new WSClientConfig();
+        config.setEndpoint("https://localhost:8765");
+        WSBrokerClient client = new WSBrokerClient(config) {
+            @Override
+            public void addConnectionListener(ConnectionListener value) { listener[0] = value; }
+            @Override
+            public CompletableFuture<NTPResponse> queryNTP(Duration timeout) { return response; }
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                events.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "reader", "https://localhost:8765", List.of("a", "b"), null, client);
+        listener[0].onStateChanged(ConnectionState.CONNECTING, ConnectionState.CONNECTED);
+        dispatcher.dispatchTag("uid", "item", "raw", "isil", "CH", true, "tag", null,
+                local.toEpochMilli(), "reader", null);
+        assertEquals(local, events.get(0).getTime());
+        response.complete(new NTPResponse(packet, local));
+        dispatcher.dispatchTag("uid", "item", "raw", "isil", "CH", true, "tag", null,
+                local.toEpochMilli(), "reader", null);
+        assertEquals(local.plusSeconds(5), events.get(2).getTime());
+        assertEquals(events.get(2).getTime(), events.get(3).getTime());
+        dispatcher.close();
+    }
 
     private static JsonNode payloadData(Event<?> evt) {
         return evt.getDataNode();

@@ -21,6 +21,7 @@ import org.objectspace.rfid.headless.payload.WriteAfiResponseData;
 import org.objectspace.rfid.headless.payload.WriteTagResponseData;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.objectspace.wsbrokerclient.WSBroker;
+import org.objectspace.wsbrokerclient.client.ConnectionState;
 import org.objectspace.wsbrokerclient.client.WSBrokerClient;
 import org.objectspace.wsbrokerclient.config.WSClientConfig;
 import org.objectspace.wsbrokerclient.event.Event;
@@ -58,6 +59,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	private final CertLoader certLoader;
 	private final WSBrokerClient client;
 	private final boolean active;
+	private volatile Duration brokerTimeOffset = Duration.ZERO;
+	private final java.util.concurrent.atomic.AtomicLong connectionGeneration = new java.util.concurrent.atomic.AtomicLong();
 
 	private final HeadlessReaderRegistry registry;
 	private final RfidWriteService writeService;
@@ -135,10 +138,7 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 			clientConfig.setCertLoader(this.certLoader);
 
 			this.client = WSBroker.createClient(clientConfig);
-			this.client.addConnectionListener((oldState, newState) -> {
-
-				logger.info("WSBroker connection state: {} -> {}", oldState, newState);
-			});
+			registerTimeSynchronization();
 			this.router = new WsBrokerCommandRouter(
 					this.clientName,
 					this.channels,
@@ -202,8 +202,32 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		);
 
 		if (this.active) {
+			registerTimeSynchronization();
 			registerDefaultHandlers();
 		}
+	}
+
+	private void registerTimeSynchronization() {
+		client.addConnectionListener((oldState, newState) -> {
+			logger.info("WSBroker connection state: {} -> {}", oldState, newState);
+			long generation = connectionGeneration.incrementAndGet();
+			if (newState == ConnectionState.CONNECTED) {
+				client.queryNTP(Duration.ofSeconds(5)).whenComplete((response, error) -> {
+					if (generation != connectionGeneration.get()) {
+						return;
+					}
+					if (error != null) {
+						logger.warn("WSBroker time synchronization failed: {}", error.getMessage());
+					} else if (!response.isSynchronized() || response.getOriginateTime() == null
+							|| response.getReceiveTime() == null || response.getTransmitTime() == null) {
+						logger.warn("WSBroker returned an invalid or unsynchronized NTP response");
+					} else {
+						brokerTimeOffset = response.getOffset();
+						logger.info("WSBroker time offset: {} ms", response.getOffsetMillis());
+					}
+				});
+			}
+		});
 	}
 
 	/**
@@ -283,7 +307,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	 */
 	public void dispatchTag(TagReadData data, String sessionName, long timestamp) {
 		if (data != null) {
-			dispatch(TagReadData.EVENT_NAME, data, data.getSummaryMessage(), sessionName, timestamp, data.readerId());
+			long correctedTimestamp = timestamp > 0 ? java.time.Instant.ofEpochMilli(timestamp).plus(brokerTimeOffset).toEpochMilli() : timestamp;
+			dispatch(TagReadData.EVENT_NAME, data, data.getSummaryMessage(), sessionName, correctedTimestamp, data.readerId());
 		}
 	}
 
