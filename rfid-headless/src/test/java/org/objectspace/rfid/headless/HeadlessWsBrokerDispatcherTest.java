@@ -76,6 +76,38 @@ public class HeadlessWsBrokerDispatcherTest {
         dispatcher.close();
     }
 
+    @Test
+    @DisplayName("dispatchTag preserves explicit eventTime without overriding with broker timestamp")
+    void dispatchTagPreservesExplicitEventTime() {
+        List<Event> events = new ArrayList<>();
+        Instant local = Instant.parse("2026-01-01T12:00:00Z");
+        WSClientConfig config = new WSClientConfig();
+        config.setEndpoint("https://localhost:8765");
+        WSBrokerClient client = new WSBrokerClient(config) {
+            @Override
+            public CompletableFuture<Void> send(Event event) {
+                events.add(event);
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "reader", "https://localhost:8765", List.of("gates"), null, client);
+
+        dispatcher.dispatchTag("uid1", "item1", "raw", "isil", "CH", true, "tag", null,
+                local.toEpochMilli(), "client", "gate-1", null, "07", "2026-11-13T11:00:00");
+
+        assertEquals(1, events.size());
+        assertEquals("2026-11-13T11:00:00", payloadData(events.get(0)).path("time").asText());
+
+        TagReadData dataWithTime = new TagReadData("uid2", "item2", "raw", "isil", "CH", true, "tag", 1, 1, 1, 1, "07", "gate-1").withTime("02:30:52.316");
+        dispatcher.dispatchTag(dataWithTime, "session-1", local.toEpochMilli());
+
+        assertEquals(2, events.size());
+        assertEquals("02:30:52.316", payloadData(events.get(1)).path("time").asText());
+
+        dispatcher.close();
+    }
+
     private static JsonNode payloadData(Event<?> evt) {
         return evt.getDataNode();
     }

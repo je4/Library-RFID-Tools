@@ -573,4 +573,42 @@ public class HeadlessReaderCallbackTest {
         callbackBlankId.empty();
         callbackBlankId.close();
     }
+
+    @Test
+    @DisplayName("Test doIt with eventTime passes eventTime to WSBroker and without eventTime generates time")
+    public void testDoItWithEventTime() throws Exception {
+        TestWsBrokerClient testClient = new TestWsBrokerClient("test-client");
+        HeadlessWsBrokerDispatcher dispatcher = new HeadlessWsBrokerDispatcher(
+                "test-client", "https://localhost:8765", java.util.List.of("gates"), null, testClient, true);
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, dispatcher, 1000L, "gate-01");
+
+        FinnishDataModel model = new FinnishDataModel();
+        model.setValues(1, 1, 1, "BOOK-BUFFERED", "CH", "001596-0", new ArrayList<>());
+        byte[] data = model.getBlock(32);
+
+        // 1. doIt with explicit eventTime
+        callback.doIt(1, 1, "FEIG", "ISO15693", "E004010011112222", data, 4, null, "02:30:52.316");
+
+        assertEquals(1, testClient.getSentEvents().size());
+        org.objectspace.wsbrokerclient.event.Event<?> event1 = testClient.getSentEvents().get(0);
+        org.objectspace.rfid.headless.payload.TagReadData tagData1 = (org.objectspace.rfid.headless.payload.TagReadData) event1.getData();
+        assertEquals("02:30:52.316", tagData1.time());
+        assertEquals("gate-01", tagData1.readerId());
+
+        // 2. doIt without eventTime (Host mode delegation)
+        callback.empty();
+        callback.doIt(1, 1, "FEIG", "ISO15693", "E004010033334444", data, 4, "07");
+
+        assertEquals(3, testClient.getSentEvents().size()); // 1 tag + 1 empty + 1 tag
+        org.objectspace.wsbrokerclient.event.Event<?> event2 = testClient.getSentEvents().get(2);
+        org.objectspace.rfid.headless.payload.TagReadData tagData2 = (org.objectspace.rfid.headless.payload.TagReadData) event2.getData();
+        assertNotNull(tagData2.time());
+        assertDoesNotThrow(() -> java.time.Instant.parse(tagData2.time()));
+        assertEquals("gate-01", tagData2.readerId());
+        assertEquals("07", tagData2.afi());
+
+        callback.close();
+        dispatcher.close();
+    }
 }

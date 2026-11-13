@@ -78,6 +78,11 @@ public class HeadlessReaderCallback implements TagCallback {
 	@Override
 	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
 			long blockSize, String afi) throws Exception {
+		return doIt(counter, elements, manufacturerName, tagName, UID, data, blockSize, afi, null);
+	}
+
+	public byte[] doIt(int counter, int elements, String manufacturerName, String tagName, String UID, byte[] data,
+			long blockSize, String afi, String eventTime) throws Exception {
 		hasActiveTags.set(true);
 		totalScans.incrementAndGet();
 
@@ -109,12 +114,13 @@ public class HeadlessReaderCallback implements TagCallback {
 		boolean crcOk = !metadata.getCRCError();
 
 		String readerPrefix = (readerId != null && !readerId.isBlank()) ? "Reader: " + readerId + " | " : "";
+		String timePrefix = (eventTime != null && !eventTime.isBlank()) ? "Time: " + eventTime + " | " : "";
 		if (afi != null && !afi.isEmpty()) {
-			logger.info("[TAG READ] {}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | AFI: {} | TagType: {}",
-					readerPrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), afi, tagName);
+			logger.info("[TAG READ] {}{}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | AFI: {} | TagType: {}",
+					readerPrefix, timePrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), afi, tagName);
 		} else {
-			logger.info("[TAG READ] {}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
-					readerPrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
+			logger.info("[TAG READ] {}{}UID: {} | ItemID: {} | ISIL: {} | Country: {} | CRC: {} | TagType: {}",
+					readerPrefix, timePrefix, UID, itemId, isil, country, (crcOk ? "OK" : "ERROR"), tagName);
 		}
 
 		// 1. Database persistence
@@ -179,7 +185,8 @@ public class HeadlessReaderCallback implements TagCallback {
 						clientId,
 						effectiveReaderId,
 						metadata,
-						afi
+						afi,
+						eventTime
 				);
 			} catch (Exception e) {
 				logger.error("[WSBroker Exception] Failed to dispatch UID {}: {}", UID, e.getMessage(), e);

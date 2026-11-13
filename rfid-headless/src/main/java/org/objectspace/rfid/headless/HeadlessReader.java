@@ -1,11 +1,13 @@
 package org.objectspace.rfid.headless;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.objectspace.rfid.ISO15693ReaderFactory;
 import org.objectspace.rfid.core.TagScanProcessor;
+import org.objectspace.rfid.feig.FeigRFID;
 import org.objectspace.rfid.feig.ISO15693Feig;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.slf4j.Logger;
@@ -28,10 +30,10 @@ public class HeadlessReader {
 
 	public HeadlessReader(XMLConfiguration config, Long debounceOverride, Integer sleepOverride, Integer blocksOverride) throws Exception {
 		this.config = config;
+		List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
 		this.tagScanProcessor = new TagScanProcessor(config);
 		this.wsBrokerDispatcher = HeadlessWsBrokerDispatcher.fromConfiguration(config);
 
-		List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
 		this.readerInstances = new ArrayList<>();
 
 		for (HeadlessReaderConfig rCfg : readerConfigs) {
@@ -45,33 +47,67 @@ public class HeadlessReader {
 				rCfg.setNumBlocks(blocksOverride);
 			}
 
+			boolean buffered = "buffered".equalsIgnoreCase(rCfg.getOperatingMode());
+			File explicitConfigFile = rCfg.isAutoConfig()
+					? requireExplicitConfigFile(buffered ? rCfg.getBufferedConfigFile() : rCfg.getHostConfigFile())
+					: null;
 			ISO15693Reader reader = ISO15693ReaderFactory.createReader(rCfg.toConfiguration());
 			HeadlessReaderCallback callback = new HeadlessReaderCallback(
 					tagScanProcessor, wsBrokerDispatcher, rCfg.getDebounceMillis(), rCfg.getReaderId());
-			HeadlessReaderScanner scanner = new HeadlessReaderScanner(
-					reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(), rCfg.getReaderId());
-			String connectionType = rCfg.getType();
-			if (rCfg.isGateEnabled() && ("ethernet".equalsIgnoreCase(connectionType) || "tcp".equalsIgnoreCase(connectionType))
-					&& reader instanceof ISO15693Feig gateReader) {
-				scanner.setGatePoller(() -> {
-					try {
-						var counters = gateReader.readGateCounters();
-						var diagnostics = gateReader.readGateDiagnostics();
-						var data = java.util.Map.of("readerId", rCfg.getReaderId(), "counters", counters, "diagnostics", diagnostics);
-						wsBrokerDispatcher.dispatch("rfid.gate.status", data, null, null, System.currentTimeMillis(), rCfg.getReaderId());
-					} catch (Exception e) {
-						throw new IllegalStateException("Gate status read failed", e);
-					}
-				});
+			HeadlessReaderInstance instance;
+			if (buffered) {
+				File bufferedConfigFile = rCfg.isAutoConfig()
+						? (explicitConfigFile != null ? explicitConfigFile : FeigRFID.resolveBufferedModeConfigFile(null))
+						: null;
+				HeadlessGateWorker gateWorker = new HeadlessGateWorker(
+						reader,
+						callback,
+						wsBrokerDispatcher,
+						rCfg.getBufferPollInterval(),
+						rCfg.getGatePollInterval(),
+						rCfg.isGateEnabled(),
+						rCfg.getReaderId(),
+						rCfg.isAutoConfig(),
+						bufferedConfigFile
+				);
+				instance = HeadlessReaderInstance.forGateWorker(rCfg, reader, callback, gateWorker);
+			} else {
+				HeadlessReaderScanner scanner = new HeadlessReaderScanner(
+						reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(),
+						rCfg.getReaderId(), rCfg.isAutoConfig(), explicitConfigFile);
+				String connectionType = rCfg.getType();
+				if (rCfg.isGateEnabled() && ("ethernet".equalsIgnoreCase(connectionType) || "tcp".equalsIgnoreCase(connectionType))
+						&& reader instanceof ISO15693Feig gateReader) {
+					scanner.setGatePoller(() -> {
+						try {
+							var counters = gateReader.readGateCounters();
+							var diagnostics = gateReader.readGateDiagnostics();
+							var data = java.util.Map.of("readerId", rCfg.getReaderId(), "counters", counters, "diagnostics", diagnostics);
+							wsBrokerDispatcher.dispatch("rfid.gate.status", data, null, null, System.currentTimeMillis(), rCfg.getReaderId());
+						} catch (Exception e) {
+							throw new IllegalStateException("Gate status read failed", e);
+						}
+					});
+				}
+				instance = new HeadlessReaderInstance(rCfg, reader, callback, scanner);
 			}
-
-			HeadlessReaderInstance instance = new HeadlessReaderInstance(rCfg, reader, callback, scanner);
 			this.readerInstances.add(instance);
 		}
 
 		if (this.wsBrokerDispatcher != null) {
 			this.wsBrokerDispatcher.setReaderInstances(this.readerInstances);
 		}
+	}
+
+	private static File requireExplicitConfigFile(String path) {
+		if (path == null || path.isBlank()) {
+			return null;
+		}
+		File file = new File(path.trim());
+		if (!file.isFile() || !file.canRead()) {
+			throw new IllegalArgumentException("Explicit FEIG auto-configuration file is missing or unreadable: " + path);
+		}
+		return file;
 	}
 
 	public void start() {
@@ -120,6 +156,9 @@ public class HeadlessReader {
 			if (instance.getScanner() != null && instance.getScanner().isRunning()) {
 				return true;
 			}
+			if (instance.getGateWorker() != null && instance.getGateWorker().isRunning()) {
+				return true;
+			}
 		}
 		return false;
 	}
@@ -142,6 +181,10 @@ public class HeadlessReader {
 
 	public HeadlessReaderScanner getScanner() {
 		return !readerInstances.isEmpty() ? readerInstances.get(0).getScanner() : null;
+	}
+
+	public HeadlessGateWorker getGateWorker() {
+		return !readerInstances.isEmpty() ? readerInstances.get(0).getGateWorker() : null;
 	}
 
 	public HeadlessReaderCallback getCallback() {

@@ -2,6 +2,20 @@
 
 The **RFID Core** (`rfid-core`) module provides the headless, foundational infrastructure for RFID hardware abstraction (FEIG electronic Gen3 SDK), the ISO 28560-2 library data model ("Finnish Data Model"), tag validation pipelines, and RESTful webservice dispatching.
 
+## FEIG buffered gate hardware test
+
+**Warning: reading the buffer may consume existing tag events.** Run this only with permission and after safeguarding any events needed elsewhere. The test does not explicitly clear, reset, or configure the reader or reset counters. The SDK headers do not establish whether reading acknowledges/removes reader-buffer records, or the command-specific meaning of nonzero statuses; the test reports such statuses as errors rather than assuming an empty buffer. Repeated reads may therefore show duplicates.
+
+The ID LR2500-A must already be in buffered mode, reachable by Ethernet, and have compatible people-counter peripherals connected. The example host `10.96.12.18` and port `10001` are configurable; verify the actual port. Java, Maven, the SDK JARs in `lib`, and matching native FEIG SDK libraries and their dependencies are required. For Windows x64, the SDK libraries are in `FEIG.ID.SDK.Gen3.Java-v7.1.0\windows.x64\bin`; other platforms must use their matching SDK directory. Set both the native loader path and Java's library path, for example in PowerShell from the repository root:
+
+```powershell
+$native = (Resolve-Path '.\FEIG.ID.SDK.Gen3.Java-v7.1.0\windows.x64\bin').Path
+$env:PATH = "$native;$env:PATH"
+mvn '-pl' 'rfid-core' '-Dtest=FeigBufferedGateHardwareTest' '-Dfeig.gate.test.enabled=true' '-Dfeig.gate.test.host=10.96.12.18' '-Dfeig.gate.test.port=10001' '-Dfeig.gate.test.durationMs=10000' '-Dfeig.gate.test.intervalMs=1000' "-Djava.library.path=$native" 'test'
+```
+
+The host must be nonempty, port is 1–65535, and duration and interval are 1–3600000 milliseconds. Without `feig.gate.test.enabled=true` the test is skipped. Hold a tag near the gate and walk through during the polling interval; compare the four raw counter channels printed before and after. Their directions depend on device configuration. No discovered counter is reported explicitly; connection and SDK failures fail the test. Tag metadata is printed only when available, and direction is raw SDK data.
+
 ---
 
 ## Key Features

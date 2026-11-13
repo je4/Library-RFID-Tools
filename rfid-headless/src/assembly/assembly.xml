@@ -28,6 +28,7 @@
             <includes>
                 <include>inventory.xml</include>
                 <include>inventory.xml.template</include>
+                <include>reader_buffered_mode_config.xml</include>
                 <include>rfid-headless.service</include>
                 <include>README.md</include>
             </includes>

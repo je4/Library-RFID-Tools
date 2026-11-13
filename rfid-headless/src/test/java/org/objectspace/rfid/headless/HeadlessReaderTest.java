@@ -3,13 +3,61 @@ package org.objectspace.rfid.headless;
 import org.apache.commons.configuration2.XMLConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.FileWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class HeadlessReaderTest {
+
+    @Test
+    public void missingExplicitModeConfigFailsOnlyWhenAutoConfigEnabled(@TempDir Path tempDir) throws Exception {
+        for (String mode : new String[]{"host", "buffered"}) {
+            String property = mode.equals("host") ? "hostconfigfile" : "bufferedconfigfile";
+            for (boolean enabled : new boolean[]{true, false}) {
+                String xml = "<configuration><device><select>feig</select><feig><type>usb</type>"
+                        + "<mode>" + mode + "</mode><autoconfig>" + enabled + "</autoconfig>"
+                        + "<" + property + ">" + tempDir.resolve("missing.xml") + "</" + property + ">"
+                        + "</feig></device></configuration>";
+                Path file = tempDir.resolve("inventory.xml");
+                Files.writeString(file, xml);
+                XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(file.toString());
+                if (enabled) {
+                    assertThrows(IllegalArgumentException.class, () -> new HeadlessReader(config, null, null, null), mode);
+                } else {
+                    assertDoesNotThrow(() -> new HeadlessReader(config, null, null, null), mode);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void bufferedGateInitializesGateWorkerFromXml(@TempDir Path tempDir) throws Exception {
+        String gate = """
+                <reader><reader_id>gate-18</reader_id><feig>
+                    <type>ethernet</type><host>10.96.12.18</host><port>10001</port>
+                    <mode>buffered</mode>
+                </feig></reader>
+                """;
+
+        Path file = tempDir.resolve("inventory.xml");
+        Files.writeString(file, "<configuration><readers>" + gate + "</readers></configuration>");
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(file.toString());
+
+        HeadlessReader app = new HeadlessReader(config, null, null, null);
+        assertEquals(1, app.getReaderInstances().size());
+
+        HeadlessReaderInstance instance = app.getReaderInstance("gate-18");
+        assertNotNull(instance);
+        assertTrue(instance.isBufferedMode());
+        assertNotNull(instance.getGateWorker());
+        assertNull(instance.getScanner());
+        assertEquals("gate-18", instance.getGateWorker().getReaderId());
+    }
 
     @Test
     @DisplayName("Test HeadlessReader initialization with configuration and override options")

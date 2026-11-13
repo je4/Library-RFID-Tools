@@ -25,6 +25,9 @@ public class HeadlessReaderConfig {
 	private String host;
 	private String port;
 	private boolean gateEnabled;
+	private String operatingMode = "host";
+	private int bufferPollInterval = 300;
+	private int gatePollInterval = 30000;
 	private String readerType = "feig";
 	private int sleepInterval = HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS;
 	private int numBlocks = HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
@@ -34,6 +37,8 @@ public class HeadlessReaderConfig {
 	private String restoreConfig;
 	private String storeConfigFile;
 	private String hostConfigFile;
+	private String bufferedConfigFile;
+	private boolean autoConfig;
 	private AbstractConfiguration rootConfiguration;
 
 	public HeadlessReaderConfig() {
@@ -103,6 +108,29 @@ public class HeadlessReaderConfig {
 
 	public void setGateEnabled(boolean gateEnabled) {
 		this.gateEnabled = gateEnabled;
+	}
+
+	public String getOperatingMode() { return operatingMode; }
+
+	public void setOperatingMode(String mode) {
+		if (mode == null || (!"host".equalsIgnoreCase(mode.trim()) && !"buffered".equalsIgnoreCase(mode.trim()))) {
+			throw new IllegalArgumentException("Invalid reader operating mode: " + mode);
+		}
+		this.operatingMode = mode.trim().toLowerCase(java.util.Locale.ROOT);
+	}
+
+	public int getBufferPollInterval() { return bufferPollInterval; }
+
+	public void setBufferPollInterval(int interval) {
+		if (interval <= 0) throw new IllegalArgumentException("Buffer poll interval must be positive");
+		this.bufferPollInterval = interval;
+	}
+
+	public int getGatePollInterval() { return gatePollInterval; }
+
+	public void setGatePollInterval(int interval) {
+		if (interval <= 0) throw new IllegalArgumentException("Gate poll interval must be positive");
+		this.gatePollInterval = interval;
 	}
 
 	public String getReaderType() {
@@ -177,6 +205,22 @@ public class HeadlessReaderConfig {
 		this.hostConfigFile = hostConfigFile;
 	}
 
+	public String getBufferedConfigFile() {
+		return bufferedConfigFile;
+	}
+
+	public void setBufferedConfigFile(String bufferedConfigFile) {
+		this.bufferedConfigFile = bufferedConfigFile;
+	}
+
+	public boolean isAutoConfig() {
+		return autoConfig;
+	}
+
+	public void setAutoConfig(boolean autoConfig) {
+		this.autoConfig = autoConfig;
+	}
+
 	public AbstractConfiguration getRootConfiguration() {
 		return rootConfiguration;
 	}
@@ -230,6 +274,10 @@ public class HeadlessReaderConfig {
 			target.setProperty("device.feig.port", port);
 		}
 		target.setProperty("device.feig.gate.enabled", gateEnabled);
+		target.setProperty("device.feig.mode", operatingMode);
+		target.setProperty("device.feig.autoconfig", autoConfig);
+		target.setProperty("device.feig.buffer.pollInterval", bufferPollInterval);
+		target.setProperty("device.feig.gate.pollInterval", gatePollInterval);
 		if (configFile != null && !configFile.isBlank()) {
 			target.setProperty("device.feig.configfile", configFile.trim());
 		}
@@ -241,6 +289,9 @@ public class HeadlessReaderConfig {
 		}
 		if (hostConfigFile != null && !hostConfigFile.isBlank()) {
 			target.setProperty("device.feig.hostconfigfile", hostConfigFile.trim());
+		}
+		if (bufferedConfigFile != null && !bufferedConfigFile.isBlank()) {
+			target.setProperty("device.feig.bufferedconfigfile", bufferedConfigFile.trim());
 		}
 
 		target.setProperty("numblocks", numBlocks);
@@ -258,6 +309,10 @@ public class HeadlessReaderConfig {
 		HeadlessReaderConfig that = (HeadlessReaderConfig) o;
 		return readOnly == that.readOnly &&
 				gateEnabled == that.gateEnabled &&
+				bufferPollInterval == that.bufferPollInterval &&
+				gatePollInterval == that.gatePollInterval &&
+				autoConfig == that.autoConfig &&
+				Objects.equals(operatingMode, that.operatingMode) &&
 				sleepInterval == that.sleepInterval &&
 				numBlocks == that.numBlocks &&
 				debounceMillis == that.debounceMillis &&
@@ -266,12 +321,14 @@ public class HeadlessReaderConfig {
 				Objects.equals(type, that.type) &&
 				Objects.equals(host, that.host) &&
 				Objects.equals(port, that.port) &&
+				Objects.equals(hostConfigFile, that.hostConfigFile) &&
+				Objects.equals(bufferedConfigFile, that.bufferedConfigFile) &&
 				Objects.equals(channels, that.channels);
 	}
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(readerId, readOnly, deviceId, type, host, port, gateEnabled, sleepInterval, numBlocks, debounceMillis, channels);
+		return Objects.hash(readerId, readOnly, deviceId, type, host, port, gateEnabled, operatingMode, autoConfig, bufferPollInterval, gatePollInterval, sleepInterval, numBlocks, debounceMillis, hostConfigFile, bufferedConfigFile, channels);
 	}
 
 	@Override
@@ -284,6 +341,7 @@ public class HeadlessReaderConfig {
 				", host='" + host + '\'' +
 				", port=" + port +
 				", gateEnabled=" + gateEnabled +
+				", autoConfig=" + autoConfig +
 				", sleepInterval=" + sleepInterval +
 				", numBlocks=" + numBlocks +
 				", debounceMillis=" + debounceMillis +

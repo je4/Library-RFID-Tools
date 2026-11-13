@@ -8,10 +8,13 @@ package org.objectspace.rfid.feig.saveconfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.nio.file.Files;
+
+import org.apache.commons.configuration2.AbstractConfiguration;
 import org.apache.commons.configuration2.BaseConfiguration;
 import org.junit.jupiter.api.Test;
 import org.objectspace.rfid.feig.FeigRFID;
@@ -27,10 +30,8 @@ public class SaveConfigTest {
 
     @Test
     public void testHostModeConfigFileStructure() throws Exception {
-        File configFile = new File("reader_host_mode_config.xml");
-        if (!configFile.exists()) {
-            configFile = new File("rfid-inventory/reader_host_mode_config.xml");
-        }
+        File configFile = FeigRFID.resolveHostModeConfigFile(new BaseConfiguration());
+        assertNotNull(configFile, "Host mode config file must not be null");
         assertTrue(configFile.exists(), "Host mode config file must exist");
         assertTrue(configFile.isFile(), "Host mode config must be a regular file");
         String content = Files.readString(configFile.toPath());
@@ -116,16 +117,54 @@ public class SaveConfigTest {
     }
 
     @Test
-    public void testResolveHostModeConfigFile() {
-        BaseConfiguration config = new BaseConfiguration();
-        File resolved = FeigRFID.resolveHostModeConfigFile(config);
-        assertNotNull(resolved);
-        assertTrue(resolved.exists(), "Resolved host mode config file must exist");
+	public void testResolveHostModeConfigFile() {
+		BaseConfiguration config = new BaseConfiguration();
+		File resolved = FeigRFID.resolveHostModeConfigFile(config);
+		assertNotNull(resolved);
+		assertTrue(resolved.exists(), "Resolved host mode config file must exist");
 
-        ISO15693Feig reader = new ISO15693Feig(config);
-        File readerResolved = reader.resolveHostModeConfigFile();
-        assertNotNull(readerResolved);
-        assertTrue(readerResolved.exists(), "Reader resolved host mode config file must exist");
+		ISO15693Feig reader = new ISO15693Feig(config);
+		File readerResolved = reader.resolveHostModeConfigFile();
+		assertNotNull(readerResolved);
+		assertTrue(readerResolved.exists(), "Reader resolved host mode config file must exist");
+	}
+
+    @Test
+    public void testBufferedModeConfigFileStructureAndOverride() throws Exception {
+        File bundled = FeigRFID.resolveBufferedModeConfigFile(new BaseConfiguration());
+        assertNotNull(bundled);
+        assertTrue(bundled.isFile(), "Buffered mode config file must exist");
+        String content = Files.readString(bundled.toPath());
+        assertTrue(content.contains("<reader-name>ID ISC.LR2500-A</reader-name>"));
+        assertTrue(content.contains("<data-array name=\"Reader EEPROM-Parameter\""));
+        assertTrue(content.contains("<data-array name=\"Reader RAM-Parameter\""));
+
+        File custom = File.createTempFile("buffered-reader-config-", ".xml");
+        try {
+            BaseConfiguration config = new BaseConfiguration();
+            config.setProperty("device.feig.bufferedconfigfile", custom.getAbsolutePath());
+            assertEquals(custom.getAbsolutePath(), FeigRFID.resolveBufferedModeConfigFile(config).getAbsolutePath());
+        } finally {
+            Files.deleteIfExists(custom.toPath());
+        }
+    }
+
+    @Test
+    public void testSaveConfigParsesTcpTargetsAndRejectsInvalidPorts() throws Exception {
+        assertTcpTarget("10.96.12.18:10001", "10.96.12.18", "10001");
+        assertTcpTarget("tcp://reader.example:10001", "reader.example", "10001");
+        assertTcpTarget("tcp://[::1]:10001", "::1", "10001");
+
+        assertThrows(IllegalArgumentException.class, () -> SaveConfig.configurationFromTarget("reader.example:0"));
+        assertThrows(IllegalArgumentException.class, () -> SaveConfig.configurationFromTarget("tcp://reader.example:not-a-port"));
+        assertThrows(IllegalArgumentException.class, () -> SaveConfig.configurationFromTarget("tcp://reader.example:65536"));
+    }
+
+    private void assertTcpTarget(String target, String expectedHost, String expectedPort) throws Exception {
+        AbstractConfiguration config = SaveConfig.configurationFromTarget(target);
+        assertEquals("ethernet", config.getString("device.feig.type"));
+        assertEquals(expectedHost, config.getString("device.feig.host"));
+        assertEquals(expectedPort, config.getString("device.feig.port"));
     }
 
     @Test

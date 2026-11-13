@@ -45,8 +45,11 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.configuration2.AbstractConfiguration;
+import de.feig.fedm.Brm;
+import de.feig.fedm.BrmItem;
+import de.feig.fedm.BufferInfo;
+import de.feig.fedm.Config;
 import de.feig.fedm.Connector;
-import de.feig.fedm.CustomXmlData;
 import de.feig.fedm.ErrorCode;
 import de.feig.fedm.InventoryParam;
 import de.feig.fedm.ReaderInfo;
@@ -467,6 +470,53 @@ public class FeigRFID {
 	/** Address of a peripheral device on the reader's serial bus. */
 	public record GateAddress(int portType, int busAddress) {}
 
+	/** A tag read event retrieved from the FEIG reader buffer. */
+	public record BufferedTag(String uid, byte[] data, long blockSize, String dateTime, Integer direction) {}
+
+	public List<BufferedTag> readBufferedTags(int maxCount) throws Exception {
+		synchronized (readerLock) {
+			if (reader == null || !connected) {
+				throw new IllegalStateException("Reader is not connected");
+			}
+			List<BufferedTag> result = new ArrayList<>();
+			Brm brm = reader.brm();
+			if (brm == null) {
+				return result;
+			}
+			BufferInfo info = new BufferInfo();
+			int status = brm.readReaderBufferInfo(info);
+			if (status != ErrorCode.Ok) {
+				throw new Exception("readReaderBufferInfo failed: status=" + status + " (" + formatError(status) + ")");
+			}
+			if (info.numTags() == 0) {
+				return result;
+			}
+			int max = maxCount > 0 ? maxCount : 100;
+			long fetchCount = Math.min(info.numTags(), (long) max);
+			status = brm.readReaderBuffer(fetchCount);
+			if (status != ErrorCode.Ok) {
+				throw new Exception("readReaderBuffer failed: status=" + status + " (" + formatError(status) + ")");
+			}
+			BrmItem item;
+			while ((item = brm.popItem()) != null) {
+				TagItem tag = item.tag();
+				if (tag != null && tag.isValid() && tag.idd() != null && tag.idd().length > 0) {
+					String uid = tag.iddToHexString();
+					byte[] data = null;
+					long blockSize = 4;
+					if (item.dataBlocks() != null && item.dataBlocks().isValid()) {
+						data = item.dataBlocks().blocks();
+						blockSize = item.dataBlocks().blockSize() > 0 ? item.dataBlocks().blockSize() : 4;
+					}
+					String dt = (item.dateTime() != null && item.dateTime().isValid()) ? item.dateTime().toString() : null;
+					Integer dir = (item.direction() != null && item.direction().isValid()) ? item.direction().direction() : null;
+					result.add(new BufferedTag(uid, data, blockSize, dt, dir));
+				}
+			}
+			return List.copyOf(result);
+		}
+	}
+
 	/** Raw SDK counter channels; their direction depends on device configuration. */
 	public record GateCounter(GateAddress address, long detector1Counter1, long detector1Counter2,
 			long detector2Counter1, long detector2Counter2) {}
@@ -591,38 +641,18 @@ public class FeigRFID {
 			if (reader == null) {
 				throw new Exception("Reader not initialized");
 			}
-			int res = reader.config().transferXmlFileToReaderCfg(fileName);
-			if (res != ErrorCode.Ok) {
-				// Fallback: deserialize and write supported configuration pages individually
-				CustomXmlData customXmlData = new CustomXmlData();
-				int desRes = reader.config().deserializeFromFile(fileName, customXmlData);
-				if (desRes == ErrorCode.Ok) {
-					long[] targetPages = new long[] { 1, 2, 3, 4, 5, 11, 12, 13 };
-					int successCount = 0;
-					for (long page : targetPages) {
-						try {
-							int wEeprom = reader.config().writeConfigurationPage(page, false);
-							int wRam = reader.config().writeConfigurationPage(page, true);
-							if (wEeprom == ErrorCode.Ok || wRam == ErrorCode.Ok) {
-								successCount++;
-							}
-						} catch (Throwable t) {
-							// Ignore unsupported page write errors
-						}
-					}
-					if (successCount > 0) {
-						try {
-							reader.config().applyConfiguration(true);
-						} catch (Throwable t) {
-							// Best effort apply
-						}
-						waitForEepromWrite(1500);
-						return;
-					}
-				}
-				throw new Exception("transferXmlFileToReaderCfg failed: " + formatError(res));
-			}
-			waitForEepromWrite(1500);
+			copyFileToConfig(fileName, reader.config());
+		}
+	}
+
+	void copyFileToConfig(String fileName, Config config) throws Exception {
+		int res = config.transferXmlFileToReaderCfg(fileName);
+		if (res != ErrorCode.Ok) {
+			throw new Exception("transferXmlFileToReaderCfg failed: " + formatError(res));
+		}
+		waitForEepromWrite(1500);
+		if (Thread.currentThread().isInterrupted()) {
+			throw new InterruptedException("Interrupted while waiting for EEPROM write completion");
 		}
 	}
 
@@ -644,7 +674,7 @@ public class FeigRFID {
 	/**
 	 * Performs a system reset on the connected FEIG RFID reader (systemReset).
 	 * 
-	 * @throws Exception if reader is not initialized
+	 * @throws Exception if the reader is not initialized or reset fails
 	 */
 	public void systemReset() throws Exception {
 		synchronized (readerLock) {
@@ -657,7 +687,7 @@ public class FeigRFID {
 				res = reader.hardReset();
 			}
 			if (res != ErrorCode.Ok) {
-				log("Hinweis: systemReset meldete: " + formatError(res));
+				throw new Exception("systemReset failed: " + formatError(res));
 			} else {
 				log("System-Reset erfolgreich an das Lesegerät übermittelt.");
 			}
@@ -830,6 +860,50 @@ public class FeigRFID {
 	}
 
 	/**
+	 * Resolves the reader_buffered_mode_config.xml file from a configured path,
+	 * local module directories, or classpath resources.
+	 *
+	 * @param config application configuration
+	 * @return resolved File
+	 */
+	public static File resolveBufferedModeConfigFile(AbstractConfiguration config) {
+		String customPath = (config != null) ? config.getString("device.feig.bufferedconfigfile", null) : null;
+		if (customPath != null && !customPath.trim().isEmpty()) {
+			File file = new File(customPath.trim());
+			if (file.exists() && file.isFile()) {
+				return file;
+			}
+		}
+		File localFile = new File("reader_buffered_mode_config.xml");
+		if (localFile.exists() && localFile.isFile()) {
+			return localFile;
+		}
+		File inventoryFile = new File("rfid-inventory", "reader_buffered_mode_config.xml");
+		if (inventoryFile.exists() && inventoryFile.isFile()) {
+			return inventoryFile;
+		}
+		File coreResourceFile = new File("rfid-core/src/main/resources", "reader_buffered_mode_config.xml");
+		if (coreResourceFile.exists() && coreResourceFile.isFile()) {
+			return coreResourceFile;
+		}
+		File headlessFile = new File("rfid-headless", "reader_buffered_mode_config.xml");
+		if (headlessFile.exists() && headlessFile.isFile()) {
+			return headlessFile;
+		}
+		try (InputStream in = FeigRFID.class.getResourceAsStream("/reader_buffered_mode_config.xml")) {
+			if (in != null) {
+				File tempResourceFile = File.createTempFile("feig_buffered_mode_config_", ".xml");
+				tempResourceFile.deleteOnExit();
+				Files.copy(in, tempResourceFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				return tempResourceFile;
+			}
+		} catch (Throwable t) {
+			// Resource extraction fallback error ignored
+		}
+		return localFile;
+	}
+
+	/**
 	 * Configures Host-Mode on the FEIG RFID reader by applying the XML configuration file,
 	 * waiting for EEPROM completion, and issuing a hardware system reset.
 	 * 
@@ -837,6 +911,17 @@ public class FeigRFID {
 	 * @throws Exception on failure
 	 */
 	public void configureHostMode(File configFile) throws Exception {
+		restoreConfiguration(configFile);
+	}
+
+	/**
+	 * Configures Buffered Reader Mode by applying the XML configuration,
+	 * waiting for EEPROM completion, and issuing a system reset.
+	 *
+	 * @param configFile XML configuration file (reader_buffered_mode_config.xml)
+	 * @throws Exception on failure
+	 */
+	public void configureBufferedMode(File configFile) throws Exception {
 		restoreConfiguration(configFile);
 	}
 

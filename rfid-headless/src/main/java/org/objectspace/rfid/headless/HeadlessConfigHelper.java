@@ -335,6 +335,12 @@ public class HeadlessConfigHelper {
 				rCfg.setHostConfigFile(config.getString(prefix + "feig.hostconfigfile",
 						config.getString(prefix + "device.feig.hostconfigfile",
 						config.getString("device.feig.hostconfigfile", null))));
+				rCfg.setBufferedConfigFile(config.getString(prefix + "feig.bufferedconfigfile",
+						config.getString(prefix + "device.feig.bufferedconfigfile",
+						config.getString("device.feig.bufferedconfigfile", null))));
+				rCfg.setAutoConfig(config.getBoolean(prefix + "feig.autoconfig",
+						config.getBoolean(prefix + "device.feig.autoconfig",
+						config.getBoolean("device.feig.autoconfig", false))));
 
 				List<Object> chList = config.getList(prefix + "channels.channel");
 				if (chList != null && !chList.isEmpty()) {
@@ -368,6 +374,7 @@ public class HeadlessConfigHelper {
 		fallback.setHost(config.getString("device.feig.host", null));
 		fallback.setPort(config.getString("device.feig.port", null));
 		fallback.setGateEnabled(config.getBoolean("device.feig.gate.enabled", false));
+		setReaderModeConfig(fallback, config, "device.");
 		fallback.setReaderType(config.getString("device.select", "feig"));
 		fallback.setSleepInterval(getSleepInterval(config));
 		fallback.setNumBlocks(getNumBlocks(config));
@@ -376,6 +383,8 @@ public class HeadlessConfigHelper {
 		fallback.setRestoreConfig(config.getString("device.feig.restoreconfig", null));
 		fallback.setStoreConfigFile(config.getString("device.feig.storeconfigfile", null));
 		fallback.setHostConfigFile(config.getString("device.feig.hostconfigfile", null));
+		fallback.setBufferedConfigFile(config.getString("device.feig.bufferedconfigfile", null));
+		fallback.setAutoConfig(config.getBoolean("device.feig.autoconfig", false));
 		fallback.setChannels(getChannels(config));
 		fallback.setRootConfiguration(config);
 
@@ -437,6 +446,12 @@ public class HeadlessConfigHelper {
 		rCfg.setHostConfigFile(node.getString("feig.hostconfigfile",
 				node.getString("device.feig.hostconfigfile",
 				rootConfig.getString("device.feig.hostconfigfile", null))));
+		rCfg.setBufferedConfigFile(node.getString("feig.bufferedconfigfile",
+				node.getString("device.feig.bufferedconfigfile",
+				rootConfig.getString("device.feig.bufferedconfigfile", null))));
+		rCfg.setAutoConfig(node.getBoolean("feig.autoconfig",
+				node.getBoolean("device.feig.autoconfig",
+				rootConfig.getBoolean("device.feig.autoconfig", false))));
 
 		List<Object> chList = node.getList("channels.channel");
 		if (chList != null && !chList.isEmpty()) {
@@ -457,12 +472,22 @@ public class HeadlessConfigHelper {
 
 	private static void setFeigNetworkConfig(HeadlessReaderConfig reader, Configuration config,
 			String prefix, AbstractConfiguration rootConfig) {
+		setReaderModeConfig(reader, config, prefix);
 		reader.setHost(config.getString(prefix + "feig.host",
 				config.getString(prefix + "device.feig.host", rootConfig.getString("device.feig.host", null))));
 		reader.setPort(config.getString(prefix + "feig.port",
 				config.getString(prefix + "device.feig.port", rootConfig.getString("device.feig.port", null))));
 		reader.setGateEnabled(config.getBoolean(prefix + "feig.gate.enabled",
 				config.getBoolean(prefix + "device.feig.gate.enabled", false)));
+	}
+
+	private static void setReaderModeConfig(HeadlessReaderConfig reader, Configuration config, String prefix) {
+		reader.setOperatingMode(config.getString(prefix + "feig.mode",
+				config.getString(prefix + "device.feig.mode", "host")));
+		reader.setBufferPollInterval(config.getInt(prefix + "feig.buffer.pollInterval",
+				config.getInt(prefix + "device.feig.buffer.pollInterval", 300)));
+		reader.setGatePollInterval(config.getInt(prefix + "feig.gate.pollInterval",
+				config.getInt(prefix + "device.feig.gate.pollInterval", 30000)));
 	}
 
 	private static long parseDebounceFromNode(HierarchicalConfiguration<?> node, long defaultVal) {

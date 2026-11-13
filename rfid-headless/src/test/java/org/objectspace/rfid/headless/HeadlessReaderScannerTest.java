@@ -26,7 +26,7 @@ public class HeadlessReaderScannerTest {
     }
 
     @Test
-    public void testHostModeCheckDoesNotUploadWhenAlreadyConfigured() {
+    public void testAutoConfigDisabledDoesNotCheckOrUpload() {
         AtomicInteger checks = new AtomicInteger();
         ISO15693Reader reader = new ISO15693Reader() {
             @Override public void connect() {}
@@ -41,7 +41,7 @@ public class HeadlessReaderScannerTest {
         };
         HeadlessReaderScanner scanner = new HeadlessReaderScanner(reader, null, 12, 50);
         scanner.ensureHostMode();
-        assertEquals(1, checks.get());
+        assertEquals(0, checks.get());
     }
 
     @Test
@@ -106,9 +106,9 @@ public class HeadlessReaderScannerTest {
     }
 
     @Test
-    @DisplayName("Test ensureHostMode does not restore configuration if reader is already in Host Mode")
-    public void testEnsureHostModeWhenAlreadyInHostMode() {
-        AtomicBoolean restoreCalled = new AtomicBoolean(false);
+    @DisplayName("Auto-configuration applies Host Mode once even when the reader is already in Host Mode")
+    public void testAutoConfigAppliesHostModeOnce() {
+        AtomicInteger restoreCalls = new AtomicInteger();
 
         ISO15693Reader mockReader = new ISO15693Reader() {
             @Override
@@ -142,7 +142,7 @@ public class HeadlessReaderScannerTest {
 
             @Override
             public void restoreHostModeConfig(java.io.File configFile) throws Exception {
-                restoreCalled.set(true);
+                restoreCalls.incrementAndGet();
             }
 
             @Override
@@ -153,10 +153,11 @@ public class HeadlessReaderScannerTest {
         TagScanProcessor processor = new TagScanProcessor(cfg);
         HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
 
-        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50);
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50, null, true);
+        scanner.ensureHostMode();
         scanner.ensureHostMode();
 
-        assertFalse(restoreCalled.get(), "restoreHostModeConfig should not be called when already in host mode");
+        assertEquals(1, restoreCalls.get());
     }
 
     @Test
@@ -217,7 +218,7 @@ public class HeadlessReaderScannerTest {
         TagScanProcessor processor = new TagScanProcessor(cfg);
         HeadlessReaderCallback callback = new HeadlessReaderCallback(processor, 3000L);
 
-        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50);
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, callback, 12, 50, null, true);
         scanner.ensureHostMode();
 
         assertTrue(restoreCalled.get(), "restoreHostModeConfig should be called when reader is not in host mode");

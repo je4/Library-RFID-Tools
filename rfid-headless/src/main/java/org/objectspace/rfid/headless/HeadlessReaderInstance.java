@@ -18,19 +18,35 @@ public class HeadlessReaderInstance implements AutoCloseable {
 	private final ISO15693Reader reader;
 	private final HeadlessReaderCallback callback;
 	private final HeadlessReaderScanner scanner;
+	private final HeadlessGateWorker gateWorker;
 
 	public HeadlessReaderInstance(HeadlessReaderConfig config, ISO15693Reader reader,
 								  HeadlessReaderCallback callback, HeadlessReaderScanner scanner) {
+		this(config, reader, callback, scanner, null);
+	}
+
+	public static HeadlessReaderInstance forGateWorker(HeadlessReaderConfig config, ISO15693Reader reader,
+													   HeadlessReaderCallback callback, HeadlessGateWorker gateWorker) {
+		return new HeadlessReaderInstance(config, reader, callback, null, gateWorker);
+	}
+
+	public HeadlessReaderInstance(HeadlessReaderConfig config, ISO15693Reader reader,
+								  HeadlessReaderCallback callback, HeadlessReaderScanner scanner,
+								  HeadlessGateWorker gateWorker) {
 		this.config = config;
 		this.reader = reader;
 		this.callback = callback;
 		this.scanner = scanner;
+		this.gateWorker = gateWorker;
 	}
 
 	public void start() {
 		if (scanner != null) {
 			logger.info("Starting reader instance [{}]...", getReaderId());
 			scanner.start();
+		} else if (gateWorker != null) {
+			logger.info("Starting gate worker instance [{}]...", getReaderId());
+			gateWorker.start();
 		}
 	}
 
@@ -41,6 +57,13 @@ public class HeadlessReaderInstance implements AutoCloseable {
 				scanner.stop();
 			} catch (Exception e) {
 				logger.warn("Error stopping scanner for reader [{}]: {}", getReaderId(), e.getMessage());
+			}
+		}
+		if (gateWorker != null) {
+			try {
+				gateWorker.stop();
+			} catch (Exception e) {
+				logger.warn("Error stopping gate worker for reader [{}]: {}", getReaderId(), e.getMessage());
 			}
 		}
 		if (callback != null) {
@@ -108,8 +131,15 @@ public class HeadlessReaderInstance implements AutoCloseable {
 		return reader != null ? reader.getStartupLogs() : Collections.emptyList();
 	}
 
+	public boolean isBufferedMode() {
+		return config != null && "buffered".equalsIgnoreCase(config.getOperatingMode());
+	}
+
 	public <T> T executeExclusive(HeadlessReaderScanner.ScannerTask<T> task) throws Exception {
 		if (scanner == null) {
+			if (gateWorker != null) {
+				return gateWorker.executeExclusive(task);
+			}
 			if (reader == null) {
 				throw new IllegalStateException("Neither scanner nor reader hardware is initialized for reader " + getReaderId());
 			}
@@ -144,6 +174,10 @@ public class HeadlessReaderInstance implements AutoCloseable {
 
 	public HeadlessReaderScanner getScanner() {
 		return scanner;
+	}
+
+	public HeadlessGateWorker getGateWorker() {
+		return gateWorker;
 	}
 
 	@Override

@@ -151,20 +151,41 @@ Lightweight, headless daemon for Windows (x64), Linux (x64), and Raspberry Pi 4 
 
 * **Operating System**: Windows 10 / 11 (x64) or Linux (aarch64 / x86_64)
 * **Java Development Kit**: JDK 25 or later (with `JAVA_HOME` environment variable configured)
-* **Maven**: Apache Maven 3.9+ (or an IDE with integrated Maven support)
+* **Maven**: Apache Maven 3.9+ (optional — the included Maven Wrapper `mvnw` / `mvnw.cmd` or IDE-bundled Maven can be used directly)
 * **Inno Setup 6** *(optional)*: Required only when compiling the Windows installation package (`.exe`)
 
 ---
 
 ## Building the Project
 
+The repository provides the Maven Wrapper (`mvnw` / `mvnw.cmd`) for self-contained, reproducible builds without requiring a globally installed Maven runtime.
+
 From the project root:
 
-```bash
+### Windows (PowerShell / CMD):
+```powershell
 # Compile and run test suite across all modules
-mvn clean test
+.\mvnw.cmd clean test
 
 # Build package artifacts
+.\mvnw.cmd clean package
+```
+
+### Linux / macOS:
+```bash
+# Make wrapper executable (first time only)
+chmod +x ./mvnw
+
+# Compile and run test suite across all modules
+./mvnw clean test
+
+# Build package artifacts
+./mvnw clean package
+```
+
+### Standalone Maven (if installed):
+```bash
+mvn clean test
 mvn clean package
 ```
 

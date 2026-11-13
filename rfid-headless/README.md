@@ -176,7 +176,23 @@ Configure a network reader with type `ethernet` or `tcp`:
 
 Host and port are required for a network connection; the port must be explicitly configured and has no assumed default. Use the actual reader port instead of the example value. In single-reader configuration, put these settings under `device.feig`; per-reader `feig.host` and `feig.port` override the corresponding global values. The core validates the host and port (1–65535).
 
-Network readers must already be in Host Mode. Unlike USB readers, their operating mode is not checked and configuration files are not automatically loaded, saved, or restored because doing so could overwrite gate settings.
+Readers must already be configured for the selected mode unless the optional automatic configuration described below is explicitly enabled. Existing `configfile` and `restoreconfig` settings are separate explicit operations.
+
+### FEIG configuration files
+
+`feig.autoconfig` defaults to `false`. Set it to `true` under the reader's `feig` section (or `device.feig` for a single reader) to apply the selected mode's configuration once at startup. `mode` defaults to `host`: Host Mode uses `reader_host_mode_config.xml`; `mode=buffered` uses `reader_buffered_mode_config.xml`. Optional `hostconfigfile` and `bufferedconfigfile` specify alternate paths. Per-reader values override global `device.feig` settings.
+
+When automatic configuration is enabled, an explicitly specified mode configuration file must exist and be readable; an invalid path aborts initialization instead of selecting another file. A failed full transfer or reset is reported as an error rather than accepting a partial restore. A failed transfer may already have modified the reader, so verify and restore it before retrying.
+
+**This writes EEPROM and RAM and resets the reader.** The files may contain device-specific and network settings; verify compatibility and retain a backup before enabling it. The buffered reference was exported from the LR2500-A at `10.96.12.18:10001` on 2026-11-13; the export alone does not prove that its Buffered Reader Mode or buffer commands are safe. Follow `rfid-core/FEIG-buffered-gate-verification.md` before operating that gate. Automatic configuration failures stop the corresponding worker before polling.
+
+From a distribution directory, back up a reader with the FEIG native libraries available:
+
+```sh
+java -cp "lib/*" org.objectspace.rfid.feig.saveconfig.SaveConfig backup gate-backup.xml 10.96.12.18:10001
+```
+
+The target may also be `tcp://host:port`, a USB device ID, or an `inventory.xml` containing a single reader's `device.feig` connection. `restore` instead of `backup` writes the supplied file and resets the reader; use it only after confirming the target and file.
 
 ### Optional FEIG gate monitoring
 
@@ -221,6 +237,41 @@ buffered for later delivery. These snapshots are **not theft-alarm events**:
 asynchronous EAS alarms and reader-initiated events require additional device
 and connection configuration and are not implemented. Test on the actual gate
 before relying on monitoring; the gate's own alarm must remain independent.
+
+### FEIG Gate in Buffered Reader Mode
+
+Gates (such as FEIG 1800/700) running in preconfigured Buffered Reader Mode can be integrated alongside standard host readers:
+
+```xml
+<reader>
+  <reader_id>gate-passage</reader_id>
+  <readonly>true</readonly>
+  <feig>
+    <type>ethernet</type>
+    <host>10.96.12.18</host>
+    <port>10001</port>
+    <mode>buffered</mode>
+    <autoconfig>false</autoconfig>
+    <gate>
+      <enabled>true</enabled>
+      <pollInterval>30000</pollInterval>
+    </gate>
+    <buffer>
+      <pollInterval>300</pollInterval>
+    </buffer>
+  </feig>
+  <debounce>20000</debounce>
+  <channels>
+    <channel>gates</channel>
+    <channel>rfid:gate-passage</channel>
+  </channels>
+</reader>
+```
+
+**Key Operational Rules:**
+* **Dedicated SDK Thread**: Each buffered gate is serviced by its own worker thread maintaining strict SDK thread affinity.
+* **Read-Only Safety**: Write and AFI commands directed to buffered mode readers are rejected fail-closed with clear error responses.
+* **Polling Intervals**: Tag passage buffer is polled at `<buffer><pollInterval>` (default: 300 ms); people counters and diagnostics are polled at `<gate><pollInterval>` (default: 30000 ms) and broadcast via `rfid.gate.status`.
 
 ---
 

@@ -62,14 +62,15 @@ public class SaveConfig {
 	/**
 	 * Main entry point.
 	 * 
-	 * @param args &lt;get|backup|set|restore&gt; &lt;filename.xml&gt; [inventory.xml|DeviceId]
+	 * @param args &lt;get|backup|set|restore&gt; &lt;filename.xml&gt; [inventory.xml|host:port|tcp://host:port|DeviceId]
 	 * @throws Exception on execution error
 	 */
 	public static void main(String[] args) throws Exception {
 		if (args.length < 2) {
-			System.out.println("Verwendung: SaveConfig <get|backup|set|restore> <Dateiname.xml> [inventory.xml|DeviceId]");
+			System.out.println("Verwendung: SaveConfig <get|backup|set|restore> <Dateiname.xml> [inventory.xml|host:port|tcp://host:port|DeviceId]");
 			System.out.println("  get / backup:  Liest die Reader-/Firmware-Konfiguration aus und speichert sie als XML-Datei.");
 			System.out.println("  set / restore: Schreibt eine gespeicherte XML-Konfiguration in den RFID-Leser zurück.");
+			System.out.println("  Netzwerkziel:  host:port oder tcp://host:port (IPv6: tcp://[adresse]:port)");
 			System.exit(1);
 			return;
 		}
@@ -80,23 +81,7 @@ public class SaveConfig {
 		AbstractConfiguration config = null;
 
 		if (args.length >= 3 && args[2] != null && !args[2].trim().isEmpty()) {
-			String extraParam = args[2].trim();
-			File customFile = new File(extraParam);
-			if (customFile.exists() && customFile.isFile()) {
-				try {
-					Parameters params = new Parameters();
-					FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<>(
-							XMLConfiguration.class).configure(params.xml().setFile(customFile));
-					config = builder.getConfiguration();
-				} catch (Exception e) {
-					System.err.println("Warnung: Konnte Konfigurationsdatei '" + extraParam + "' nicht laden: " + e.getMessage());
-				}
-			} else {
-				BaseConfiguration baseConfig = new BaseConfiguration();
-				baseConfig.setProperty("device.feig.id", extraParam);
-				baseConfig.setProperty("device.feig.type", "usb");
-				config = baseConfig;
-			}
+			config = configurationFromTarget(args[2]);
 		} else {
 			File defaultInventory = new File("inventory.xml");
 			if (defaultInventory.exists() && defaultInventory.isFile()) {
@@ -156,6 +141,95 @@ public class SaveConfig {
 			} catch (Throwable t) {
 				// Ignore close errors
 			}
+		}
+	}
+
+	static AbstractConfiguration configurationFromTarget(String target) throws Exception {
+		if (target == null || target.trim().isEmpty()) {
+			throw new IllegalArgumentException("Reader-Ziel darf nicht leer sein");
+		}
+		String value = target.trim();
+		File customFile = new File(value);
+		if (customFile.exists() && customFile.isFile()) {
+			try {
+				Parameters params = new Parameters();
+				FileBasedConfigurationBuilder<XMLConfiguration> builder = new FileBasedConfigurationBuilder<>(
+						XMLConfiguration.class).configure(params.xml().setFile(customFile));
+				return builder.getConfiguration();
+			} catch (Exception e) {
+				throw new IllegalArgumentException("Konnte Konfigurationsdatei '" + value + "' nicht laden: " + e.getMessage(), e);
+			}
+		}
+
+		TcpTarget tcpTarget = parseTcpTarget(value);
+		BaseConfiguration baseConfig = new BaseConfiguration();
+		if (tcpTarget != null) {
+			baseConfig.setProperty("device.feig.type", "ethernet");
+			baseConfig.setProperty("device.feig.host", tcpTarget.host);
+			baseConfig.setProperty("device.feig.port", tcpTarget.port);
+		} else {
+			baseConfig.setProperty("device.feig.id", value);
+			baseConfig.setProperty("device.feig.type", "usb");
+		}
+		return baseConfig;
+	}
+
+	private static TcpTarget parseTcpTarget(String value) {
+		boolean explicitTcp = value.regionMatches(true, 0, "tcp://", 0, 6);
+		String address = explicitTcp ? value.substring(6) : value;
+		if (!explicitTcp && address.indexOf(':') < 0) {
+			return null;
+		}
+
+		String host;
+		String portValue;
+		if (address.startsWith("[")) {
+			int closeBracket = address.indexOf(']');
+			if (closeBracket <= 1 || closeBracket + 1 >= address.length() || address.charAt(closeBracket + 1) != ':') {
+				throw invalidTcpTarget(value);
+			}
+			host = address.substring(1, closeBracket);
+			portValue = address.substring(closeBracket + 2);
+		} else {
+			int separator = address.lastIndexOf(':');
+			if (separator <= 0 || separator != address.indexOf(':')) {
+				throw invalidTcpTarget(value);
+			}
+			host = address.substring(0, separator);
+			portValue = address.substring(separator + 1);
+		}
+		if (host.isBlank() || !host.equals(host.trim()) || host.chars().anyMatch(Character::isWhitespace)
+				|| host.contains("/") || host.contains("?") || host.contains("#") || host.contains("@")
+				|| portValue.isBlank() || portValue.contains("/") || portValue.contains("?") || portValue.contains("#")) {
+			throw invalidTcpTarget(value);
+		}
+		int port;
+		try {
+			if (!portValue.matches("[0-9]+")) {
+				throw invalidTcpTarget(value);
+			}
+			port = Integer.parseInt(portValue);
+		} catch (NumberFormatException e) {
+			throw invalidTcpTarget(value);
+		}
+		if (port < 1 || port > 65535) {
+			throw invalidTcpTarget(value);
+		}
+		return new TcpTarget(host, port);
+	}
+
+	private static IllegalArgumentException invalidTcpTarget(String value) {
+		return new IllegalArgumentException("Ungültiges TCP-Ziel '" + value
+				+ "'. Erwartet wird host:port oder tcp://host:port (IPv6: tcp://[adresse]:port)");
+	}
+
+	private static final class TcpTarget {
+		private final String host;
+		private final int port;
+
+		private TcpTarget(String host, int port) {
+			this.host = host;
+			this.port = port;
 		}
 	}
 }

@@ -507,6 +507,10 @@ public class ISO15693Feig implements ISO15693Reader {
 		return feig.readGateDiagnostics();
 	}
 
+	public List<FeigRFID.BufferedTag> readBufferedTags(int maxCount) throws Exception {
+		return feig.readBufferedTags(maxCount);
+	}
+
 	private FeigRFID feig;
 	private AbstractConfiguration config;
 	protected HashMap<String, Integer> maxBlocksMap;

@@ -27,6 +27,7 @@
             <includes>
                 <include>inventory.xml</include>
                 <include>inventory.xml.template</include>
+                <include>reader_buffered_mode_config.xml</include>
                 <include>README.md</include>
             </includes>
             <fileMode>0644</fileMode>

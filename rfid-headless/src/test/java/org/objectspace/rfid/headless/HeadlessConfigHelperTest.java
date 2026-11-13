@@ -13,6 +13,63 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HeadlessConfigHelperTest {
 
     @Test
+    public void bufferedModeIsExplicitAndParsedCorrectly() throws Exception {
+        XMLConfiguration xml = new XMLConfiguration();
+        new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
+                <configuration><readers>
+                <reader><reader_id>host</reader_id><device><select>feig</select></device></reader>
+                <reader><reader_id>gate</reader_id><feig><mode>BUFFERED</mode>
+                <buffer><pollInterval>700</pollInterval></buffer><gate><pollInterval>5000</pollInterval></gate>
+                </feig></reader></readers></configuration>
+                """));
+        var readers = HeadlessConfigHelper.getReaderConfigs(xml);
+        assertEquals("host", readers.get(0).getOperatingMode());
+        assertEquals("buffered", readers.get(1).getOperatingMode());
+        assertEquals(700, readers.get(1).getBufferPollInterval());
+        assertEquals(5000, readers.get(1).getGatePollInterval());
+        assertEquals("buffered", readers.get(1).toConfiguration().getString("device.feig.mode"));
+
+        BaseConfiguration flat = new BaseConfiguration();
+        flat.setProperty("readers.reader(0).reader_id", "gate");
+        flat.setProperty("readers.reader(0).device.feig.mode", "buffered");
+        assertEquals("buffered", HeadlessConfigHelper.getReaderConfigs(flat).get(0).getOperatingMode());
+        BaseConfiguration legacy = new BaseConfiguration();
+        legacy.setProperty("device.feig.mode", "buffered");
+        assertEquals("buffered", HeadlessConfigHelper.getReaderConfigs(legacy).get(0).getOperatingMode());
+        legacy.setProperty("device.feig.mode", "typo");
+        assertThrows(IllegalArgumentException.class, () -> HeadlessConfigHelper.getReaderConfigs(legacy));
+        legacy.setProperty("device.feig.mode", "host");
+        legacy.setProperty("device.feig.buffer.pollInterval", 0);
+        assertThrows(IllegalArgumentException.class, () -> HeadlessConfigHelper.getReaderConfigs(legacy));
+    }
+
+    @Test
+    public void autoConfigDefaultsToFalseAndRespectsReaderOverrides() throws Exception {
+        XMLConfiguration config = new XMLConfiguration();
+        new org.apache.commons.configuration2.io.FileHandler(config).load(new java.io.StringReader("""
+                <configuration><device><feig><autoconfig>false</autoconfig></feig></device><readers>
+                <reader><reader_id>host</reader_id><feig><mode>host</mode>
+                <autoconfig>true</autoconfig><hostconfigfile>host.xml</hostconfigfile></feig></reader>
+                <reader><reader_id>gate</reader_id><feig><mode>buffered</mode>
+                <autoconfig>true</autoconfig><bufferedconfigfile>buffered.xml</bufferedconfigfile></feig></reader>
+                <reader><reader_id>default</reader_id><feig><mode>buffered</mode></feig></reader>
+                </readers></configuration>
+                """));
+        var readers = HeadlessConfigHelper.getReaderConfigs(config);
+        assertTrue(readers.get(0).isAutoConfig());
+        assertEquals("host.xml", readers.get(0).toConfiguration().getString("device.feig.hostconfigfile"));
+        assertTrue(readers.get(1).isAutoConfig());
+        assertEquals("buffered.xml", readers.get(1).toConfiguration().getString("device.feig.bufferedconfigfile"));
+        assertFalse(readers.get(2).isAutoConfig());
+        assertFalse(readers.get(2).toConfiguration().getBoolean("device.feig.autoconfig"));
+
+        BaseConfiguration legacy = new BaseConfiguration();
+        assertFalse(HeadlessConfigHelper.getReaderConfigs(legacy).get(0).isAutoConfig());
+        legacy.setProperty("device.feig.autoconfig", true);
+        assertTrue(HeadlessConfigHelper.getReaderConfigs(legacy).get(0).isAutoConfig());
+    }
+
+    @Test
     public void gateOptInIsIsolatedPerReader() throws Exception {
         XMLConfiguration xml = new XMLConfiguration();
         new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
@@ -550,9 +607,15 @@ public class HeadlessConfigHelperTest {
                 assertEquals(1, readerConfigs.size());
 
                 HeadlessReaderConfig primaryReader = readerConfigs.get(0);
-                assertTrue(primaryReader.getReaderId().equals("feig-01") || primaryReader.getReaderId().equals("reader-01"));
-                assertFalse(primaryReader.isReadOnly());
-                assertEquals("usb", primaryReader.getType());
+                assertNotNull(primaryReader.getReaderId());
+                assertTrue(primaryReader.getReaderId().equals("feig-01") || primaryReader.getReaderId().equals("reader-01") || primaryReader.getReaderId().equals("gate-north"));
+                if ("gate-north".equals(primaryReader.getReaderId())) {
+                    assertTrue(primaryReader.isReadOnly());
+                    assertEquals("ethernet", primaryReader.getType());
+                } else {
+                    assertFalse(primaryReader.isReadOnly());
+                    assertEquals("usb", primaryReader.getType());
+                }
                 assertEquals(12, primaryReader.getNumBlocks());
                 assertEquals(300, primaryReader.getSleepInterval());
                 assertEquals(20000, primaryReader.getDebounceMillis());

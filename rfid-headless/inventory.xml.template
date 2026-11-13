@@ -12,6 +12,11 @@
 			<!-- Device ID / needed if multiple devices are connected -->
 			<!-- <id>52E688</id> -->
 
+			<!-- Apply the mode-specific configuration at startup only when explicitly enabled. -->
+			<autoconfig>false</autoconfig>
+			<!-- <hostconfigfile>reader_host_mode_config.xml</hostconfigfile> -->
+			<!-- <bufferedconfigfile>reader_buffered_mode_config.xml</bufferedconfigfile> -->
+
 			<!-- Optional reader configuration file to load at startup -->
 			<!-- <configfile>host.xml</configfile> -->
 
@@ -55,6 +60,31 @@
 			<channels>
 				<channel>rfid</channel>
 				<channel>rfid:reader-02</channel>
+			</channels>
+		</reader>
+		[Example: FEIG Gate (1800/700) in preconfigured Buffered Reader Mode]
+		<reader>
+			<reader_id>gate-north</reader_id>
+			<readonly>true</readonly>
+			<feig>
+				<type>ethernet</type>
+				<host>10.96.12.18</host>
+				<port>10001</port>
+				<mode>buffered</mode>
+				<autoconfig>false</autoconfig>
+				<gate>
+					<enabled>true</enabled>
+					<pollInterval>30000</pollInterval>
+				</gate>
+				<buffer>
+					<pollInterval>300</pollInterval>
+				</buffer>
+			</feig>
+			<debounce>20000</debounce>
+			<numblocks>12</numblocks>
+			<channels>
+				<channel>gates</channel>
+				<channel>rfid:gate-north</channel>
 			</channels>
 		</reader>
 	</readers>

@@ -22,6 +22,8 @@ public class HeadlessReaderScanner implements Runnable {
 	private final int numBlocks;
 	private final int sleepInterval;
 	private final String readerId;
+	private final boolean autoConfig;
+	private final File hostModeConfigFile;
 
 	private final ReentrantLock scanLock = new ReentrantLock(true);
 	private final AtomicBoolean paused = new AtomicBoolean(false);
@@ -31,18 +33,31 @@ public class HeadlessReaderScanner implements Runnable {
 	private Runnable gatePoller;
 	private long nextGatePollNanos;
 	private boolean gatePolled;
+	private boolean autoConfigApplied;
 	private static final long GATE_POLL_INTERVAL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
-		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null);
+		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null, false);
 	}
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval, String readerId) {
+		this(reader, callback, numBlocks, sleepInterval, readerId, false);
+	}
+
+	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks,
+			int sleepInterval, String readerId, boolean autoConfig) {
+		this(reader, callback, numBlocks, sleepInterval, readerId, autoConfig, null);
+	}
+
+	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks,
+			int sleepInterval, String readerId, boolean autoConfig, File hostModeConfigFile) {
 		this.reader = reader;
 		this.callback = callback;
 		this.numBlocks = numBlocks > 0 ? numBlocks : HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
 		this.sleepInterval = sleepInterval > 0 ? sleepInterval : HeadlessConfigHelper.DEFAULT_SLEEP_INTERVAL_MS;
 		this.readerId = readerId != null && !readerId.isBlank() ? readerId.trim() : (callback != null ? callback.getReaderId() : null);
+		this.autoConfig = autoConfig;
+		this.hostModeConfigFile = hostModeConfigFile;
 	}
 
 	public synchronized void start() {
@@ -133,7 +148,6 @@ public class HeadlessReaderScanner implements Runnable {
 										logger.info("Reader Init: {}", logMsg);
 									}
 								}
-								ensureHostMode();
 							} else {
 								logger.warn("Reader connection attempt failed. Retrying in 2 seconds...");
 								Thread.sleep(2000);
@@ -143,6 +157,20 @@ public class HeadlessReaderScanner implements Runnable {
 							logger.warn("Reader connection error: {}. Retrying in 2 seconds...", e.getMessage());
 							Thread.sleep(2000);
 							continue;
+						}
+					}
+
+					if (reader != null && reader.isConnected() && autoConfig && !autoConfigApplied) {
+						ensureHostMode();
+						if (!autoConfigApplied) {
+							logger.error("Host Mode auto-configuration failed; stopping reader {}", readerId);
+							try {
+								reader.close();
+							} catch (Exception e) {
+								logger.warn("Failed to close reader {}: {}", readerId, e.getMessage());
+							}
+							running = false;
+							break;
 						}
 					}
 
@@ -263,38 +291,35 @@ public class HeadlessReaderScanner implements Runnable {
 	}
 
 	/**
-	 * Checks whether the connected RFID reader is in Host Mode.
-	 * If not in Host Mode, writes the Host Mode configuration into the device
-	 * without creating a backup, ensuring proper timing for EEPROM writes and system reset.
+	 * Applies the Host Mode configuration once when automatic configuration is enabled.
 	 */
 	public void ensureHostMode() {
 		if (reader == null || !reader.isConnected()) {
 			return;
 		}
+		if (!autoConfig || autoConfigApplied) {
+			return;
+		}
 		try {
-			logger.info("Checking reader operating mode...");
-			if (!reader.isHostMode()) {
-				logger.warn("FEIG reader is not in Host Mode! Configuring Host Mode now...");
-				File hostConfigFile = reader.resolveHostModeConfigFile();
-				if (hostConfigFile == null || !hostConfigFile.exists()) {
-					hostConfigFile = FeigRFID.resolveHostModeConfigFile(null);
-				}
-				if (hostConfigFile == null || !hostConfigFile.exists()) {
-					logger.error("Host Mode configuration file 'reader_host_mode_config.xml' could not be resolved! Cannot configure reader.");
-					return;
-				}
-				// Brief delay to allow initial connection / in-flight reader operations to settle
-				Thread.sleep(400);
-				logger.info("Writing Host Mode configuration ({}) to reader EEPROM & RAM...", hostConfigFile.getName());
-				reader.restoreHostModeConfig(hostConfigFile);
-				// Additional delay to ensure reader reboot and initialization completes cleanly
-				Thread.sleep(500);
-				logger.info("FEIG reader successfully configured in Host Mode and reinitialized.");
-			} else {
-				logger.info("FEIG reader is confirmed in Host Mode.");
+			File hostConfigFile = hostModeConfigFile != null ? hostModeConfigFile : reader.resolveHostModeConfigFile();
+			if (hostModeConfigFile == null && (hostConfigFile == null || !hostConfigFile.isFile())) {
+				hostConfigFile = FeigRFID.resolveHostModeConfigFile(null);
 			}
+			if (hostConfigFile == null || !hostConfigFile.isFile() || !hostConfigFile.canRead()) {
+				logger.error("Host Mode configuration file 'reader_host_mode_config.xml' could not be resolved! Cannot configure reader.");
+				return;
+			}
+			Thread.sleep(400);
+			logger.info("Applying Host Mode configuration ({}) to reader EEPROM & RAM...", hostConfigFile.getName());
+			reader.restoreHostModeConfig(hostConfigFile);
+			autoConfigApplied = true;
+			Thread.sleep(500);
+			logger.info("FEIG reader successfully configured in Host Mode and reinitialized.");
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			logger.warn("Host Mode auto-configuration interrupted for reader {}", readerId);
 		} catch (Exception e) {
-			logger.error("Failed to check or apply Host Mode configuration on reader: {}", e.getMessage(), e);
+			logger.error("Failed to apply Host Mode configuration on reader: {}", e.getMessage(), e);
 		}
 	}
 

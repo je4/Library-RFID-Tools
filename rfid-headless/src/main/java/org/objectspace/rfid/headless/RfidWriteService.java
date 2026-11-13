@@ -45,6 +45,14 @@ public class RfidWriteService {
 		CompletableFuture<WriteTagResponseData> future = CompletableFuture.supplyAsync(() -> {
 			String effectiveReaderId = readerInstance != null ? readerInstance.getReaderId() : clientName;
 
+			if (readerInstance != null && readerInstance.isBufferedMode()) {
+				logger.warn("[WSBroker] Rejecting writeTags on buffered mode reader '{}'", effectiveReaderId);
+				String primaryUid = (items != null && !items.isEmpty()) ? items.get(0).getUid() : "";
+				String primaryItemId = (items != null && !items.isEmpty()) ? items.get(0).getItemId() : "";
+				return WriteTagResponseData.error(primaryUid, primaryItemId,
+						"Reader '" + effectiveReaderId + "' is configured in buffered mode and does not support write operations", effectiveReaderId);
+			}
+
 			if (readerInstance != null && readerInstance.isReadOnly()) {
 				logger.warn("[WSBroker] Rejecting writeTags on read-only reader '{}'", effectiveReaderId);
 				String primaryUid = (items != null && !items.isEmpty()) ? items.get(0).getUid() : "";
@@ -203,6 +211,13 @@ public class RfidWriteService {
 
 			Byte parsedAfi = WsBrokerPayloadParser.parseAfi(afiObj);
 			String afiHex = WsBrokerPayloadParser.formatAfiHex(parsedAfi);
+
+			if (readerInstance != null && readerInstance.isBufferedMode()) {
+				logger.warn("[WSBroker] Rejecting writeAfi on buffered mode reader '{}'", effectiveReaderId);
+				String primaryUid = (uids != null && !uids.isEmpty()) ? uids.get(0) : "";
+				return WriteAfiResponseData.error(primaryUid, (afiHex != null ? afiHex : ""),
+						"Reader '" + effectiveReaderId + "' is configured in buffered mode and does not support write operations", effectiveReaderId);
+			}
 
 			if (readerInstance != null && readerInstance.isReadOnly()) {
 				logger.warn("[WSBroker] Rejecting writeAfi on read-only reader '{}'", effectiveReaderId);

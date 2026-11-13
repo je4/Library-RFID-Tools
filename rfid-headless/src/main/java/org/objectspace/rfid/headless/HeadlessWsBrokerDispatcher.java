@@ -308,7 +308,10 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public void dispatchTag(TagReadData data, String sessionName, long timestamp) {
 		if (data != null) {
 			long correctedTimestamp = timestamp > 0 ? java.time.Instant.ofEpochMilli(timestamp).plus(brokerTimeOffset).toEpochMilli() : timestamp;
-			TagReadData timedData = data.withTime(correctedTimestamp > 0 ? java.time.Instant.ofEpochMilli(correctedTimestamp).toString() : null);
+			String eventTime = (data.time() != null && !data.time().isBlank())
+					? data.time()
+					: (correctedTimestamp > 0 ? java.time.Instant.ofEpochMilli(correctedTimestamp).toString() : null);
+			TagReadData timedData = data.withTime(eventTime);
 			dispatch(TagReadData.EVENT_NAME, timedData, timedData.getSummaryMessage(), sessionName, correctedTimestamp, timedData.readerId());
 		}
 	}
@@ -341,7 +344,19 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
 							boolean crcOk, String tagName, String sessionName, long timestamp,
 							String clientId, String readerId, FinnishDataModel metadata, String afi) {
+		dispatchTag(uid, itemId, rawHex, isil, country, crcOk, tagName, sessionName, timestamp, clientId, readerId, metadata, afi, null);
+	}
+
+	/**
+	 * Dispatches a scanned RFID tag with readerId, AFI, and eventTime to all configured WSBroker channels.
+	 */
+	public void dispatchTag(String uid, String itemId, String rawHex, String isil, String country,
+							boolean crcOk, String tagName, String sessionName, long timestamp,
+							String clientId, String readerId, FinnishDataModel metadata, String afi, String eventTime) {
 		TagReadData data = new TagReadData(uid, itemId, rawHex, isil, country, crcOk, tagName, metadata, afi, readerId);
+		if (eventTime != null && !eventTime.isBlank()) {
+			data = data.withTime(eventTime);
+		}
 		dispatchTag(data, sessionName, timestamp);
 	}
 

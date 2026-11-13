@@ -112,6 +112,7 @@ public record RfidPayload<T>(
 | `rfid:write_tag_response` | Outbound | `WriteTagResponseData` | Response reporting success, failures, and per-UID error details. |
 | `rfid:write_afi` | Inbound | `JsonNode` / `Map` | Command to write AFI security byte to transponders. |
 | `rfid:write_afi_response` | Outbound | `WriteAfiResponseData` | Response reporting AFI write status per transponder UID. |
+| `rfid.gate.status` | Outbound | `Map<String, Object>` | Periodic publication of people counter metrics and gate diagnostics per gate reader. |
 
 ---
 
@@ -319,6 +320,42 @@ public record WriteAfiResponseData(
   }
 }
 ```
+
+---
+
+### 5.6 Gate Status Data (`rfid.gate.status`)
+
+Periodically broadcast by gate workers when `<gate><enabled>true</enabled></gate>` is configured. Publishes raw people counter channels and diagnostic error flags.
+
+#### JSON Example
+```json
+{
+  "event": "rfid.gate.status",
+  "data": {
+    "readerId": "gate-north",
+    "counters": [
+      {
+        "address": { "portType": 1, "busAddress": 1 },
+        "detector1Counter1": 1420,
+        "detector1Counter2": 1395,
+        "detector2Counter1": 0,
+        "detector2Counter2": 0
+      }
+    ],
+    "diagnostics": [
+      {
+        "address": { "portType": 1, "busAddress": 1 },
+        "error": 0,
+        "warning": 0
+      }
+    ]
+  }
+}
+```
+
+> **Operational Note for Buffered Gates:**
+> - In preconfigured Buffered Reader Mode, write operations (`rfid:write_tag`, `rfid:write_afi`) are rejected fail-closed with an error response.
+> - Gate counters report raw SDK hardware channels; direction semantics depend on hardware antenna orientation and reader configuration.
 
 ---
 
