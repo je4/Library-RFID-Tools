@@ -117,3 +117,4 @@ certs/
 *.pem
 *.crt
 *.key
+/rfid-headless/desk02/
