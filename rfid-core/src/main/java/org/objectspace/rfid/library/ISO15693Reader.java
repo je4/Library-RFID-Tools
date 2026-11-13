@@ -140,6 +140,14 @@ public interface ISO15693Reader {
 	}
 
 	/**
+	 * check if the connected reader is currently configured in buffered mode (BRM)
+	 * @return true if reader is in buffered read mode
+	 */
+	public default boolean isBufferedMode() {
+		return false;
+	}
+
+	/**
 	 * check if the reader has encountered a communication or initialization error
 	 * @return true if error detected
 	 */

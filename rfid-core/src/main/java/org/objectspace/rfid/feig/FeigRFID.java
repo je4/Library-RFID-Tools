@@ -750,6 +750,7 @@ public class FeigRFID {
 	}
 
 	private Boolean hostModeOverride = null;
+	private Boolean bufferedModeOverride = null;
 
 	/**
 	 * Sets an override for host mode detection (used primarily for testing).
@@ -761,18 +762,23 @@ public class FeigRFID {
 	}
 
 	/**
-	 * Checks whether the connected FEIG reader is currently configured in Host Mode.
-	 * Reads CFG1 (Operating Mode parameter) from reader EEPROM or RAM.
+	 * Sets an override for buffered mode detection (used primarily for testing).
 	 *
-	 * @return true if reader is in Host Mode, false if configured in another mode (e.g. Scan Mode or BRM)
+	 * @param bufferedMode buffered mode status or null to reset override
 	 */
-	public boolean isHostMode() {
-		if (hostModeOverride != null) {
-			return hostModeOverride;
-		}
+	public void setBufferedMode(Boolean bufferedMode) {
+		this.bufferedModeOverride = bufferedMode;
+	}
+
+	/**
+	 * Reads the operating mode byte from the reader configuration page CFG1 (b0).
+	 *
+	 * @return operating mode byte value (e.g. 0x00 for Host Mode, 0x80 for Buffered Read Mode, 0x01 for Scan Mode), or -1 if unreadable
+	 */
+	public int readOperatingMode() {
 		synchronized (readerLock) {
 			if (!connected || reader == null) {
-				return false;
+				return -1;
 			}
 			try {
 				// Read CFG1 from EEPROM (false) or RAM (true)
@@ -790,7 +796,7 @@ public class FeigRFID {
 					for (String param : possibleParams) {
 						try {
 							byte mode = reader.config().getByteConfigPara(param, false);
-							return (mode == 0);
+							return (mode & 0xFF);
 						} catch (Throwable ignored) {
 						}
 					}
@@ -805,17 +811,63 @@ public class FeigRFID {
 							java.util.regex.Matcher m = java.util.regex.Pattern.compile("<CFG1[^>]*\\bb0=\"([0-9a-fA-F]+)\"").matcher(xml);
 							if (m.find()) {
 								String b0Hex = m.group(1);
-								int modeVal = Integer.parseInt(b0Hex, 16);
-								return (modeVal == 0);
+								return Integer.parseInt(b0Hex, 16);
 							}
 						}
 					} catch (Throwable ignored) {
 					}
 				}
 			} catch (Throwable t) {
-				log("Warnung bei Host-Mode Prüfung: " + t.getMessage());
+				log("Warnung bei Operating-Mode Prüfung: " + t.getMessage());
 			}
-			return true;
+			return -1;
+		}
+	}
+
+	/**
+	 * Checks whether the connected FEIG reader is currently configured in Host Mode.
+	 * Reads CFG1 (Operating Mode parameter) from reader EEPROM or RAM.
+	 *
+	 * @return true if reader is in Host Mode, false if configured in another mode (e.g. Scan Mode or BRM)
+	 */
+	public boolean isHostMode() {
+		if (hostModeOverride != null) {
+			return hostModeOverride;
+		}
+		if (bufferedModeOverride != null && bufferedModeOverride) {
+			return false;
+		}
+		synchronized (readerLock) {
+			if (!connected || reader == null) {
+				return false;
+			}
+			int mode = readOperatingMode();
+			if (mode == -1) {
+				return true;
+			}
+			return (mode == 0x00);
+		}
+	}
+
+	/**
+	 * Checks whether the connected FEIG reader is currently configured in Buffered Read Mode (BRM).
+	 * Reads CFG1 (Operating Mode parameter, 0x80) from reader EEPROM or RAM.
+	 *
+	 * @return true if reader is in Buffered Read Mode, false otherwise
+	 */
+	public boolean isBufferedMode() {
+		if (bufferedModeOverride != null) {
+			return bufferedModeOverride;
+		}
+		if (hostModeOverride != null && hostModeOverride) {
+			return false;
+		}
+		synchronized (readerLock) {
+			if (!connected || reader == null) {
+				return false;
+			}
+			int mode = readOperatingMode();
+			return (mode == 0x80);
 		}
 	}
 

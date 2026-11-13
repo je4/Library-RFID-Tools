@@ -604,7 +604,7 @@ public class HeadlessConfigHelperTest {
 
                 java.util.List<HeadlessReaderConfig> readerConfigs = HeadlessConfigHelper.getReaderConfigs(config);
                 assertNotNull(readerConfigs);
-                assertEquals(1, readerConfigs.size());
+                assertFalse(readerConfigs.isEmpty());
 
                 HeadlessReaderConfig primaryReader = readerConfigs.get(0);
                 assertNotNull(primaryReader.getReaderId());

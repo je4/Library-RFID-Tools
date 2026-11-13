@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,12 +46,31 @@ public class HeadlessGateWorkerTest {
         private List<FeigRFID.GateCounter> counters = List.of(
                 new FeigRFID.GateCounter(new FeigRFID.GateAddress(1, 1), 10, 20, 30, 40)
         );
-        private List<FeigRFID.GateDiagnostic> diagnostics = List.of(
+        private final List<FeigRFID.GateDiagnostic> diagnostics = List.of(
                 new FeigRFID.GateDiagnostic(new FeigRFID.GateAddress(1, 1), 0, 1)
         );
+        private final AtomicBoolean bufferedMode = new AtomicBoolean(true);
+        private final AtomicBoolean hostMode = new AtomicBoolean(false);
+        private final AtomicInteger operatingModeChecks = new AtomicInteger(0);
 
         public void addBufferedTag(String uid, byte[] data, long blockSize) {
             bufferedQueue.add(new FeigRFID.BufferedTag(uid, data, blockSize, "2026-11-13T11:00:00", 1));
+        }
+
+        @Override
+        public boolean isBufferedMode() {
+            operatingModeChecks.incrementAndGet();
+            return bufferedMode.get();
+        }
+
+        @Override
+        public boolean isHostMode() {
+            return hostMode.get();
+        }
+
+        public void setBufferedModeState(boolean isBuffered) {
+            this.bufferedMode.set(isBuffered);
+            this.hostMode.set(!isBuffered);
         }
 
         @Override
@@ -357,5 +377,41 @@ public class HeadlessGateWorkerTest {
         gateInstance.stop();
 
         assertFalse(gateWorker.isRunning());
+    }
+
+    @Test
+    @DisplayName("Gate worker checks operating mode and verifies Buffered Read Mode upon connection")
+    public void workerChecksOperatingModeUponConnection() throws Exception {
+        MockGateReader reader = new MockGateReader();
+        reader.setConnected(false);
+        reader.setBufferedModeState(true);
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, null, 1000L, "gate-north");
+        HeadlessGateWorker worker = new HeadlessGateWorker(reader, callback, null, 50, 1000, false, "gate-north");
+
+        worker.start();
+        Thread.sleep(150);
+
+        worker.stop();
+
+        assertTrue(reader.operatingModeChecks.get() > 0, "Gate worker should have verified operating mode");
+    }
+
+    @Test
+    @DisplayName("Gate worker warns when connected reader is in Host Mode")
+    public void workerWarnsWhenInHostMode() throws Exception {
+        MockGateReader reader = new MockGateReader();
+        reader.setConnected(false);
+        reader.setBufferedModeState(false);
+
+        HeadlessReaderCallback callback = new HeadlessReaderCallback(null, null, 1000L, "gate-north");
+        HeadlessGateWorker worker = new HeadlessGateWorker(reader, callback, null, 50, 1000, false, "gate-north");
+
+        worker.start();
+        Thread.sleep(150);
+
+        worker.stop();
+
+        assertTrue(reader.operatingModeChecks.get() > 0, "Gate worker should have checked operating mode");
     }
 }

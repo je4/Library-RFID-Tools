@@ -41,6 +41,7 @@ public class HeadlessGateWorker implements Runnable {
 	private Thread workerThread;
 	private long lastGatePollTime = 0L;
 	private boolean autoConfigApplied;
+	private boolean operatingModeChecked;
 
 	public interface BufferedTagReader {
 		List<FeigRFID.BufferedTag> readBufferedTags(int maxCount) throws Exception;
@@ -163,6 +164,7 @@ public class HeadlessGateWorker implements Runnable {
 				processPendingTasks();
 
 				if (reader != null && !reader.isConnected()) {
+					operatingModeChecked = false;
 					try {
 						logger.info("Connecting gate reader [{}] on worker thread...", readerId);
 						reader.connect();
@@ -180,6 +182,11 @@ public class HeadlessGateWorker implements Runnable {
 					if (reader.isConnected()) {
 						logger.info("Gate reader [{}] successfully connected.", readerId);
 					}
+				}
+
+				if (reader != null && reader.isConnected() && !operatingModeChecked) {
+					checkOperatingMode();
+					operatingModeChecked = true;
 				}
 
 				if (reader != null && reader.isConnected() && autoConfig && !autoConfigApplied) {
@@ -229,6 +236,29 @@ public class HeadlessGateWorker implements Runnable {
 			}
 		}
 		logger.info("HeadlessGateWorker thread loop ended for reader [{}]", readerId);
+	}
+
+	/**
+	 * Checks and logs whether the connected reader is configured in Buffered Read Mode.
+	 */
+	public void checkOperatingMode() {
+		if (reader == null || !reader.isConnected()) {
+			return;
+		}
+		try {
+			logger.info("Checking reader operating mode...");
+			if (reader.isBufferedMode()) {
+				logger.info("FEIG reader is confirmed in Buffered Read Mode.");
+			} else {
+				if (reader.isHostMode()) {
+					logger.warn("FEIG reader is configured in Host Mode (expected: Buffered Read Mode).");
+				} else {
+					logger.warn("FEIG reader is not in Buffered Read Mode!");
+				}
+			}
+		} catch (Exception e) {
+			logger.warn("Error checking operating mode on reader [{}]: {}", readerId, e.getMessage());
+		}
 	}
 
 	private void applyBufferedModeConfiguration() throws Exception {

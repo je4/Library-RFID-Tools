@@ -34,6 +34,7 @@ public class HeadlessReaderScanner implements Runnable {
 	private long nextGatePollNanos;
 	private boolean gatePolled;
 	private boolean autoConfigApplied;
+	private boolean operatingModeChecked;
 	private static final long GATE_POLL_INTERVAL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
@@ -134,6 +135,7 @@ public class HeadlessReaderScanner implements Runnable {
 
 					// 1. Connection check and auto-recovery
 					if (reader != null && !reader.isConnected()) {
+						operatingModeChecked = false;
 						if (callback != null) {
 							callback.empty();
 						}
@@ -158,6 +160,11 @@ public class HeadlessReaderScanner implements Runnable {
 							Thread.sleep(2000);
 							continue;
 						}
+					}
+
+					if (reader != null && reader.isConnected() && !operatingModeChecked) {
+						checkOperatingMode();
+						operatingModeChecked = true;
 					}
 
 					if (reader != null && reader.isConnected() && autoConfig && !autoConfigApplied) {
@@ -287,6 +294,29 @@ public class HeadlessReaderScanner implements Runnable {
 			paused.set(false);
 			scanLock.unlock();
 			logger.info("Released exclusive reader lock. Scanning loop resumed.");
+		}
+	}
+
+	/**
+	 * Checks and logs whether the connected reader is configured in Host Mode.
+	 */
+	public void checkOperatingMode() {
+		if (reader == null || !reader.isConnected()) {
+			return;
+		}
+		try {
+			logger.info("Checking reader operating mode...");
+			if (reader.isHostMode()) {
+				logger.info("FEIG reader is confirmed in Host Mode.");
+			} else {
+				if (reader.isBufferedMode()) {
+					logger.warn("FEIG reader is configured in Buffered Read Mode (expected: Host Mode).");
+				} else {
+					logger.warn("FEIG reader is not in Host Mode!");
+				}
+			}
+		} catch (Exception e) {
+			logger.warn("Error checking operating mode on reader {}: {}", readerId, e.getMessage());
 		}
 	}
 

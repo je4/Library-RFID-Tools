@@ -195,6 +195,35 @@ public class SaveConfigTest {
     }
 
     @Test
+    public void testBufferedModeCheckAndOverride() {
+        BaseConfiguration config = new BaseConfiguration();
+        FeigRFID feig = new FeigRFID(config);
+
+        // When not connected and no override, returns false
+        assertFalse(feig.isBufferedMode());
+
+        // Test override mechanism
+        feig.setBufferedMode(true);
+        assertTrue(feig.isBufferedMode());
+        assertFalse(feig.isHostMode());
+
+        feig.setBufferedMode(false);
+        assertFalse(feig.isBufferedMode());
+
+        feig.setBufferedMode(null);
+        assertFalse(feig.isBufferedMode());
+
+        // Test ISO15693Feig delegation
+        ISO15693Feig reader = new ISO15693Feig(config);
+        reader.getFeigRFID().setBufferedMode(true);
+        assertTrue(reader.isBufferedMode());
+        assertFalse(reader.isHostMode());
+
+        reader.getFeigRFID().setBufferedMode(false);
+        assertFalse(reader.isBufferedMode());
+    }
+
+    @Test
     public void testFormatIsoError() {
         assertEquals("Command not supported", ISO15693Feig.formatIsoError(0x01));
         assertEquals("Command not recognized / format error", ISO15693Feig.formatIsoError(0x02));
