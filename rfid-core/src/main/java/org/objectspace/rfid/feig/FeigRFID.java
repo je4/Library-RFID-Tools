@@ -156,8 +156,8 @@ public class FeigRFID {
 	 * Connects to the FEIG RFID reader.
 	 * Reads optional configuration values:
 	 * - device.feig.id (to bind to a specific hardware device ID in hex)
-	 * - device.feig.type (usb, ethernet or tcp)
-	 * - device.feig.host and device.feig.port for Ethernet connections
+	 * - device.feig.type (usb or tcp)
+	 * - device.feig.host and device.feig.port for TCP connections
 	 * 
 	 * @throws Exception if connection fails
 	 */
@@ -178,7 +178,7 @@ public class FeigRFID {
 			String devType = config.getString("device.feig.type");
 			configDeviceType = (devType != null && !devType.isBlank()) ? devType.trim().toLowerCase(java.util.Locale.ROOT) : "usb";
 		}
-		networkConnection = configDeviceType.equals("ethernet") || configDeviceType.equals("tcp");
+		networkConnection = configDeviceType.equals("tcp");
 		if (!networkConnection && !configDeviceType.equals("usb")) {
 			String err = "Device Type " + configDeviceType + " not supported.";
 			setError(err);
@@ -189,7 +189,7 @@ public class FeigRFID {
 		if (networkConnection) {
 			host = config.getString("device.feig.host", "").trim();
 			if (host.isEmpty()) {
-				String err = "device.feig.host is required for Ethernet";
+				String err = "device.feig.host is required for TCP";
 				setError(err);
 				throw new Exception(err);
 			}
@@ -464,7 +464,7 @@ public class FeigRFID {
 
 	private boolean isNetworkConfigured() {
 		String type = config != null ? config.getString("device.feig.type", "usb").trim() : "usb";
-		return "ethernet".equalsIgnoreCase(type) || "tcp".equalsIgnoreCase(type);
+		return "tcp".equalsIgnoreCase(type);
 	}
 
 	/** Address of a peripheral device on the reader's serial bus. */
@@ -539,7 +539,7 @@ public class FeigRFID {
 				throw new IllegalStateException("Gate API requires device.feig.gate.enabled=true");
 			}
 			if (!isNetworkConfigured()) {
-				throw new IllegalStateException("Gate API requires an Ethernet or TCP connection");
+				throw new IllegalStateException("Gate API requires a TCP connection");
 			}
 			if (!networkConnection || !isConnected()) {
 				throw new IllegalStateException("Gate API requires a connected network reader");

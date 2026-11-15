@@ -161,13 +161,13 @@ The `inventory.xml` file configures the RFID reader interface, scan parameters, 
 </configuration>
 ```
 
-Configure a network reader with type `ethernet` or `tcp`:
+Configure a network reader with type `tcp`:
 
 ```xml
 <reader>
     <reader_id>network-reader</reader_id>
     <feig>
-        <type>ethernet</type>
+        <type>tcp</type>
         <host>192.0.2.10</host>
         <port>1234</port>
     </feig>
@@ -204,7 +204,7 @@ For example (replace the address and port with the actual reader settings):
 <reader>
   <reader_id>library-gate</reader_id>
   <feig>
-    <type>ethernet</type>
+    <type>tcp</type>
     <host>192.0.2.10</host>
     <port>10005</port>
     <gate><enabled>true</enabled></gate>
@@ -247,7 +247,7 @@ Gates (such as FEIG 1800/700) running in preconfigured Buffered Reader Mode can 
   <reader_id>gate-passage</reader_id>
   <readonly>true</readonly>
   <feig>
-    <type>ethernet</type>
+    <type>tcp</type>
     <host>10.96.12.18</host>
     <port>10001</port>
     <mode>buffered</mode>

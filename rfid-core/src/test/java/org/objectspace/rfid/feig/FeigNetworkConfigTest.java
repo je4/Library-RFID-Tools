@@ -9,15 +9,13 @@ class FeigNetworkConfigTest {
 
 	@Test
 	void networkSkipsAutomaticConfigurationFiles() {
-		for (String type : new String[] {"ethernet", "tcp"}) {
-			BaseConfiguration config = new BaseConfiguration();
-			config.setProperty("device.feig.type", type);
-			config.setProperty("device.feig.configfile", "missing-configuration.xml");
-			config.setProperty("device.feig.restoreconfig", "missing-restore.xml");
-			FeigRFID reader = new FeigRFID(config);
-			assertDoesNotThrow(reader::init);
-			assertDoesNotThrow(reader::close);
-		}
+		BaseConfiguration config = new BaseConfiguration();
+		config.setProperty("device.feig.type", "tcp");
+		config.setProperty("device.feig.configfile", "missing-configuration.xml");
+		config.setProperty("device.feig.restoreconfig", "missing-restore.xml");
+		FeigRFID reader = new FeigRFID(config);
+		assertDoesNotThrow(reader::init);
+		assertDoesNotThrow(reader::close);
 	}
 
 	@Test
@@ -28,15 +26,15 @@ class FeigNetworkConfigTest {
 	}
 
 	@Test
-	void ethernetRequiresHost() {
+	void tcpRequiresHost() {
 		BaseConfiguration config = new BaseConfiguration();
-		config.setProperty("device.feig.type", "ethernet");
+		config.setProperty("device.feig.type", "tcp");
 		Exception error = assertThrows(Exception.class, () -> new FeigRFID(config).connect());
 		assertTrue(error.getMessage().contains("device.feig.host"));
 	}
 
 	@Test
-	void ethernetRejectsInvalidPort() {
+	void tcpRejectsInvalidPort() {
 		BaseConfiguration config = new BaseConfiguration();
 		config.setProperty("device.feig.type", "tcp");
 		config.setProperty("device.feig.host", "192.0.2.1");

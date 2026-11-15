@@ -74,7 +74,7 @@ public class HeadlessConfigHelperTest {
         XMLConfiguration xml = new XMLConfiguration();
         new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
                 <configuration><device><feig><gate><enabled>true</enabled></gate></feig></device><readers>
-                <reader><reader_id>gate</reader_id><feig><type>ethernet</type><gate><enabled>true</enabled></gate></feig></reader>
+                <reader><reader_id>gate</reader_id><feig><type>tcp</type><gate><enabled>true</enabled></gate></feig></reader>
                 <reader><reader_id>usb</reader_id><feig><type>usb</type></feig></reader>
                 </readers></configuration>
                 """));
@@ -92,7 +92,7 @@ public class HeadlessConfigHelperTest {
     }
 
     @Test
-    public void testEthernetConfigurationPaths() throws Exception {
+    public void testTcpConfigurationPaths() throws Exception {
         XMLConfiguration xml = new XMLConfiguration();
         new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
                 <configuration><device><feig><host>global</host><port>1000</port></feig></device>
@@ -611,7 +611,7 @@ public class HeadlessConfigHelperTest {
                 assertTrue(primaryReader.getReaderId().equals("feig-01") || primaryReader.getReaderId().equals("reader-01") || primaryReader.getReaderId().equals("gate-north"));
                 if ("gate-north".equals(primaryReader.getReaderId())) {
                     assertTrue(primaryReader.isReadOnly());
-                    assertEquals("ethernet", primaryReader.getType());
+                    assertEquals("tcp", primaryReader.getType());
                 } else {
                     assertFalse(primaryReader.isReadOnly());
                     assertEquals("usb", primaryReader.getType());

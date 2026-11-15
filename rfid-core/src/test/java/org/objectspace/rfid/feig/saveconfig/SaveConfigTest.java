@@ -162,7 +162,7 @@ public class SaveConfigTest {
 
     private void assertTcpTarget(String target, String expectedHost, String expectedPort) throws Exception {
         AbstractConfiguration config = SaveConfig.configurationFromTarget(target);
-        assertEquals("ethernet", config.getString("device.feig.type"));
+        assertEquals("tcp", config.getString("device.feig.type"));
         assertEquals(expectedHost, config.getString("device.feig.host"));
         assertEquals(expectedPort, config.getString("device.feig.port"));
     }

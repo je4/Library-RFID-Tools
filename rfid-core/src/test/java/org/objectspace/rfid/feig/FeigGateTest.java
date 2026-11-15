@@ -24,8 +24,8 @@ class FeigGateTest {
 		BaseConfiguration config = new BaseConfiguration();
 		config.setProperty("device.feig.gate.enabled", "true");
 		ISO15693Feig reader = new ISO15693Feig(config);
-		assertTrue(assertThrows(IllegalStateException.class, reader::readGateCounters).getMessage().contains("Ethernet"));
-		config.setProperty("device.feig.type", "ethernet");
+		assertTrue(assertThrows(IllegalStateException.class, reader::readGateCounters).getMessage().contains("TCP"));
+		config.setProperty("device.feig.type", "tcp");
 		assertTrue(assertThrows(IllegalStateException.class, reader::readGateDiagnostics).getMessage().contains("connected"));
 	}
 }

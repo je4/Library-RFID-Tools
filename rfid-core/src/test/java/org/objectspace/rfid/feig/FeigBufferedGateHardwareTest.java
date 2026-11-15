@@ -25,7 +25,7 @@ class FeigBufferedGateHardwareTest {
 		Settings settings = Settings.fromSystemProperties();
 		System.out.println("WARNING: Reading may consume buffered events; SDK device-buffer and acknowledgement semantics are not verified.");
 		BaseConfiguration config = new BaseConfiguration();
-		config.setProperty("device.feig.type", "ethernet");
+		config.setProperty("device.feig.type", "tcp");
 		config.setProperty("device.feig.host", settings.host());
 		config.setProperty("device.feig.port", settings.port());
 		config.setProperty("device.feig.gate.enabled", "true");

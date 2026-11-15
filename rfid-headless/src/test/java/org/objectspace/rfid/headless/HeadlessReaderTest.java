@@ -39,7 +39,7 @@ public class HeadlessReaderTest {
     public void bufferedGateInitializesGateWorkerFromXml(@TempDir Path tempDir) throws Exception {
         String gate = """
                 <reader><reader_id>gate-18</reader_id><feig>
-                    <type>ethernet</type><host>10.96.12.18</host><port>10001</port>
+                    <type>tcp</type><host>10.96.12.18</host><port>10001</port>
                     <mode>buffered</mode>
                 </feig></reader>
                 """;

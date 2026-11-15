@@ -76,7 +76,7 @@ public class HeadlessReader {
 						reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(),
 						rCfg.getReaderId(), rCfg.isAutoConfig(), explicitConfigFile);
 				String connectionType = rCfg.getType();
-				if (rCfg.isGateEnabled() && ("ethernet".equalsIgnoreCase(connectionType) || "tcp".equalsIgnoreCase(connectionType))
+				if (rCfg.isGateEnabled() && "tcp".equalsIgnoreCase(connectionType)
 						&& reader instanceof ISO15693Feig gateReader) {
 					scanner.setGatePoller(() -> {
 						try {

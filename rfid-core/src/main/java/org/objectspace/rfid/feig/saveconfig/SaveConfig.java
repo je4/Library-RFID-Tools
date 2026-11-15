@@ -164,7 +164,7 @@ public class SaveConfig {
 		TcpTarget tcpTarget = parseTcpTarget(value);
 		BaseConfiguration baseConfig = new BaseConfiguration();
 		if (tcpTarget != null) {
-			baseConfig.setProperty("device.feig.type", "ethernet");
+			baseConfig.setProperty("device.feig.type", "tcp");
 			baseConfig.setProperty("device.feig.host", tcpTarget.host);
 			baseConfig.setProperty("device.feig.port", tcpTarget.port);
 		} else {

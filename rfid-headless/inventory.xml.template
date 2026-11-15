@@ -67,7 +67,7 @@
 			<reader_id>gate-north</reader_id>
 			<readonly>true</readonly>
 			<feig>
-				<type>ethernet</type>
+				<type>tcp</type>
 				<host>10.96.12.18</host>
 				<port>10001</port>
 				<mode>buffered</mode>
