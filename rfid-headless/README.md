@@ -207,7 +207,10 @@ For example (replace the address and port with the actual reader settings):
     <type>tcp</type>
     <host>192.0.2.10</host>
     <port>10005</port>
-    <gate><enabled>true</enabled></gate>
+    <gate>
+      <enabled>true</enabled>
+      <pollinterval>30000</pollinterval>
+    </gate>
   </feig>
   <channels><channel>library-gate</channel></channels>
 </reader>
@@ -254,10 +257,10 @@ Gates (such as FEIG 1800/700) running in preconfigured Buffered Reader Mode can 
     <autoconfig>false</autoconfig>
     <gate>
       <enabled>true</enabled>
-      <pollInterval>30000</pollInterval>
+      <pollinterval>30000</pollinterval>
     </gate>
     <buffer>
-      <pollInterval>300</pollInterval>
+      <pollinterval>300</pollinterval>
     </buffer>
   </feig>
   <debounce>20000</debounce>
@@ -271,7 +274,7 @@ Gates (such as FEIG 1800/700) running in preconfigured Buffered Reader Mode can 
 **Key Operational Rules:**
 * **Dedicated SDK Thread**: Each buffered gate is serviced by its own worker thread maintaining strict SDK thread affinity.
 * **Read-Only Safety**: Write and AFI commands directed to buffered mode readers are rejected fail-closed with clear error responses.
-* **Polling Intervals**: Tag passage buffer is polled at `<buffer><pollInterval>` (default: 300 ms); people counters and diagnostics are polled at `<gate><pollInterval>` (default: 30000 ms) and broadcast via `rfid.gate.status`.
+* **Polling Intervals**: Tag passage buffer is polled at `<buffer><pollinterval>` (default: 300 ms); people counters and diagnostics are polled at `<gate><pollinterval>` (default: 30000 ms) and broadcast via `rfid.gate.status`.
 
 ---
 

@@ -112,7 +112,7 @@ public record RfidPayload<T>(
 | `rfid:write_tag_response` | Outbound | `WriteTagResponseData` | Response reporting success, failures, and per-UID error details. |
 | `rfid:write_afi` | Inbound | `JsonNode` / `Map` | Command to write AFI security byte to transponders. |
 | `rfid:write_afi_response` | Outbound | `WriteAfiResponseData` | Response reporting AFI write status per transponder UID. |
-| `rfid.gate.status` | Outbound | `Map<String, Object>` | Periodic publication of people counter metrics and gate diagnostics per gate reader. |
+| `rfid.gate.status` | Outbound | `GateStatusData` / `PeopleCounterData` | Periodic publication of people counter metrics and gate diagnostics per gate reader. |
 
 ---
 
@@ -323,9 +323,19 @@ public record WriteAfiResponseData(
 
 ---
 
-### 5.6 Gate Status Data (`rfid.gate.status`)
+### 5.6 Gate Status Data (`GateStatusData` / `PeopleCounterData`)
 
-Periodically broadcast by gate workers when `<gate><enabled>true</enabled></gate>` is configured. Publishes raw people counter channels and diagnostic error flags.
+Carried by `rfid.gate.status` (and `rfid/people_counter`) events. Periodically broadcast by gate workers when `<gate><enabled>true</enabled></gate>` is configured. Publishes raw people counter channels and diagnostic error flags.
+
+```java
+public record GateStatusData(
+    @JsonProperty("readerId") String readerId,
+    @JsonProperty("counters") List<FeigRFID.GateCounter> counters,
+    @JsonProperty("diagnostics") List<FeigRFID.GateDiagnostic> diagnostics,
+    @JsonProperty("status") String status,
+    @JsonProperty("time") String time
+)
+```
 
 #### JSON Example
 ```json
@@ -333,6 +343,7 @@ Periodically broadcast by gate workers when `<gate><enabled>true</enabled></gate
   "event": "rfid.gate.status",
   "data": {
     "readerId": "gate-north",
+    "status": "ok",
     "counters": [
       {
         "address": { "portType": 1, "busAddress": 1 },
@@ -345,8 +356,8 @@ Periodically broadcast by gate workers when `<gate><enabled>true</enabled></gate
     "diagnostics": [
       {
         "address": { "portType": 1, "busAddress": 1 },
-        "error": 0,
-        "warning": 0
+        "internalError": 0,
+        "rfDetect": 0
       }
     ]
   }

@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.objectspace.rfid.feig.FeigRFID;
 import org.objectspace.rfid.feig.ISO15693Feig;
+import org.objectspace.rfid.headless.payload.GateStatusData;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -341,15 +342,11 @@ public class HeadlessGateWorker implements Runnable {
 				counters = statusReader.readGateCounters();
 				diagnostics = statusReader.readGateDiagnostics();
 			}
+			GateStatusData data = new GateStatusData(readerId, counters, diagnostics);
 			if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
-				Map<String, Object> data = Map.of(
-						"readerId", readerId,
-						"counters", (counters != null ? counters : List.of()),
-						"diagnostics", (diagnostics != null ? diagnostics : List.of())
-				);
-				wsBrokerDispatcher.dispatch("rfid.gate.status", data, null, null, now, readerId);
-				logger.debug("Gate [{}] published status: {} counter(s), {} diagnostic(s)",
-						readerId, (counters != null ? counters.size() : 0), (diagnostics != null ? diagnostics.size() : 0));
+				wsBrokerDispatcher.dispatchGateStatus(data, null, now);
+			} else {
+				logger.info("{}", data.getSummaryMessage());
 			}
 		} catch (Exception e) {
 			logger.warn("Gate [{}] status polling failed: {}", readerId, e.getMessage());

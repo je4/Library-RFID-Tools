@@ -300,10 +300,11 @@ public class HeadlessGateWorkerTest {
         Event<?> event = testClient.getSentEvents().get(0);
         assertEquals("rfid.gate.status", event.getType());
 
-        Map<?, ?> data = (Map<?, ?>) event.getData();
-        assertEquals("gate-north", data.get("readerId"));
-        assertNotNull(data.get("counters"));
-        assertNotNull(data.get("diagnostics"));
+        assertTrue(event.getData() instanceof org.objectspace.rfid.headless.payload.GateStatusData, "Expected GateStatusData payload");
+        org.objectspace.rfid.headless.payload.GateStatusData data = (org.objectspace.rfid.headless.payload.GateStatusData) event.getData();
+        assertEquals("gate-north", data.readerId());
+        assertNotNull(data.counters());
+        assertNotNull(data.diagnostics());
     }
 
     @Test

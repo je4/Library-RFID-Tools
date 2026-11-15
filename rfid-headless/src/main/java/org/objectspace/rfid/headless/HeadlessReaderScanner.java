@@ -35,7 +35,7 @@ public class HeadlessReaderScanner implements Runnable {
 	private boolean gatePolled;
 	private boolean autoConfigApplied;
 	private boolean operatingModeChecked;
-	private static final long GATE_POLL_INTERVAL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+	private volatile long gatePollIntervalNanos;
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks, int sleepInterval) {
 		this(reader, callback, numBlocks, sleepInterval, callback != null ? callback.getReaderId() : null, false);
@@ -52,6 +52,11 @@ public class HeadlessReaderScanner implements Runnable {
 
 	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks,
 			int sleepInterval, String readerId, boolean autoConfig, File hostModeConfigFile) {
+		this(reader, callback, numBlocks, sleepInterval, readerId, autoConfig, hostModeConfigFile, HeadlessConfigHelper.DEFAULT_GATE_POLL_INTERVAL_MS);
+	}
+
+	public HeadlessReaderScanner(ISO15693Reader reader, HeadlessReaderCallback callback, int numBlocks,
+			int sleepInterval, String readerId, boolean autoConfig, File hostModeConfigFile, int gatePollIntervalMs) {
 		this.reader = reader;
 		this.callback = callback;
 		this.numBlocks = numBlocks > 0 ? numBlocks : HeadlessConfigHelper.DEFAULT_NUM_BLOCKS;
@@ -59,6 +64,8 @@ public class HeadlessReaderScanner implements Runnable {
 		this.readerId = readerId != null && !readerId.isBlank() ? readerId.trim() : (callback != null ? callback.getReaderId() : null);
 		this.autoConfig = autoConfig;
 		this.hostModeConfigFile = hostModeConfigFile;
+		this.gatePollIntervalNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(
+				gatePollIntervalMs > 0 ? gatePollIntervalMs : HeadlessConfigHelper.DEFAULT_GATE_POLL_INTERVAL_MS);
 	}
 
 	public synchronized void start() {
@@ -80,12 +87,25 @@ public class HeadlessReaderScanner implements Runnable {
 		this.gatePoller = gatePoller;
 	}
 
+	public void setGatePollInterval(int gatePollIntervalMs) {
+		this.gatePollIntervalNanos = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(
+				gatePollIntervalMs > 0 ? gatePollIntervalMs : HeadlessConfigHelper.DEFAULT_GATE_POLL_INTERVAL_MS);
+	}
+
+	public long getGatePollIntervalNanos() {
+		return gatePollIntervalNanos;
+	}
+
+	public int getGatePollIntervalMs() {
+		return (int) java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(gatePollIntervalNanos);
+	}
+
 	void pollGateIfDue() {
 		if (gatePoller == null || (gatePolled && System.nanoTime() - nextGatePollNanos < 0)) {
 			return;
 		}
 		gatePolled = true;
-		nextGatePollNanos = System.nanoTime() + GATE_POLL_INTERVAL_NANOS;
+		nextGatePollNanos = System.nanoTime() + gatePollIntervalNanos;
 		try {
 			gatePoller.run();
 		} catch (Exception | LinkageError e) {

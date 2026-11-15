@@ -4,10 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.objectspace.rfid.FinnishDataModel;
+import org.objectspace.rfid.feig.FeigRFID;
 import org.objectspace.rfid.headless.payload.DeviceMetadataData;
+import org.objectspace.rfid.headless.payload.GateStatusData;
+import org.objectspace.rfid.headless.payload.PeopleCounterData;
 import org.objectspace.rfid.headless.payload.TagReadData;
 import org.objectspace.rfid.headless.payload.TagsClearedData;
 import org.objectspace.wsbrokerclient.event.Event;
+import org.objectspace.wsbrokerclient.event.PayloadRegistry;
+import org.objectspace.wsbrokerclient.event.RawEvent;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -96,5 +103,57 @@ public class WsBrokerPayloadModelTest {
         assertTrue(summary.contains("[DEVICE METADATA]"));
         assertTrue(summary.contains("0052E688"));
         assertTrue(summary.contains("ISC.MR102-USB"));
+    }
+
+    @Test
+    @DisplayName("Test GateStatusData and PeopleCounterData model properties and summary messages")
+    void testGateStatusAndPeopleCounterPayloadModelAndSummary() {
+        FeigRFID.GateAddress addr = new FeigRFID.GateAddress(1, 0);
+        FeigRFID.GateCounter counter = new FeigRFID.GateCounter(addr, 10, 5, 2, 1);
+        FeigRFID.GateDiagnostic diag = new FeigRFID.GateDiagnostic(addr, 0, 1);
+
+        GateStatusData statusData = new GateStatusData("gate-01", List.of(counter), List.of(diag));
+        assertEquals("gate-01", statusData.readerId());
+        assertEquals(1, statusData.counters().size());
+        assertEquals(10, statusData.counters().get(0).detector1Counter1());
+        assertEquals(1, statusData.diagnostics().size());
+        assertEquals("ok", statusData.status());
+        assertTrue(statusData.getSummaryMessage().contains("[GATE STATUS]"));
+        assertTrue(statusData.getSummaryMessage().contains("gate-01"));
+        assertTrue(statusData.getSummaryMessage().contains("c1=10"));
+        assertTrue(statusData.getSummaryMessage().contains("c2=5"));
+
+        Event<GateStatusData> event = Event.of(GateStatusData.EVENT_NAME, "test-client", "gates", statusData);
+        JsonNode node = payloadData(event);
+        assertEquals("gate-01", node.get("readerId").asText());
+        assertEquals(1, node.get("counters").size());
+        assertEquals(10, node.get("counters").get(0).get("detector1Counter1").asLong());
+
+        // Test unmarshaling via PayloadRegistry
+        HeadlessWsBrokerDispatcher.registerPayloads();
+        RawEvent rawEvent = new RawEvent();
+        rawEvent.setType(GateStatusData.EVENT_NAME);
+        rawEvent.setData(node);
+        Object unmarshaled = PayloadRegistry.unmarshalDynamic(rawEvent);
+        assertTrue(unmarshaled instanceof GateStatusData);
+        GateStatusData decoded = (GateStatusData) unmarshaled;
+        assertEquals("gate-01", decoded.readerId());
+        assertEquals(1, decoded.counters().size());
+
+        // Test PeopleCounterData
+        PeopleCounterData pcData = PeopleCounterData.fromGateStatusData(statusData);
+        assertNotNull(pcData);
+        assertEquals("gate-01", pcData.readerId());
+        assertEquals(1, pcData.counters().size());
+        assertTrue(pcData.getSummaryMessage().contains("[PEOPLE COUNTER]"));
+        assertTrue(pcData.getSummaryMessage().contains("c1=10"));
+        assertTrue(pcData.getSummaryMessage().contains("c2=5"));
+
+        Event<PeopleCounterData> pcEvent = Event.of(PeopleCounterData.EVENT_NAME, "test-client", "gates", pcData);
+        RawEvent pcRaw = new RawEvent();
+        pcRaw.setType(PeopleCounterData.EVENT_NAME);
+        pcRaw.setData(payloadData(pcEvent));
+        Object pcUnmarshaled = PayloadRegistry.unmarshalDynamic(pcRaw);
+        assertTrue(pcUnmarshaled instanceof PeopleCounterData);
     }
 }

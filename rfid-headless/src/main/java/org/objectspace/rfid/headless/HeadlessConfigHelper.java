@@ -42,9 +42,13 @@ public class HeadlessConfigHelper {
 		File file = new File(targetPath);
 		if (!file.exists()) {
 			if (DEFAULT_CONFIG_FILE.equals(targetPath)) {
+				File parentFile = new File("..", DEFAULT_CONFIG_FILE);
 				File headlessFile = new File("rfid-headless", DEFAULT_CONFIG_FILE);
 				File rfidFile = new File("rfid-inventory", DEFAULT_CONFIG_FILE);
-				if (headlessFile.exists()) {
+				if (parentFile.exists()) {
+					file = parentFile;
+					targetPath = parentFile.getPath();
+				} else if (headlessFile.exists()) {
 					file = headlessFile;
 					targetPath = headlessFile.getPath();
 				} else if (rfidFile.exists()) {
@@ -470,6 +474,8 @@ public class HeadlessConfigHelper {
 		return rCfg;
 	}
 
+	public static final int DEFAULT_GATE_POLL_INTERVAL_MS = 30000;
+
 	private static void setFeigNetworkConfig(HeadlessReaderConfig reader, Configuration config,
 			String prefix, AbstractConfiguration rootConfig) {
 		setReaderModeConfig(reader, config, prefix);
@@ -477,54 +483,87 @@ public class HeadlessConfigHelper {
 				config.getString(prefix + "device.feig.host", rootConfig.getString("device.feig.host", null))));
 		reader.setPort(config.getString(prefix + "feig.port",
 				config.getString(prefix + "device.feig.port", rootConfig.getString("device.feig.port", null))));
-		reader.setGateEnabled(config.getBoolean(prefix + "feig.gate.enabled",
-				config.getBoolean(prefix + "device.feig.gate.enabled", false)));
+		reader.setGateEnabled(parseGateEnabled(config, prefix, rootConfig));
 	}
 
 	private static void setReaderModeConfig(HeadlessReaderConfig reader, Configuration config, String prefix) {
 		reader.setOperatingMode(config.getString(prefix + "feig.mode",
 				config.getString(prefix + "device.feig.mode", "host")));
-		reader.setBufferPollInterval(config.getInt(prefix + "feig.buffer.pollInterval",
-				config.getInt(prefix + "device.feig.buffer.pollInterval", 300)));
-		reader.setGatePollInterval(config.getInt(prefix + "feig.gate.pollInterval",
-				config.getInt(prefix + "device.feig.gate.pollInterval", 30000)));
+		reader.setBufferPollInterval(config.getInt(prefix + "feig.buffer.pollinterval",
+				config.getInt(prefix + "feig.buffer.pollInterval",
+				config.getInt(prefix + "device.feig.buffer.pollinterval",
+				config.getInt(prefix + "device.feig.buffer.pollInterval", 300)))));
+		reader.setGatePollInterval(parseGatePollInterval(config, prefix, DEFAULT_GATE_POLL_INTERVAL_MS));
+	}
+
+	private static boolean parseGateEnabled(Configuration config, String prefix, AbstractConfiguration rootConfig) {
+		if (config.containsKey(prefix + "feig.gate.enabled")) {
+			return config.getBoolean(prefix + "feig.gate.enabled", false);
+		}
+		if (config.containsKey(prefix + "device.feig.gate.enabled")) {
+			return config.getBoolean(prefix + "device.feig.gate.enabled", false);
+		}
+		if (config == rootConfig) {
+			return rootConfig.getBoolean("device.feig.gate.enabled", false);
+		}
+		return false;
+	}
+
+	private static int parseGatePollInterval(Configuration config, String prefix, int defaultVal) {
+		if (config.containsKey(prefix + "feig.gate.pollinterval")) {
+			int val = config.getInt(prefix + "feig.gate.pollinterval", -1);
+			if (val > 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "feig.gate.pollInterval")) {
+			int val = config.getInt(prefix + "feig.gate.pollInterval", -1);
+			if (val > 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "device.feig.gate.pollinterval")) {
+			int val = config.getInt(prefix + "device.feig.gate.pollinterval", -1);
+			if (val > 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "device.feig.gate.pollInterval")) {
+			int val = config.getInt(prefix + "device.feig.gate.pollInterval", -1);
+			if (val > 0) {
+				return val;
+			}
+		}
+		return defaultVal;
 	}
 
 	private static long parseDebounceFromNode(HierarchicalConfiguration<?> node, long defaultVal) {
-		String[] keys = new String[] {
-				"debounce",
-				"inventory.debounce",
-				"resend_interval",
-				"resend_time",
-				"tag_resend_time",
-				"cooldown"
-		};
-		for (String key : keys) {
-			if (node.containsKey(key)) {
-				long val = node.getLong(key, -1L);
-				if (val >= 0) {
-					return val;
-				}
+		if (node.containsKey("debounce")) {
+			long val = node.getLong("debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
+		if (node.containsKey("inventory.debounce")) {
+			long val = node.getLong("inventory.debounce", -1L);
+			if (val >= 0) {
+				return val;
 			}
 		}
 		return defaultVal;
 	}
 
 	private static long parseDebounceFromPrefix(AbstractConfiguration config, String prefix, long defaultVal) {
-		String[] keys = new String[] {
-				"debounce",
-				"inventory.debounce",
-				"resend_interval",
-				"resend_time",
-				"tag_resend_time",
-				"cooldown"
-		};
-		for (String key : keys) {
-			if (config.containsKey(prefix + key)) {
-				long val = config.getLong(prefix + key, -1L);
-				if (val >= 0) {
-					return val;
-				}
+		if (config.containsKey(prefix + "debounce")) {
+			long val = config.getLong(prefix + "debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "inventory.debounce")) {
+			long val = config.getLong(prefix + "inventory.debounce", -1L);
+			if (val >= 0) {
+				return val;
 			}
 		}
 		return defaultVal;

@@ -9,6 +9,7 @@ import org.objectspace.rfid.ISO15693ReaderFactory;
 import org.objectspace.rfid.core.TagScanProcessor;
 import org.objectspace.rfid.feig.FeigRFID;
 import org.objectspace.rfid.feig.ISO15693Feig;
+import org.objectspace.rfid.headless.payload.GateStatusData;
 import org.objectspace.rfid.library.ISO15693Reader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +75,8 @@ public class HeadlessReader {
 			} else {
 				HeadlessReaderScanner scanner = new HeadlessReaderScanner(
 						reader, callback, rCfg.getNumBlocks(), rCfg.getSleepInterval(),
-						rCfg.getReaderId(), rCfg.isAutoConfig(), explicitConfigFile);
+						rCfg.getReaderId(), rCfg.isAutoConfig(), explicitConfigFile,
+						rCfg.getGatePollInterval());
 				String connectionType = rCfg.getType();
 				if (rCfg.isGateEnabled() && "tcp".equalsIgnoreCase(connectionType)
 						&& reader instanceof ISO15693Feig gateReader) {
@@ -82,8 +84,12 @@ public class HeadlessReader {
 						try {
 							var counters = gateReader.readGateCounters();
 							var diagnostics = gateReader.readGateDiagnostics();
-							var data = java.util.Map.of("readerId", rCfg.getReaderId(), "counters", counters, "diagnostics", diagnostics);
-							wsBrokerDispatcher.dispatch("rfid.gate.status", data, null, null, System.currentTimeMillis(), rCfg.getReaderId());
+							GateStatusData data = new GateStatusData(rCfg.getReaderId(), counters, diagnostics);
+							if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
+								wsBrokerDispatcher.dispatchGateStatus(data, null, System.currentTimeMillis());
+							} else {
+								logger.info("{}", data.getSummaryMessage());
+							}
 						} catch (Exception e) {
 							throw new IllegalStateException("Gate status read failed", e);
 						}

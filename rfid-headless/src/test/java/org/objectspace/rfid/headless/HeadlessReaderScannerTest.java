@@ -386,4 +386,84 @@ public class HeadlessReaderScannerTest {
         assertFalse(callback.hasActiveTags(), "Active tags must be cleared when scanner is stopped");
         assertEquals(1, callback.getClearedEvents(), "Plate cleared event should be triggered upon stop");
     }
+
+    @Test
+    @DisplayName("Test gate polling frequency configuration and rate limiting")
+    public void testGatePollingFrequencyAndRateLimiting() throws Exception {
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(null, null, 12, 50, "gate-reader", false, null, 100);
+        assertEquals(100, scanner.getGatePollIntervalMs());
+
+        AtomicInteger pollCount = new AtomicInteger();
+        scanner.setGatePoller(pollCount::incrementAndGet);
+
+        // First poll executes immediately
+        scanner.pollGateIfDue();
+        assertEquals(1, pollCount.get());
+
+        // Immediate subsequent poll within 100ms interval should be rate-limited
+        scanner.pollGateIfDue();
+        assertEquals(1, pollCount.get());
+
+        // Wait for interval to elapse
+        Thread.sleep(120);
+
+        // Second poll executes after interval
+        scanner.pollGateIfDue();
+        assertEquals(2, pollCount.get());
+    }
+
+    @Test
+    @DisplayName("Test thread safety of gate polling and executeExclusive in Host Mode")
+    public void testThreadSafetyOfGatePollingAndExclusiveExecution() throws Exception {
+        AtomicBoolean executingExclusive = new AtomicBoolean(false);
+        AtomicBoolean executingGatePoll = new AtomicBoolean(false);
+        AtomicBoolean collisionDetected = new AtomicBoolean(false);
+
+        ISO15693Reader mockReader = new ISO15693Reader() {
+            @Override public void connect() {}
+            @Override public void init() {}
+            @Override public void inventory(TagCallback callback, int blocks) {
+                try { Thread.sleep(10); } catch (InterruptedException ignored) {}
+            }
+            @Override public boolean isConnected() { return true; }
+            @Override public boolean checkConnection() { return true; }
+            @Override public String getDeviceInfo() { return "Mock Gate"; }
+            @Override public void close() {}
+        };
+
+        HeadlessReaderScanner scanner = new HeadlessReaderScanner(mockReader, null, 12, 10, "gate-host", false, null, 20);
+        scanner.setGatePoller(() -> {
+            if (executingExclusive.get()) {
+                collisionDetected.set(true);
+            }
+            executingGatePoll.set(true);
+            try { Thread.sleep(20); } catch (InterruptedException ignored) {}
+            if (executingExclusive.get()) {
+                collisionDetected.set(true);
+            }
+            executingGatePoll.set(false);
+        });
+
+        scanner.start();
+
+        // Run multiple concurrent executeExclusive calls from parallel thread
+        for (int i = 0; i < 5; i++) {
+            scanner.executeExclusive(reader -> {
+                if (executingGatePoll.get()) {
+                    collisionDetected.set(true);
+                }
+                executingExclusive.set(true);
+                Thread.sleep(25);
+                if (executingGatePoll.get()) {
+                    collisionDetected.set(true);
+                }
+                executingExclusive.set(false);
+                return "OK";
+            });
+            Thread.sleep(15);
+        }
+
+        scanner.stop();
+        assertFalse(collisionDetected.get(), "No concurrent collision between executeExclusive and gate poller");
+    }
 }

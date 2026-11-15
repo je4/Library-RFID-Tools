@@ -14,6 +14,8 @@ import org.objectspace.certmanager.config.CertManagerConfig;
 import org.objectspace.certmanager.loader.CertLoader;
 import org.objectspace.rfid.FinnishDataModel;
 import org.objectspace.rfid.headless.payload.DeviceMetadataData;
+import org.objectspace.rfid.headless.payload.GateStatusData;
+import org.objectspace.rfid.headless.payload.PeopleCounterData;
 import org.objectspace.rfid.headless.payload.TagReadData;
 import org.objectspace.rfid.headless.payload.TagWriteItem;
 import org.objectspace.rfid.headless.payload.TagsClearedData;
@@ -48,6 +50,8 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		PayloadRegistry.register(WriteTagResponseData.EVENT_RESPONSE, WriteTagResponseData.class);
 		PayloadRegistry.register(WriteAfiResponseData.EVENT_REQUEST, TagWriteItem.class);
 		PayloadRegistry.register(WriteAfiResponseData.EVENT_RESPONSE, WriteAfiResponseData.class);
+		PayloadRegistry.register(GateStatusData.EVENT_NAME, GateStatusData.class);
+		PayloadRegistry.register(PeopleCounterData.EVENT_NAME, PeopleCounterData.class);
 	}
 
 	private static final Logger logger = LoggerFactory.getLogger(HeadlessWsBrokerDispatcher.class);
@@ -404,6 +408,44 @@ public class HeadlessWsBrokerDispatcher implements AutoCloseable {
 		if (data != null) {
 			dispatch(DeviceMetadataData.EVENT_RESPONSE, data, data.getSummaryMessage(), null, System.currentTimeMillis(), data.readerId());
 		}
+	}
+
+	/**
+	 * Dispatches gate status / people counter data to configured WSBroker channels.
+	 */
+	public void dispatchGateStatus(GateStatusData data, String sessionName, long timestamp) {
+		if (data != null) {
+			long correctedTimestamp = timestamp > 0 ? java.time.Instant.ofEpochMilli(timestamp).plus(brokerTimeOffset).toEpochMilli() : timestamp;
+			String eventTime = (data.time() != null && !data.time().isBlank())
+					? data.time()
+					: (correctedTimestamp > 0 ? java.time.Instant.ofEpochMilli(correctedTimestamp).toString() : null);
+			GateStatusData timedData = data.withTime(eventTime);
+			logger.info("{}", timedData.getSummaryMessage());
+			dispatch(GateStatusData.EVENT_NAME, timedData, timedData.getSummaryMessage(), sessionName, correctedTimestamp, timedData.readerId());
+		}
+	}
+
+	public void dispatchGateStatus(GateStatusData data) {
+		dispatchGateStatus(data, null, System.currentTimeMillis());
+	}
+
+	/**
+	 * Dispatches people counter data to configured WSBroker channels.
+	 */
+	public void dispatchPeopleCounter(PeopleCounterData data, String sessionName, long timestamp) {
+		if (data != null) {
+			long correctedTimestamp = timestamp > 0 ? java.time.Instant.ofEpochMilli(timestamp).plus(brokerTimeOffset).toEpochMilli() : timestamp;
+			String eventTime = (data.time() != null && !data.time().isBlank())
+					? data.time()
+					: (correctedTimestamp > 0 ? java.time.Instant.ofEpochMilli(correctedTimestamp).toString() : null);
+			PeopleCounterData timedData = data.withTime(eventTime);
+			logger.info("{}", timedData.getSummaryMessage());
+			dispatch(PeopleCounterData.EVENT_NAME, timedData, timedData.getSummaryMessage(), sessionName, correctedTimestamp, timedData.readerId());
+		}
+	}
+
+	public void dispatchPeopleCounter(PeopleCounterData data) {
+		dispatchPeopleCounter(data, null, System.currentTimeMillis());
 	}
 
 	/**
