@@ -118,3 +118,4 @@ certs/
 *.crt
 *.key
 /rfid-headless/desk02/
+/H01112-5e-ID-B.pdf
