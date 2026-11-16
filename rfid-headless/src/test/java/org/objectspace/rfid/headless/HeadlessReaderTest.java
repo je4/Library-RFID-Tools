@@ -60,6 +60,63 @@ public class HeadlessReaderTest {
     }
 
     @Test
+    public void bufferedGateWithAutoConfigWithoutConfigFileUsesNullFileForProgrammaticConfig(@TempDir Path tempDir) throws Exception {
+        String gate = """
+                <reader><reader_id>gate-auto</reader_id><feig>
+                    <type>tcp</type><host>10.96.12.18</host><port>10001</port>
+                    <mode>buffered</mode>
+                    <autoconfig>true</autoconfig>
+                    <debounce>25000</debounce>
+                    <numblocks>16</numblocks>
+                </feig></reader>
+                """;
+
+        Path file = tempDir.resolve("inventory.xml");
+        Files.writeString(file, "<configuration><readers>" + gate + "</readers></configuration>");
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(file.toString());
+
+        HeadlessReader app = new HeadlessReader(config, null, null, null);
+        HeadlessReaderInstance instance = app.getReaderInstance("gate-auto");
+        assertNotNull(instance);
+        assertTrue(instance.isBufferedMode());
+        HeadlessGateWorker worker = instance.getGateWorker();
+        assertNotNull(worker);
+        assertTrue(worker.isAutoConfig());
+        assertNull(worker.getBufferedModeConfigFile(), "Expected null configFile to trigger programmatic buffered configuration");
+        assertEquals(16, worker.getNumBlocks());
+        assertEquals(25, worker.getValidTimeSec());
+    }
+
+    @Test
+    public void bufferedGateWithAutoConfigWithConfigFileUsesExplicitFile(@TempDir Path tempDir) throws Exception {
+        Path customConfig = tempDir.resolve("custom_buffered.xml");
+        Files.writeString(customConfig, "<feig_config/>");
+
+        String gate = """
+                <reader><reader_id>gate-custom</reader_id><feig>
+                    <type>tcp</type><host>10.96.12.18</host><port>10001</port>
+                    <mode>buffered</mode>
+                    <autoconfig>true</autoconfig>
+                    <bufferedconfigfile>""" + customConfig.toAbsolutePath().toString().replace("\\", "/") + """
+                    </bufferedconfigfile>
+                </feig></reader>
+                """;
+
+        Path file = tempDir.resolve("inventory.xml");
+        Files.writeString(file, "<configuration><readers>" + gate + "</readers></configuration>");
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(file.toString());
+
+        HeadlessReader app = new HeadlessReader(config, null, null, null);
+        HeadlessReaderInstance instance = app.getReaderInstance("gate-custom");
+        assertNotNull(instance);
+        HeadlessGateWorker worker = instance.getGateWorker();
+        assertNotNull(worker);
+        assertTrue(worker.isAutoConfig());
+        assertNotNull(worker.getBufferedModeConfigFile());
+        assertEquals(customConfig.toAbsolutePath().normalize(), worker.getBufferedModeConfigFile().toPath().toAbsolutePath().normalize());
+    }
+
+    @Test
     @DisplayName("Test HeadlessReader initialization with configuration and override options")
     public void testHeadlessReaderInitialization() throws Exception {
         String xmlContent = """

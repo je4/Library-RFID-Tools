@@ -318,6 +318,10 @@ public class TagReadDataTimeIntegrationTest {
         }
 
         @Override
+        public void configureBufferedMode(int numBlocks, int validTimeSec) {
+        }
+
+        @Override
         public List<FeigRFID.BufferedTag> readBufferedTags(int maxCount) {
             if (bufferedQueue.isEmpty()) {
                 return Collections.emptyList();

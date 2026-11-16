@@ -207,6 +207,33 @@ public interface ISO15693Reader {
 	}
 
 	/**
+	 * configures buffered read mode (BRM) on the reader (from XML file or programmatic fallback)
+	 * @param configFile optional XML configuration file or null for programmatic configuration
+	 * @throws Exception if configuration fails
+	 */
+	public default void configureBufferedMode(java.io.File configFile) throws Exception {
+		throw new UnsupportedOperationException("configureBufferedMode not supported on this reader");
+	}
+
+	/**
+	 * programmatically configures buffered read mode (BRM) on the reader with buzzer alarm for closed AFI
+	 * @param numBlocks number of user memory blocks to buffer
+	 * @param validTimeSec validity / debounce duration in seconds
+	 * @throws Exception if configuration fails
+	 */
+	public default void configureBufferedMode(int numBlocks, int validTimeSec) throws Exception {
+		throw new UnsupportedOperationException("configureBufferedMode not supported on this reader");
+	}
+
+	/**
+	 * resolve the buffered mode configuration XML file
+	 * @return resolved File or null if not found
+	 */
+	public default java.io.File resolveBufferedModeConfigFile() {
+		return null;
+	}
+
+	/**
 	 * writes data blocks to a specific tag by UID
 	 * @param uid target transponder UID (hex string), or null / wildcard for single tag in field
 	 * @param data byte array containing block data to write

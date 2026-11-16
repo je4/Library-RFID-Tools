@@ -35,6 +35,8 @@ public class HeadlessGateWorker implements Runnable {
 	private final String readerId;
 	private final boolean autoConfig;
 	private final File bufferedModeConfigFile;
+	private final int numBlocks;
+	private final int validTimeSec;
 
 	private final BlockingQueue<FutureTask<?>> taskQueue = new LinkedBlockingQueue<>();
 	private final AtomicBoolean running = new AtomicBoolean(false);
@@ -55,6 +57,7 @@ public class HeadlessGateWorker implements Runnable {
 
 	public interface BufferedModeConfigurator {
 		void configureBufferedMode(File configFile) throws Exception;
+		void configureBufferedMode(int numBlocks, int validTimeSec) throws Exception;
 	}
 
 	public HeadlessGateWorker(ISO15693Reader reader,
@@ -65,7 +68,7 @@ public class HeadlessGateWorker implements Runnable {
 							  boolean gateStatusEnabled,
 							  String readerId) {
 		this(reader, callback, wsBrokerDispatcher, bufferPollIntervalMs, gatePollIntervalMs,
-				gateStatusEnabled, readerId, false, null);
+				gateStatusEnabled, readerId, false, null, 12, 20);
 	}
 
 	public HeadlessGateWorker(ISO15693Reader reader,
@@ -77,6 +80,21 @@ public class HeadlessGateWorker implements Runnable {
 							  String readerId,
 							  boolean autoConfig,
 							  File bufferedModeConfigFile) {
+		this(reader, callback, wsBrokerDispatcher, bufferPollIntervalMs, gatePollIntervalMs,
+				gateStatusEnabled, readerId, autoConfig, bufferedModeConfigFile, 12, 20);
+	}
+
+	public HeadlessGateWorker(ISO15693Reader reader,
+							  HeadlessReaderCallback callback,
+							  HeadlessWsBrokerDispatcher wsBrokerDispatcher,
+							  int bufferPollIntervalMs,
+							  int gatePollIntervalMs,
+							  boolean gateStatusEnabled,
+							  String readerId,
+							  boolean autoConfig,
+							  File bufferedModeConfigFile,
+							  int numBlocks,
+							  int validTimeSec) {
 		this.reader = reader;
 		this.callback = callback;
 		this.wsBrokerDispatcher = wsBrokerDispatcher;
@@ -86,6 +104,8 @@ public class HeadlessGateWorker implements Runnable {
 		this.readerId = (readerId != null && !readerId.isBlank()) ? readerId.trim() : "default";
 		this.autoConfig = autoConfig;
 		this.bufferedModeConfigFile = bufferedModeConfigFile;
+		this.numBlocks = numBlocks > 0 ? numBlocks : 12;
+		this.validTimeSec = validTimeSec > 0 ? validTimeSec : 20;
 	}
 
 	public synchronized void start() {
@@ -130,6 +150,22 @@ public class HeadlessGateWorker implements Runnable {
 
 	public String getReaderId() {
 		return readerId;
+	}
+
+	public boolean isAutoConfig() {
+		return autoConfig;
+	}
+
+	public File getBufferedModeConfigFile() {
+		return bufferedModeConfigFile;
+	}
+
+	public int getNumBlocks() {
+		return numBlocks;
+	}
+
+	public int getValidTimeSec() {
+		return validTimeSec;
 	}
 
 	public <T> T executeExclusive(HeadlessReaderScanner.ScannerTask<T> task) throws Exception {
@@ -263,25 +299,40 @@ public class HeadlessGateWorker implements Runnable {
 	}
 
 	private void applyBufferedModeConfiguration() throws Exception {
-		File configFile = bufferedModeConfigFile != null
-				? bufferedModeConfigFile
-				: FeigRFID.resolveBufferedModeConfigFile(null);
-		if (configFile == null || !configFile.exists() || !configFile.isFile()) {
-			throw new IllegalStateException("Buffered Mode configuration file could not be resolved");
-		}
-		if (reader instanceof ISO15693Feig feigReader) {
-			FeigRFID feig = feigReader.getFeigRFID();
-			if (feig == null) {
-				throw new IllegalStateException("FEIG reader is not initialized for Buffered Mode auto-configuration");
+		if (bufferedModeConfigFile != null) {
+			if (!bufferedModeConfigFile.exists() || !bufferedModeConfigFile.isFile()) {
+				throw new IllegalStateException("Buffered Mode configuration file does not exist or is unreadable: "
+						+ bufferedModeConfigFile.getAbsolutePath());
 			}
-			feig.configureBufferedMode(configFile);
-		} else if (reader instanceof BufferedModeConfigurator configurator) {
-			configurator.configureBufferedMode(configFile);
+			if (reader instanceof ISO15693Feig feigReader) {
+				FeigRFID feig = feigReader.getFeigRFID();
+				if (feig == null) {
+					throw new IllegalStateException("FEIG reader is not initialized for Buffered Mode auto-configuration");
+				}
+				feig.configureBufferedMode(bufferedModeConfigFile);
+			} else if (reader instanceof BufferedModeConfigurator configurator) {
+				configurator.configureBufferedMode(bufferedModeConfigFile);
+			} else {
+				reader.configureBufferedMode(bufferedModeConfigFile);
+			}
+			logger.info("Buffered Mode configuration file [{}] applied to gate reader [{}]",
+					bufferedModeConfigFile.getName(), readerId);
 		} else {
-			throw new IllegalStateException("Buffered Mode auto-configuration requires a FEIG reader");
+			if (reader instanceof ISO15693Feig feigReader) {
+				FeigRFID feig = feigReader.getFeigRFID();
+				if (feig == null) {
+					throw new IllegalStateException("FEIG reader is not initialized for Buffered Mode auto-configuration");
+				}
+				feig.configureBufferedMode(numBlocks, validTimeSec);
+			} else if (reader instanceof BufferedModeConfigurator configurator) {
+				configurator.configureBufferedMode(numBlocks, validTimeSec);
+			} else {
+				reader.configureBufferedMode(numBlocks, validTimeSec);
+			}
+			logger.info("Programmatic Buffered Mode configuration with buzzer alarm applied to gate reader [{}] (blocks: {}, validTime: {}s)",
+					readerId, numBlocks, validTimeSec);
 		}
 		autoConfigApplied = true;
-		logger.info("Buffered Mode configuration [{}] applied to gate reader [{}]", configFile.getName(), readerId);
 	}
 
 	private void processPendingTasks() {

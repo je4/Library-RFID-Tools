@@ -318,6 +318,27 @@ public class ISO15693Feig implements ISO15693Reader {
 	}
 
 	@Override
+	public void configureBufferedMode(File configFile) throws Exception {
+		if (feig == null) {
+			throw new Exception("FeigRFID instance not initialized");
+		}
+		feig.configureBufferedMode(configFile);
+	}
+
+	@Override
+	public void configureBufferedMode(int numBlocks, int validTimeSec) throws Exception {
+		if (feig == null) {
+			throw new Exception("FeigRFID instance not initialized");
+		}
+		feig.configureBufferedMode(numBlocks, validTimeSec);
+	}
+
+	@Override
+	public File resolveBufferedModeConfigFile() {
+		return FeigRFID.resolveBufferedModeConfigFile(config);
+	}
+
+	@Override
 	public void writeTag(String uid, byte[] data, int blockSize) throws Exception {
 		writeTagInternal(uid, data, blockSize, null);
 	}

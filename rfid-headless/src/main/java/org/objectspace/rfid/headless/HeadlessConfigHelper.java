@@ -323,8 +323,11 @@ public class HeadlessConfigHelper {
 				rCfg.setReaderType(readerType != null && !readerType.isBlank() ? readerType.trim() : "feig");
 
 				rCfg.setSleepInterval(config.getInt(prefix + "sleep",
-						config.getInt(prefix + "inventory.sleep", getSleepInterval(config))));
-				rCfg.setNumBlocks(config.getInt(prefix + "numblocks", getNumBlocks(config)));
+						config.getInt(prefix + "feig.sleep",
+						config.getInt(prefix + "inventory.sleep", getSleepInterval(config)))));
+				rCfg.setNumBlocks(config.getInt(prefix + "numblocks",
+						config.getInt(prefix + "feig.numblocks",
+						config.getInt(prefix + "device.feig.numblocks", getNumBlocks(config)))));
 				rCfg.setDebounceMillis(parseDebounceFromPrefix(config, prefix, getDebounceMillis(config)));
 
 				rCfg.setConfigFile(config.getString(prefix + "feig.configfile",
@@ -430,10 +433,13 @@ public class HeadlessConfigHelper {
 		rCfg.setReaderType(readerType != null && !readerType.isBlank() ? readerType.trim() : "feig");
 
 		int sleepInterval = node.getInt("sleep",
-				node.getInt("inventory.sleep", getSleepInterval(rootConfig)));
+				node.getInt("feig.sleep",
+				node.getInt("inventory.sleep", getSleepInterval(rootConfig))));
 		rCfg.setSleepInterval(sleepInterval);
 
-		int numBlocks = node.getInt("numblocks", getNumBlocks(rootConfig));
+		int numBlocks = node.getInt("numblocks",
+				node.getInt("feig.numblocks",
+				node.getInt("device.feig.numblocks", getNumBlocks(rootConfig))));
 		rCfg.setNumBlocks(numBlocks);
 
 		rCfg.setDebounceMillis(parseDebounceFromNode(node, getDebounceMillis(rootConfig)));
@@ -544,6 +550,18 @@ public class HeadlessConfigHelper {
 				return val;
 			}
 		}
+		if (node.containsKey("feig.debounce")) {
+			long val = node.getLong("feig.debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
+		if (node.containsKey("device.feig.debounce")) {
+			long val = node.getLong("device.feig.debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
 		if (node.containsKey("inventory.debounce")) {
 			long val = node.getLong("inventory.debounce", -1L);
 			if (val >= 0) {
@@ -556,6 +574,18 @@ public class HeadlessConfigHelper {
 	private static long parseDebounceFromPrefix(AbstractConfiguration config, String prefix, long defaultVal) {
 		if (config.containsKey(prefix + "debounce")) {
 			long val = config.getLong(prefix + "debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "feig.debounce")) {
+			long val = config.getLong(prefix + "feig.debounce", -1L);
+			if (val >= 0) {
+				return val;
+			}
+		}
+		if (config.containsKey(prefix + "device.feig.debounce")) {
+			long val = config.getLong(prefix + "device.feig.debounce", -1L);
 			if (val >= 0) {
 				return val;
 			}

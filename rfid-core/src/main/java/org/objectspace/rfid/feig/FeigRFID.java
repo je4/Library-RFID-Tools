@@ -47,7 +47,6 @@ import java.util.List;
 import org.apache.commons.configuration2.AbstractConfiguration;
 import de.feig.fedm.Brm;
 import de.feig.fedm.BrmItem;
-import de.feig.fedm.BufferInfo;
 import de.feig.fedm.Config;
 import de.feig.fedm.Connector;
 import de.feig.fedm.ErrorCode;
@@ -60,6 +59,7 @@ import de.feig.fedm.RequestMode;
 import de.feig.fedm.TagItem;
 import de.feig.fedm.UsbManager;
 import de.feig.fedm.UsbScanInfo;
+import de.feig.fedm.readerConfig.ReaderConfig;
 import de.feig.fedm.functionunit.ExtensionModule;
 import de.feig.fedm.functionunit.Pdevice;
 import de.feig.fedm.functionunit.PdeviceAddress;
@@ -483,18 +483,12 @@ public class FeigRFID {
 			if (brm == null) {
 				return result;
 			}
-			BufferInfo info = new BufferInfo();
-			int status = brm.readReaderBufferInfo(info);
-			if (status != ErrorCode.Ok) {
-				throw new Exception("readReaderBufferInfo failed: status=" + status + " (" + formatError(status) + ")");
-			}
-			if (info.numTags() == 0) {
-				return result;
-			}
 			int max = maxCount > 0 ? maxCount : 100;
-			long fetchCount = Math.min(info.numTags(), (long) max);
-			status = brm.readReaderBuffer(fetchCount);
-			if (status != ErrorCode.Ok) {
+			int status = brm.readReaderBuffer(max);
+			if (status == ReaderStatus.DataTableNoData || status == 146 || status == ErrorCode.NoData || status == ReaderStatus.NoTag) {
+				return List.of();
+			}
+			if (status != ErrorCode.Ok && status != ReaderStatus.MoreData && status != 148) {
 				throw new Exception("readReaderBuffer failed: status=" + status + " (" + formatError(status) + ")");
 			}
 			BrmItem item;
@@ -690,6 +684,26 @@ public class FeigRFID {
 				throw new Exception("systemReset failed: " + formatError(res));
 			} else {
 				log("System-Reset erfolgreich an das Lesegerät übermittelt.");
+			}
+			if (networkConnection) {
+				try {
+					reader.disconnect();
+				} catch (Exception e) {
+					// Ignore
+				}
+				connected = false;
+				log("Warte auf Reader-Neustart (3000 ms)...");
+				try {
+					Thread.sleep(3000);
+				} catch (InterruptedException ie) {
+					Thread.currentThread().interrupt();
+				}
+				try {
+					log("Verbinde erneut mit dem Lesegerät...");
+					connectLocked();
+				} catch (Exception e) {
+					log("Wiederverbindung nach Reset fehlgeschlagen: " + e.getMessage());
+				}
 			}
 		}
 	}
@@ -967,14 +981,109 @@ public class FeigRFID {
 	}
 
 	/**
-	 * Configures Buffered Reader Mode by applying the XML configuration,
-	 * waiting for EEPROM completion, and issuing a system reset.
+	 * Configures Buffered Reader Mode by applying the XML configuration file if provided,
+	 * or programmatically configuring the reader via FEIG SDK if no file is specified.
 	 *
-	 * @param configFile XML configuration file (reader_buffered_mode_config.xml)
+	 * @param configFile XML configuration file (reader_buffered_mode_config.xml) or null for programmatic config
 	 * @throws Exception on failure
 	 */
 	public void configureBufferedMode(File configFile) throws Exception {
-		restoreConfiguration(configFile);
+		if (configFile != null && configFile.exists() && configFile.isFile()) {
+			restoreConfiguration(configFile);
+		} else {
+			int numBlocks = 12;
+			int validTimeSec = 20;
+			if (config != null) {
+				numBlocks = config.getInt("device.feig.numblocks", config.getInt("numblocks", 12));
+				long debounce = config.getLong("device.feig.debounce", config.getLong("debounce", 20000));
+				validTimeSec = (int) Math.max(1, debounce / 1000);
+			}
+			configureBufferedMode(numBlocks, validTimeSec);
+		}
+	}
+
+	/**
+	 * Programmatically configures Buffered Read Mode (BRM) on the FEIG RFID reader via SDK Config API
+	 * using default parameters (12 blocks, 20s validity) with autonomous buzzer alarm on secured (closed) tag passage.
+	 *
+	 * @throws Exception on failure
+	 */
+	public void configureBufferedMode() throws Exception {
+		configureBufferedMode((File) null);
+	}
+
+	/**
+	 * Programmatically configures Buffered Read Mode (BRM) on the FEIG RFID reader via the SDK Config API,
+	 * including AFI/EAS monitoring and autonomous buzzer signaling when a secured (closed) tag is detected.
+	 * Writes the configuration to EEPROM, waits for write completion, and performs a system reset.
+	 *
+	 * @param numBlocks number of user memory blocks to buffer per tag (default 12)
+	 * @param validTimeSec transponder debounce / validity duration in seconds (default 20)
+	 * @throws Exception if configuration or reset fails
+	 */
+	public void configureBufferedMode(int numBlocks, int validTimeSec) throws Exception {
+		synchronized (readerLock) {
+			if (!isConnected() || reader == null) {
+				connect();
+			}
+			configureBufferedMode(reader.config(), numBlocks, validTimeSec);
+			systemReset();
+			log("Buffered Read Mode und Buzzer-Alarm erfolgreich auf dem RFID-Leser programmiert und Lesegerät neu gestartet.");
+		}
+	}
+
+	void configureBufferedMode(Config cfg, int numBlocks, int validTimeSec) throws Exception {
+		if (cfg == null) {
+			throw new IllegalArgumentException("Config must not be null");
+		}
+		int blocks = numBlocks > 0 ? numBlocks : 12;
+		long validTime = validTimeSec > 0 ? validTimeSec : 20;
+
+		log("Lese vollständige Reader-Konfiguration aus EEPROM...");
+		int status = cfg.readCompleteConfiguration(false);
+		if (status != ErrorCode.Ok) {
+			throw new Exception("readCompleteConfiguration failed: " + formatError(status));
+		}
+
+		log("Parametrisiere Buffered Read Mode (0x80) und DataSelector...");
+		cfg.setConfigPara(ReaderConfig.OperatingMode.Mode, (byte) 0x80);
+
+		// DataSelector: welche Felder im Puffer erfasst werden
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.UID, true);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.Data, true);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.Date, true);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.Time, true);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.AFI, true);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSelector.Direction, true);
+
+		// DataSource: Speicherbereich der Transponder (User Memory)
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSource.FirstDataBlock, (byte) 0);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.DataSource.NoOfDataBlocks, (byte) blocks);
+
+		// Filter & Entprellung: TransponderValidTime
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.Filter.TransponderValidTime, validTime);
+
+		// AFI / EAS Alarm-Konfiguration (geschlossenes Medium)
+		log("Parametrisiere EAS / AFI Alarm und Buzzer...");
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.EAS.AlarmMode, (byte) 0x01);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.Alarm.Buzzer.SettlingMode, (byte) 0x01);
+		cfg.setConfigPara(ReaderConfig.OperatingMode.BufferedReadMode.Alarm.Buzzer.SettlingTime, (byte) 20);
+
+		// Signaler / Buzzer Hardware-Konfiguration
+		cfg.setConfigPara(ReaderConfig.DigitalIO.Signaler.Buzzer.Volume, (byte) 0x03);
+		cfg.setConfigPara(ReaderConfig.DigitalIO.Signaler.Buzzer.ActivationTime, (byte) 20);
+		cfg.setConfigPara(ReaderConfig.DigitalIO.Signaler.Buzzer.ActiveFlashFrequency, (byte) 0x01);
+
+		log("Schreibe programmierte Buffered-Mode-Konfiguration in das EEPROM...");
+		status = cfg.writeCompleteConfiguration(false);
+		if (status != ErrorCode.Ok) {
+			throw new Exception("writeCompleteConfiguration failed: " + formatError(status));
+		}
+
+		waitForEepromWrite(1500);
+		if (Thread.currentThread().isInterrupted()) {
+			throw new InterruptedException("Interrupted while waiting for EEPROM write completion");
+		}
 	}
 
 	/**

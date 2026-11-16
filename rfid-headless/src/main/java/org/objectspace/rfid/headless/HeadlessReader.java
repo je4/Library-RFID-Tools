@@ -49,8 +49,11 @@ public class HeadlessReader {
 			}
 
 			boolean buffered = "buffered".equalsIgnoreCase(rCfg.getOperatingMode());
+			String configuredFilePath = buffered
+					? (rCfg.getBufferedConfigFile() != null && !rCfg.getBufferedConfigFile().isBlank() ? rCfg.getBufferedConfigFile() : rCfg.getConfigFile())
+					: (rCfg.getHostConfigFile() != null && !rCfg.getHostConfigFile().isBlank() ? rCfg.getHostConfigFile() : rCfg.getConfigFile());
 			File explicitConfigFile = rCfg.isAutoConfig()
-					? requireExplicitConfigFile(buffered ? rCfg.getBufferedConfigFile() : rCfg.getHostConfigFile())
+					? requireExplicitConfigFile(configuredFilePath)
 					: null;
 			ISO15693Reader reader = ISO15693ReaderFactory.createReader(rCfg.toConfiguration());
 			HeadlessReaderCallback callback = new HeadlessReaderCallback(
@@ -58,8 +61,9 @@ public class HeadlessReader {
 			HeadlessReaderInstance instance;
 			if (buffered) {
 				File bufferedConfigFile = rCfg.isAutoConfig()
-						? (explicitConfigFile != null ? explicitConfigFile : FeigRFID.resolveBufferedModeConfigFile(null))
+						? explicitConfigFile
 						: null;
+				int validTimeSec = (int) Math.max(1, rCfg.getDebounceMillis() / 1000);
 				HeadlessGateWorker gateWorker = new HeadlessGateWorker(
 						reader,
 						callback,
@@ -69,7 +73,9 @@ public class HeadlessReader {
 						rCfg.isGateEnabled(),
 						rCfg.getReaderId(),
 						rCfg.isAutoConfig(),
-						bufferedConfigFile
+						bufferedConfigFile,
+						rCfg.getNumBlocks(),
+						validTimeSec
 				);
 				instance = HeadlessReaderInstance.forGateWorker(rCfg, reader, callback, gateWorker);
 			} else {

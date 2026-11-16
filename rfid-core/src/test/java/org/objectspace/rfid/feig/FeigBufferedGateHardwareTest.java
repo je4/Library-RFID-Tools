@@ -2,9 +2,9 @@ package org.objectspace.rfid.feig;
 
 import de.feig.fedm.Brm;
 import de.feig.fedm.BrmItem;
-import de.feig.fedm.BufferInfo;
 import de.feig.fedm.ErrorCode;
 import de.feig.fedm.ReaderModule;
+import de.feig.fedm.ReaderStatus;
 import de.feig.fedm.TagItem;
 import org.apache.commons.configuration2.BaseConfiguration;
 import org.junit.jupiter.api.Test;
@@ -38,12 +38,10 @@ class FeigBufferedGateHardwareTest {
 			brm.setQueueMaxItemCount(BATCH_SIZE);
 			long start = System.nanoTime();
 			do {
-				BufferInfo info = new BufferInfo();
-				checkStatus("read buffer information", brm.readReaderBufferInfo(info), module.lastErrorStatusText());
-				if (info.numTags() == 0) {
+				int status = brm.readReaderBuffer(BATCH_SIZE);
+				if (status == ReaderStatus.DataTableNoData || status == 146 || status == ErrorCode.NoData || status == ReaderStatus.NoTag) {
 					System.out.println("Reader buffer is empty.");
 				} else {
-					int status = brm.readReaderBuffer(Math.min(info.numTags(), BATCH_SIZE));
 					checkStatus("read buffered events", status, module.lastErrorStatusText());
 					BrmItem item;
 					int count = 0;

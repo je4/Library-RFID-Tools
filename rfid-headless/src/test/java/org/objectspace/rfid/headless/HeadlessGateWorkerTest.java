@@ -42,6 +42,8 @@ public class HeadlessGateWorkerTest {
         private final AtomicInteger closeCalls = new AtomicInteger(0);
         private final AtomicInteger configCalls = new AtomicInteger(0);
         private volatile File configuredFile;
+        private volatile int configuredBlocks;
+        private volatile int configuredValidTime;
 
         private List<FeigRFID.GateCounter> counters = List.of(
                 new FeigRFID.GateCounter(new FeigRFID.GateAddress(1, 1), 10, 20, 30, 40)
@@ -91,6 +93,14 @@ public class HeadlessGateWorkerTest {
         public void configureBufferedMode(File configFile) {
             callingThreads.add("configureBufferedMode:" + Thread.currentThread().getName());
             configuredFile = configFile;
+            configCalls.incrementAndGet();
+        }
+
+        @Override
+        public void configureBufferedMode(int numBlocks, int validTimeSec) {
+            callingThreads.add("configureBufferedModeProgrammatic:" + Thread.currentThread().getName());
+            configuredBlocks = numBlocks;
+            configuredValidTime = validTimeSec;
             configCalls.incrementAndGet();
         }
 
@@ -176,6 +186,28 @@ public class HeadlessGateWorkerTest {
         assertEquals(1, reader.configCalls.get());
         assertEquals(configFile, reader.configuredFile);
         assertTrue(reader.callingThreads.contains("configureBufferedMode:RFID-GateWorker-gate-config"));
+    }
+
+    @Test
+    @DisplayName("Gate worker applies programmatic Buffered Mode configuration when no explicit XML file is provided")
+    public void autoConfigAppliesProgrammaticBufferedModeWhenNoFileProvided() throws Exception {
+        MockGateReader reader = new MockGateReader();
+        reader.setConnected(false);
+        HeadlessGateWorker worker = new HeadlessGateWorker(reader, null, null, 20, 1000,
+                false, "gate-prog-config", true, null, 16, 25);
+
+        worker.start();
+        long deadline = System.currentTimeMillis() + 2000;
+        while (reader.configCalls.get() == 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        worker.stop();
+
+        assertEquals(1, reader.configCalls.get());
+        assertNull(reader.configuredFile);
+        assertEquals(16, reader.configuredBlocks);
+        assertEquals(25, reader.configuredValidTime);
+        assertTrue(reader.callingThreads.contains("configureBufferedModeProgrammatic:RFID-GateWorker-gate-prog-config"));
     }
 
     @Test
