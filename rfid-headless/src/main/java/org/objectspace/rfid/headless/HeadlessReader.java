@@ -38,6 +38,10 @@ public class HeadlessReader {
 		this.readerInstances = new ArrayList<>();
 
 		for (HeadlessReaderConfig rCfg : readerConfigs) {
+			if (!rCfg.isEnabled()) {
+				logger.info("Reader [{}] is disabled (enabled=false). Skipping initialization.", rCfg.getReaderId());
+				continue;
+			}
 			if (debounceOverride != null && debounceOverride >= 0) {
 				rCfg.setDebounceMillis(debounceOverride);
 			}
@@ -106,6 +110,10 @@ public class HeadlessReader {
 			this.readerInstances.add(instance);
 		}
 
+		if (this.readerInstances.isEmpty()) {
+			logger.warn("No active RFID readers configured or enabled (all readers are disabled or none defined in configuration).");
+		}
+
 		if (this.wsBrokerDispatcher != null) {
 			this.wsBrokerDispatcher.setReaderInstances(this.readerInstances);
 		}
@@ -127,6 +135,10 @@ public class HeadlessReader {
 		logger.info(" Starting RFID-Headless Reader Daemon v{} (Headless) ", VERSION);
 		logger.info(" Managing {} configured RFID reader instance(s)", readerInstances.size());
 		logger.info("==================================================");
+
+		if (readerInstances.isEmpty()) {
+			logger.warn("No active RFID readers to start. The application will not perform RFID scanning.");
+		}
 
 		// Connect to WSBroker if configured
 		if (wsBrokerDispatcher != null && wsBrokerDispatcher.isActive()) {
@@ -252,6 +264,10 @@ public class HeadlessReader {
 			XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(configFile);
 			HeadlessReader app = new HeadlessReader(config, debounceOverride, sleepOverride, blocksOverride);
 			app.start();
+
+			if (!app.isRunning()) {
+				logger.warn("No active RFID reader scanners are running. Headless daemon will exit.");
+			}
 
 			// Keep main thread alive
 			while (app.isRunning()) {

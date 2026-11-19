@@ -31,6 +31,7 @@
 	<!--
 	<readers>
 		<reader>
+			<enabled>true</enabled>
 			<reader_id>reader-01</reader_id>
 			<readonly>false</readonly>
 			<feig>
@@ -40,13 +41,13 @@
 			<debounce>3000</debounce>
 			<sleep>300</sleep>
 			<numblocks>12</numblocks>
-			[Optional per-reader WSBroker channels (if omitted, global channels are used)]
 			<channels>
 				<channel>rfid</channel>
 				<channel>rfid:reader-01</channel>
 			</channels>
 		</reader>
 		<reader>
+			<enabled>true</enabled>
 			<reader_id>reader-02</reader_id>
 			<readonly>true</readonly>
 			<feig>
@@ -56,14 +57,13 @@
 			<debounce>2000</debounce>
 			<sleep>250</sleep>
 			<numblocks>12</numblocks>
-			[Optional per-reader WSBroker channels (if omitted, global channels are used)]
 			<channels>
 				<channel>rfid</channel>
 				<channel>rfid:reader-02</channel>
 			</channels>
 		</reader>
-		[Example: FEIG Gate (1800/700) in preconfigured Buffered Reader Mode]
 		<reader>
+			<enabled>true</enabled>
 			<reader_id>gate-north</reader_id>
 			<readonly>true</readonly>
 			<feig>

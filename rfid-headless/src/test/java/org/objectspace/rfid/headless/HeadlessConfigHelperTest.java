@@ -667,4 +667,61 @@ public class HeadlessConfigHelperTest {
             }
         }
     }
+
+    @Test
+    @DisplayName("Test enabled flag parsing across hierarchical and flat configurations")
+    public void testEnabledFlagParsing() throws Exception {
+        XMLConfiguration xml = new XMLConfiguration();
+        new org.apache.commons.configuration2.io.FileHandler(xml).load(new java.io.StringReader("""
+                <configuration>
+                    <readers>
+                        <reader>
+                            <reader_id>reader-enabled</reader_id>
+                            <enabled>true</enabled>
+                        </reader>
+                        <reader>
+                            <reader_id>reader-disabled</reader_id>
+                            <enabled>false</enabled>
+                        </reader>
+                        <reader>
+                            <reader_id>reader-default</reader_id>
+                        </reader>
+                    </readers>
+                </configuration>
+                """));
+
+        var readers = HeadlessConfigHelper.getReaderConfigs(xml);
+        assertEquals(3, readers.size());
+        assertTrue(readers.get(0).isEnabled());
+        assertEquals("reader-enabled", readers.get(0).getReaderId());
+        assertTrue(readers.get(0).toConfiguration().getBoolean("enabled"));
+
+        assertFalse(readers.get(1).isEnabled());
+        assertEquals("reader-disabled", readers.get(1).getReaderId());
+        assertFalse(readers.get(1).toConfiguration().getBoolean("enabled"));
+
+        assertTrue(readers.get(2).isEnabled());
+        assertEquals("reader-default", readers.get(2).getReaderId());
+        assertTrue(readers.get(2).toConfiguration().getBoolean("enabled"));
+
+        // Test flat configuration
+        BaseConfiguration flat = new BaseConfiguration();
+        flat.setProperty("readers.reader(0).reader_id", "flat-disabled");
+        flat.setProperty("readers.reader(0).enabled", false);
+        flat.setProperty("readers.reader(1).reader_id", "flat-enabled");
+        flat.setProperty("readers.reader(1).enabled", true);
+
+        var flatReaders = HeadlessConfigHelper.getReaderConfigs(flat);
+        assertEquals(2, flatReaders.size());
+        assertFalse(flatReaders.get(0).isEnabled());
+        assertTrue(flatReaders.get(1).isEnabled());
+
+        // Test fallback single reader
+        BaseConfiguration singleDisabled = new BaseConfiguration();
+        singleDisabled.setProperty("device.enabled", false);
+        assertFalse(HeadlessConfigHelper.getReaderConfigs(singleDisabled).get(0).isEnabled());
+
+        BaseConfiguration singleEnabled = new BaseConfiguration();
+        assertTrue(HeadlessConfigHelper.getReaderConfigs(singleEnabled).get(0).isEnabled());
+    }
 }

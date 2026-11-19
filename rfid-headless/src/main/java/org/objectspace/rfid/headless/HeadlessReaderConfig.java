@@ -19,6 +19,7 @@ import java.util.Objects;
 public class HeadlessReaderConfig {
 
 	private String readerId;
+	private boolean enabled = true;
 	private boolean readOnly;
 	private String deviceId;
 	private String type = "usb";
@@ -54,12 +55,27 @@ public class HeadlessReaderConfig {
 		this.deviceId = deviceId;
 	}
 
+	public HeadlessReaderConfig(String readerId, boolean enabled, boolean readOnly, String deviceId) {
+		this.readerId = readerId;
+		this.enabled = enabled;
+		this.readOnly = readOnly;
+		this.deviceId = deviceId;
+	}
+
 	public String getReaderId() {
 		return readerId;
 	}
 
 	public void setReaderId(String readerId) {
 		this.readerId = readerId;
+	}
+
+	public boolean isEnabled() {
+		return enabled;
+	}
+
+	public void setEnabled(boolean enabled) {
+		this.enabled = enabled;
 	}
 
 	public boolean isReadOnly() {
@@ -260,6 +276,7 @@ public class HeadlessReaderConfig {
 		}
 
 		// Apply reader-specific properties
+		target.setProperty("enabled", enabled);
 		target.setProperty("device.select", readerType != null ? readerType : "feig");
 		if (deviceId != null && !deviceId.isBlank()) {
 			target.setProperty("device.feig.id", deviceId.trim());
@@ -307,7 +324,8 @@ public class HeadlessReaderConfig {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		HeadlessReaderConfig that = (HeadlessReaderConfig) o;
-		return readOnly == that.readOnly &&
+		return enabled == that.enabled &&
+				readOnly == that.readOnly &&
 				gateEnabled == that.gateEnabled &&
 				bufferPollInterval == that.bufferPollInterval &&
 				gatePollInterval == that.gatePollInterval &&
@@ -328,13 +346,14 @@ public class HeadlessReaderConfig {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(readerId, readOnly, deviceId, type, host, port, gateEnabled, operatingMode, autoConfig, bufferPollInterval, gatePollInterval, sleepInterval, numBlocks, debounceMillis, hostConfigFile, bufferedConfigFile, channels);
+		return Objects.hash(readerId, enabled, readOnly, deviceId, type, host, port, gateEnabled, operatingMode, autoConfig, bufferPollInterval, gatePollInterval, sleepInterval, numBlocks, debounceMillis, hostConfigFile, bufferedConfigFile, channels);
 	}
 
 	@Override
 	public String toString() {
 		return "HeadlessReaderConfig{" +
 				"readerId='" + readerId + '\'' +
+				", enabled=" + enabled +
 				", readOnly=" + readOnly +
 				", deviceId='" + deviceId + '\'' +
 				", type='" + type + '\'' +

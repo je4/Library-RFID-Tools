@@ -291,6 +291,10 @@ public class HeadlessConfigHelper {
 				}
 
 				HeadlessReaderConfig rCfg = new HeadlessReaderConfig();
+				boolean enabled = config.getBoolean(prefix + "enabled",
+						config.getBoolean(prefix + "active", true));
+				rCfg.setEnabled(enabled);
+
 				String readerId = config.getString(prefix + "reader_id",
 						config.getString(prefix + "id",
 						config.getString(prefix + "readerId",
@@ -347,7 +351,10 @@ public class HeadlessConfigHelper {
 						config.getString("device.feig.bufferedconfigfile", null))));
 				rCfg.setAutoConfig(config.getBoolean(prefix + "feig.autoconfig",
 						config.getBoolean(prefix + "device.feig.autoconfig",
-						config.getBoolean("device.feig.autoconfig", false))));
+						config.getBoolean(prefix + "autoconfig",
+						config.getBoolean("device.feig.autoconfig",
+						config.getBoolean("feig.autoconfig",
+						config.getBoolean("autoconfig", false)))))));
 
 				List<Object> chList = config.getList(prefix + "channels.channel");
 				if (chList != null && !chList.isEmpty()) {
@@ -375,6 +382,10 @@ public class HeadlessConfigHelper {
 		// Single-Reader Legacy Fallback: Build from root <device> section
 		HeadlessReaderConfig fallback = new HeadlessReaderConfig();
 		fallback.setReaderId(getClientName(config));
+		fallback.setEnabled(config.getBoolean("device.enabled",
+				config.getBoolean("device.active",
+				config.getBoolean("enabled",
+				config.getBoolean("active", true)))));
 		fallback.setReadOnly(config.getBoolean("device.readonly", config.getBoolean("readonly", false)));
 		fallback.setDeviceId(config.getString("device.feig.id", null));
 		fallback.setType(config.getString("device.feig.type", "usb"));
@@ -391,7 +402,9 @@ public class HeadlessConfigHelper {
 		fallback.setStoreConfigFile(config.getString("device.feig.storeconfigfile", null));
 		fallback.setHostConfigFile(config.getString("device.feig.hostconfigfile", null));
 		fallback.setBufferedConfigFile(config.getString("device.feig.bufferedconfigfile", null));
-		fallback.setAutoConfig(config.getBoolean("device.feig.autoconfig", false));
+		fallback.setAutoConfig(config.getBoolean("device.feig.autoconfig",
+				config.getBoolean("feig.autoconfig",
+				config.getBoolean("autoconfig", false))));
 		fallback.setChannels(getChannels(config));
 		fallback.setRootConfiguration(config);
 
@@ -401,6 +414,10 @@ public class HeadlessConfigHelper {
 
 	private static HeadlessReaderConfig parseReaderNode(HierarchicalConfiguration<?> node, AbstractConfiguration rootConfig, int defaultIndex) {
 		HeadlessReaderConfig rCfg = new HeadlessReaderConfig();
+		boolean enabled = node.getBoolean("enabled",
+				node.getBoolean("active", true));
+		rCfg.setEnabled(enabled);
+
 		String readerId = node.getString("reader_id",
 				node.getString("id",
 				node.getString("readerId",
@@ -461,7 +478,10 @@ public class HeadlessConfigHelper {
 				rootConfig.getString("device.feig.bufferedconfigfile", null))));
 		rCfg.setAutoConfig(node.getBoolean("feig.autoconfig",
 				node.getBoolean("device.feig.autoconfig",
-				rootConfig.getBoolean("device.feig.autoconfig", false))));
+				node.getBoolean("autoconfig",
+				rootConfig.getBoolean("device.feig.autoconfig",
+				rootConfig.getBoolean("feig.autoconfig",
+				rootConfig.getBoolean("autoconfig", false)))))));
 
 		List<Object> chList = node.getList("channels.channel");
 		if (chList != null && !chList.isEmpty()) {

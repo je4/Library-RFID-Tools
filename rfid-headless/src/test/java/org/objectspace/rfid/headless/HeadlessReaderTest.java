@@ -227,6 +227,82 @@ public class HeadlessReaderTest {
     }
 
     @Test
+    @DisplayName("Test multi-reader initialization skips disabled readers")
+    public void testMultiReaderInitializationSkipsDisabledReaders() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <readers>
+                        <reader>
+                            <enabled>true</enabled>
+                            <reader_id>reader-active</reader_id>
+                            <feig>
+                                <id>52E101</id>
+                                <type>usb</type>
+                            </feig>
+                        </reader>
+                        <reader>
+                            <enabled>false</enabled>
+                            <reader_id>reader-inactive</reader_id>
+                            <feig>
+                                <id>52E102</id>
+                                <type>usb</type>
+                            </feig>
+                        </reader>
+                    </readers>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-disabled-test-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        HeadlessReader app = new HeadlessReader(config, null, null, null);
+
+        // Only the enabled reader should be instantiated
+        assertEquals(1, app.getReaderInstances().size());
+        assertNotNull(app.getReaderInstance("reader-active"));
+        assertNull(app.getReaderInstance("reader-inactive"));
+    }
+
+    @Test
+    @DisplayName("Test initialization with no active readers produces empty instances and is not running")
+    public void testInitializationWithNoActiveReaders() throws Exception {
+        String xmlContent = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <configuration>
+                    <readers>
+                        <reader>
+                            <enabled>false</enabled>
+                            <reader_id>reader-inactive-1</reader_id>
+                        </reader>
+                        <reader>
+                            <enabled>false</enabled>
+                            <reader_id>reader-inactive-2</reader_id>
+                        </reader>
+                    </readers>
+                </configuration>
+                """;
+
+        File tempXml = File.createTempFile("inventory-all-disabled-test-", ".xml");
+        tempXml.deleteOnExit();
+
+        try (FileWriter writer = new FileWriter(tempXml)) {
+            writer.write(xmlContent);
+        }
+
+        XMLConfiguration config = HeadlessConfigHelper.loadConfiguration(tempXml.getAbsolutePath());
+        HeadlessReader app = new HeadlessReader(config, null, null, null);
+
+        assertEquals(0, app.getReaderInstances().size());
+        assertFalse(app.isRunning());
+    }
+
+    @Test
     @DisplayName("Test setLogLevel modifies Logback root logger level")
     public void testSetLogLevel() {
         ch.qos.logback.classic.Logger root = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
